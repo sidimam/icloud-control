@@ -72,6 +72,19 @@ oppure «completato 18 min fa in 0 min», più l'ora dell'ultima riga di log. Un
 aggiornamento automatico ogni 15 s e download del file. Per default nasconde gli errori innocui ripetuti a ogni giro (file che iCloud elenca
 ma non lascia scaricare, come i database dei password manager, e foto senza versione alternativa), con il conteggio delle righe nascoste.
 
+### Accesso (dalla 2.2)
+
+La GUI chiede utente e password se il container ha `GUI_PASSWORD_HASH` (hash werkzeug/scrypt, mai la password in chiaro; `GUI_USER`,
+default `admin`). Senza hash resta aperta come prima. Sessione firmata con una chiave persistente in `/app/state/gui_secret` (un riavvio non
+disconnette), «Ricordami» per 30 giorni, cookie `HttpOnly` e `SameSite=Lax` (le azioni POST non partono da altri siti), 10 tentativi falliti
+in 10 minuti per IP poi attesa. `/healthz` resta libero per i monitor. Per generare l'hash:
+
+```bash
+docker exec -i icloud-dispatcher python3 -c "import sys; from werkzeug.security import generate_password_hash as g; print(g(sys.stdin.read().strip()))"
+```
+
+(scrivi la password, Invio, Ctrl-D) e incolla il risultato nella variabile del template.
+
 ## Installazione (Unraid)
 
 1. Copia `bot.sh` in `/mnt/user/appdata/icloudpd-dispatcher/bot.sh`.

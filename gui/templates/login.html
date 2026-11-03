@@ -1,0 +1,8 @@
+{% extends "base.html" %}{% block body %}
+<div class="card" style="max-width:360px;margin:3rem auto"><h2>Accesso</h2>
+<form method="post" action="/login"><input type="hidden" name="next" value="{{next}}">
+<label>Utente</label><input name="user" autocomplete="username" autocapitalize="none" autofocus required>
+<label>Password</label><input name="password" type="password" autocomplete="current-password" required>
+<label><input type="checkbox" name="remember" checked style="width:auto"> Ricordami per 30 giorni</label>
+<div class="row"><button>Entra</button></div></form></div>
+{% endblock %}
