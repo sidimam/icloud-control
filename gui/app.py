@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """icloud-dispatcher GUI: utenti = container iCloud (foto: boredazfcuk/icloudpd; iCloud Drive: mandarons/icloud-drive), chat Telegram, cosa scaricare, rinnovo 2FA."""
 import json, os, re, subprocess, shutil, datetime, html, time
+from concurrent.futures import ThreadPoolExecutor
 from flask import Flask, request, redirect, url_for, render_template, flash, abort, session
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -160,11 +161,19 @@ def last_activity(c):
         t = log_ts(l)
         if t: return t
     return None
+# I log dei container iclouddr arrivano a 50 MB (decine di migliaia di avvisi «file già scaricato» al giorno): docker logs li rilegge
+# tutti a ogni chiamata. Una sola lettura filtrata per container, tenuta 15 s (le azioni rapide la invalidano).
+DRIVE_PAT = "|".join(re.escape(x) for _, a, b in CYCLES for x in (a, b)) + "|Downloading|completed|2FA|Retrying login"
+_log_cache = {}
+def drive_log_lines(c):
+    hit = _log_cache.get(c)
+    if hit and time.time() - hit[0] < 15: return hit[1]
+    rc, out, _ = sh(f"docker logs --since 72h {c} 2>&1 | grep -E {json.dumps(DRIVE_PAT)}", 60)
+    lines = ANSI.sub("", out).splitlines(); _log_cache[c] = (time.time(), lines); return lines
 def sync_cycles(c, interval):
     """Per ogni giro (Drive, Foto): in corso da quando, fine e durata dell'ultimo completo, e se sembra bloccato
     (in corso da più del doppio dell'ultimo giro completo, minimo un'ora)."""
-    pat = "|".join(re.escape(x) for _, a, b in CYCLES for x in (a, b))
-    rc, out, _ = sh(f"docker logs --since 48h {c} 2>&1 | grep -E {json.dumps(pat)}", 60); out = ANSI.sub("", out)
+    out = "\n".join(drive_log_lines(c))
     res = []
     for kind, start, end in CYCLES:
         since = last = None
@@ -194,7 +203,8 @@ def drive_view(name, u):
              webui_port=(ports[0].get("HostPort") if ports else ""), days=drive_days(local))
     if v["running"]:
         v["auth"] = d_auth_running(c)
-        rc, last, _ = sh(f"docker logs --since 72h {c} 2>&1 | grep -E 'Downloading|completed|2FA|Retrying login|Syncing drive' | tail -1", 30); v["last"] = re.sub(r"^.*?:: (INFO|WARNING|ERROR) :: \S+ :: \S+ :: \d+ :: ", "", ANSI.sub("", last))[:140]
+        last = next((l for l in reversed(drive_log_lines(c)) if re.search("Downloading|completed|2FA|Retrying login|Syncing drive", l)), "")
+        v["last"] = re.sub(r"^.*?:: (INFO|WARNING|ERROR) :: \S+ :: \S+ :: \d+ :: ", "", last)[:140]
         v["cycles"] = sync_cycles(c, v["sync_interval"]); t = last_activity(c); v["activity"] = ago(t)
         # nessuna riga di log da più di due intervalli di sincronizzazione (+10 min) e nessun giro in corso: anche questo è un blocco
         quiet = t and (datetime.datetime.now() - t).total_seconds() > 2 * int(v["sync_interval"] or 1800) + 600
@@ -215,7 +225,8 @@ def photos_view(name, u):
 
 @app.route("/")
 def index():
-    c = cfg(); users = [user_view(n, u) for n, u in c["users"].items()]
+    c = cfg()
+    with ThreadPoolExecutor(max_workers=8) as ex: users = list(ex.map(lambda nu: user_view(*nu), c["users"].items()))
     # Due sezioni per tipo: prima le foto (icloudpd), poi iCloud Drive; dentro ogni sezione l'ordine di config.json.
     sections = [("📷 Foto iCloud (icloudpd)", [v for v in users if v["type"] == "icloudpd"]), ("📁 iCloud Drive (mandarons/icloud-drive)", [v for v in users if v["type"] == "iclouddrive"])]
     sections = [sct for sct in sections if sct[1]]
@@ -246,7 +257,7 @@ def u_code(name):
 def u_power(name, action):
     """Azioni rapide sul container: avvia, ferma, riavvia (il riavvio fa partire subito un giro di sincronizzazione)."""
     if action not in ("start", "stop", "restart"): abort(404)
-    u = cfg()["users"].get(name) or abort(404); rc, out, err = sh(f"docker {action} {u['container']}", 120)
+    u = cfg()["users"].get(name) or abort(404); rc, out, err = sh(f"docker {action} {u['container']}", 120); _log_cache.pop(u["container"], None)
     done = {"start": "avviato", "stop": "fermato", "restart": "riavviato: il giro di sincronizzazione riparte subito"}[action]
     flash(f"{u['container']} {done}" if rc == 0 else f"{u['container']}: docker {action} non riuscito ({err[-200:]})")
     back = request.form.get("back", ""); return redirect(back if back.startswith("/") and not back.startswith("//") else url_for("index"))
