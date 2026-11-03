@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """icloud-dispatcher GUI: utenti = container iCloud (foto: boredazfcuk/icloudpd; iCloud Drive: mandarons/icloud-drive), chat Telegram, cosa scaricare, rinnovo 2FA."""
-import json, os, re, subprocess, shutil, datetime, html, time
+import json, os, re, subprocess, shutil, datetime, html, time, threading
 from concurrent.futures import ThreadPoolExecutor
 from flask import Flask, request, redirect, url_for, render_template, flash, abort, session
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -209,6 +209,7 @@ def drive_view(name, u):
         # nessuna riga di log da più di due intervalli di sincronizzazione (+10 min) e nessun giro in corso: anche questo è un blocco
         quiet = t and (datetime.datetime.now() - t).total_seconds() > 2 * int(v["sync_interval"] or 1800) + 600
         v["stalled"] = any(x["stalled"] for x in v["cycles"]) or bool(quiet and not any(x["running_min"] is not None for x in v["cycles"]))
+    v["autoheal"] = ah_view(c); v["autoheal_on"] = AH_ON
     return v
 def photos_view(name, u):
     c = u["container"]; info = inspect(c); v = {"name": name, "type": "icloudpd", "label": u.get("label", name), "container": c, "chat_id": u.get("chat_id", ""), "exists": info is not None}
@@ -380,6 +381,68 @@ drive:
     c["users"][name] = {"type": "iclouddrive", "container": cont, "label": label, "chat_id": chat, "apple_id": apple}; c["aliases"][short.lower() + "-drive"] = name; save(c)
     flash(f"{cont} creato. Primo login Apple dal terminale di Unraid: docker exec -it {cont} /bin/sh -c \"su-exec abc icloud --username={apple} --session-directory=/config/session_data\" — password, codice, y al keyring. Poi #{name} auth / #{name} 123456 funzionano dal bot.")
     return redirect(url_for("index"))
+# ---- riavvio automatico dei giri bloccati (2.5). mandarons/icloud-drive a volte resta appeso su una connessione morta (CLOSE_WAIT)
+# a metà giro: nessuna riga di log, rete e CPU ferme, e non riparte più da solo (Sofia, 3/11/2026: 13:26→17:19 e 17:19→21:38).
+# Ogni AUTOHEAL_CHECK_S secondi, per ogni container iclouddr acceso con un giro in corso: se negli ultimi AUTOHEAL_IDLE_MIN minuti
+# ha ricevuto meno di 100 KB e usato meno di 2 s di CPU, oppure il giro dura da più di max(AUTOHEAL_MAX_CYCLE_H, 3 × l'ultimo),
+# il container viene riavviato. Al massimo AUTOHEAL_MAX_RESTARTS riavvii in 6 ore per container, poi un avviso Telegram e basta.
+AH_ON = os.environ.get("AUTOHEAL", "1") != "0"; AH_CHECK = int(os.environ.get("AUTOHEAL_CHECK_S", "120"))
+AH_IDLE = int(os.environ.get("AUTOHEAL_IDLE_MIN", "10")); AH_MAXH = float(os.environ.get("AUTOHEAL_MAX_CYCLE_H", "4"))
+AH_MAXR = int(os.environ.get("AUTOHEAL_MAX_RESTARTS", "3")); AH_FILE = os.path.join(APP_DIR, "state", "autoheal.json")
+_ah_samples = {}   # container -> [(ts, byte ricevuti, µs di CPU)]
+def ah_events():
+    try: return json.load(open(AH_FILE))
+    except (FileNotFoundError, ValueError): return []
+def ah_log(ev):
+    evs = (ah_events() + [ev])[-200:]; os.makedirs(os.path.dirname(AH_FILE), exist_ok=True); json.dump(evs, open(AH_FILE, "w"), ensure_ascii=False, indent=1)
+def ah_counters(c):
+    rc, out, _ = dexec(c, "cat /proc/net/dev /sys/fs/cgroup/cpu.stat")   # niente awk: il $ verrebbe espanso dalla shell esterna
+    rx = next((int(l.split(":", 1)[1].split()[0]) for l in out.splitlines() if l.strip().startswith("eth0:")), None)
+    cpu = next((int(l.split()[1]) for l in out.splitlines() if l.startswith("usage_usec")), None)
+    return (rx, cpu) if rx is not None and cpu is not None else None
+def ah_check(name, u, c):
+    ct = u["container"]; info = inspect(ct)
+    if not info or not info["State"]["Running"]: _ah_samples.pop(ct, None); return
+    if d_auth_running(ct): return   # riautenticazione in corso: non toccare
+    _log_cache.pop(ct, None); cyc = [x for x in sync_cycles(ct, 0) if x["running_min"] is not None]
+    now = time.time(); k = ah_counters(ct)
+    smp = _ah_samples.setdefault(ct, [])
+    if k: smp.append((now, *k))
+    smp[:] = [x for x in smp if now - x[0] <= AH_IDLE * 60 + AH_CHECK]
+    if not cyc: return
+    reason = None; run = max(x["running_min"] for x in cyc)
+    long_ = max(AH_MAXH * 60, 3 * max((x["last_min"] or 0) for x in cyc))
+    if run > long_: reason = f"giro {cyc[0]['kind']} in corso da {run} min (limite {int(long_)})"
+    elif len(smp) >= 2 and smp[-1][0] - smp[0][0] >= AH_IDLE * 60 and run >= AH_IDLE:
+        drx, dcpu = smp[-1][1] - smp[0][1], (smp[-1][2] - smp[0][2]) / 1e6
+        if drx < 100_000 and dcpu < 2: reason = f"giro {cyc[0]['kind']} fermo: {drx // 1000} KB ricevuti e {dcpu:.1f} s di CPU in {AH_IDLE} min"
+    if not reason: return
+    recent = [e for e in ah_events() if e.get("container") == ct and e.get("action") == "restart" and now - e.get("ts", 0) < 6 * 3600]
+    if len(recent) >= AH_MAXR:
+        if not any(e.get("container") == ct and e.get("action") == "gave_up" and now - e.get("ts", 0) < 6 * 3600 for e in ah_events()):
+            ah_log({"ts": now, "container": ct, "action": "gave_up", "reason": reason})
+            telegram(c.get("default_chat_id"), f"⚠️ {name}: {ct} si blocca di continuo ({len(recent)} riavvii automatici in 6 ore, ultimo motivo: {reason}). Per 6 ore non lo riavvio più in automatico: guarda la GUI del dispatcher (📜 Log).")
+        return
+    rc, _, err = sh(f"docker restart {ct}", 120); _ah_samples.pop(ct, None); _log_cache.pop(ct, None)
+    ah_log({"ts": now, "container": ct, "action": "restart", "reason": reason, "ok": rc == 0})
+    print(f"autoheal: {ct} riavviato ({reason})" if rc == 0 else f"autoheal: {ct} riavvio fallito: {err[-200:]}", flush=True)
+def ah_loop():
+    while True:
+        try:
+            c = cfg()
+            for name, u in c["users"].items():
+                if utype(u) == "iclouddrive":
+                    try: ah_check(name, u, c)
+                    except Exception as e: print(f"autoheal {name}: {e}", flush=True)
+        except Exception as e: print(f"autoheal: {e}", flush=True)
+        time.sleep(AH_CHECK)
+def ah_view(ct):
+    evs = [e for e in ah_events() if e.get("container") == ct]
+    for e in evs: e["when"] = datetime.datetime.fromtimestamp(e["ts"]).strftime("%d/%m %H:%M")
+    return {"last": evs[-1] if evs else None, "n24": sum(1 for e in evs if e["action"] == "restart" and time.time() - e["ts"] < 86400)}
+
 @app.route("/healthz")
 def healthz(): return "ok"
-if __name__ == "__main__": app.run(host="0.0.0.0", port=PORT, debug=False)
+if __name__ == "__main__":
+    if AH_ON: threading.Thread(target=ah_loop, daemon=True).start()
+    app.run(host="0.0.0.0", port=PORT, debug=False)

@@ -74,6 +74,22 @@ oppure «completato 18 min fa in 0 min», più l'ora dell'ultima riga di log. Un
 aggiornamento automatico ogni 15 s e download del file. Per default nasconde gli errori innocui ripetuti a ogni giro (file che iCloud elenca
 ma non lascia scaricare, come i database dei password manager, e foto senza versione alternativa), con il conteggio delle righe nascoste.
 
+### Riavvio automatico dei giri bloccati (dalla 2.5)
+
+`mandarons/icloud-drive` a volte resta appeso a metà giro su una connessione morta: nessuna riga di log, rete e CPU ferme, e non
+riparte da solo. Ogni 2 minuti il dispatcher guarda i container iCloud Drive accesi con un giro in corso e li **riavvia** se:
+
+- negli ultimi 10 minuti hanno ricevuto meno di 100 KB e usato meno di 2 s di CPU (un giro sano, anche quando non scarica niente,
+  scorre le cartelle e riceve centinaia di KB al minuto), oppure
+- il giro dura da più di 4 ore (o di 3 volte l'ultimo giro completo, se più lungo).
+
+Al massimo 3 riavvii in 6 ore per container: dopo, un avviso Telegram alla chat predefinita e niente più riavvii automatici per 6 ore.
+Gli interventi sono in `/app/state/autoheal.json` e nella scheda dell'utente («Riavvio automatico»). Non interviene durante una
+riautenticazione né sui container fermati a mano. Variabili (facoltative): `AUTOHEAL=0` per spegnerlo, `AUTOHEAL_CHECK_S` (120),
+`AUTOHEAL_IDLE_MIN` (10), `AUTOHEAL_MAX_CYCLE_H` (4), `AUTOHEAL_MAX_RESTARTS` (3).
+
+Dalla 2.4.1 la pagina principale legge i log una sola volta per container (in parallelo, cache di 15 s): prima impiegava ~7 s.
+
 ### Accesso (dalla 2.2)
 
 La GUI chiede utente e password se il container ha `GUI_PASSWORD_HASH` (hash werkzeug/scrypt, mai la password in chiaro; `GUI_USER`,
