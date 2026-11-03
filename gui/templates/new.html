@@ -1,15 +1,16 @@
 {% extends "base.html" %}{% block body %}<div class="card" style="max-width:640px">
-<h2>Nuovo utente iCloud</h2><p class="mut">Crea cartelle, template Unraid e container. Poi serve il primo login Apple con il codice 2FA (dal terminale di Unraid).</p>
+<h2>Nuovo utente iCloud</h2><p class="mut">Crea un container 📁 <b>iclouddr</b> (mandarons/icloud-drive) che scarica iCloud Drive e, se vuoi, le foto personali: cartelle, <code>config.yaml</code>, template Unraid e container. Poi serve il primo login Apple con il codice 2FA dal terminale di Unraid (il comando compare dopo la creazione).</p>
 <form method="post">
-<label>Tipo</label><select name="type" id="type" onchange="document.getElementById('photos').style.display=this.value=='icloudpd'?'':'none';document.getElementById('drive').style.display=this.value=='iclouddrive'?'':'none'"><option value="icloudpd">📷 Foto (boredazfcuk/icloudpd)</option><option value="iclouddrive">📁 iCloud Drive (mandarons/icloud-drive)</option></select>
-<label>Prefisso Telegram (es. luca → #luca)</label><input name="name" required pattern="[a-z0-9]+">
-<label>Nome breve del container (es. ldimambro → iCloudpd-ldimambro, cartelle icloudpd-ldimambro e photos/ldimambro)</label><input name="short" required>
-<label>Etichetta</label><input name="label">
+<label>Persona (etichetta e nome delle cartelle, es. Luca)</label><input name="label" required oninput="hint(this.value)">
+<label>Nome breve del container (es. ldimambro → iclouddr-ldimambro)</label><input name="short" required pattern="[A-Za-z0-9]+">
+<label>Prefisso Telegram (es. luca-drive → #luca-drive)</label><input name="name" required pattern="[a-z0-9-]+">
 <label>Apple ID (e-mail)</label><input name="apple_id" type="email" required>
-<div id="photos"><label>Libreria</label><input name="photo_library" value="PrimarySync">
-<label>Solo album (vuoto = tutto)</label><input name="photo_album">
-<label>Struttura cartelle</label><input name="folder_structure" value="{{cfg.defaults.folder_structure}}">
-<label>Chat Telegram (id); vuoto = quella del container base</label><input name="chat_id">
-<label>Copia impostazioni da</label><select name="base">{% for b in bases %}<option>{{b}}</option>{% endfor %}</select></div>
-<div id="drive" style="display:none"><label>Cartella di destinazione su Unraid (sotto /mnt/user/documents)</label><input name="drive_dest" placeholder="/mnt/user/documents/Nome/iCloud Drive"></div>
-<div class="row"><button>Crea</button> <a href="/">Annulla</a></div></form></div>{% endblock %}
+<label>Chat Telegram (id) per gli avvisi (facoltativa)</label><input name="chat_id">
+<label>Cartella iCloud Drive su Unraid (sotto /mnt/user/documents)</label><input name="drive_dest" id="drive_dest" placeholder="/mnt/user/documents/Nome/iCloud Drive">
+<label>Cartelle di iCloud Drive da saltare (separate da virgola)</label><input name="ignore" value="Home">
+<label><input type="checkbox" name="photos" checked style="width:auto" onchange="document.getElementById('ph').style.display=this.checked?'':'none'"> Scarica anche le foto personali (libreria PrimarySync)</label>
+<div id="ph"><label>Cartella foto su Unraid (sotto /mnt/user/media/photos)</label><input name="photos_dest" id="photos_dest" placeholder="/mnt/user/media/photos/Nome/Personale"></div>
+<div class="row"><button>Crea</button> <a href="/">Annulla</a></div></form>
+<p class="mut">La libreria condivisa di famiglia la scarica solo il container di chi la gestisce: per aggiungerla a mano servono <code>filters.libraries</code> e <code>library_destinations</code> nel suo <code>config.yaml</code> (vedi README).</p></div>
+<script>function hint(n){n=n.trim()||'Nome';document.getElementById('drive_dest').placeholder='/mnt/user/documents/'+n+'/iCloud Drive';document.getElementById('photos_dest').placeholder='/mnt/user/media/photos/'+n+'/Personale'}</script>
+{% endblock %}

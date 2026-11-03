@@ -52,9 +52,11 @@ Con il plugin [FolderView3](https://github.com/chodeus/folder.view3) i container
 La GUI (Flask, nello stesso container) mostra due sezioni con intestazione — 📷 Foto iCloud (icloudpd) sopra, 📁 iCloud Drive sotto — e un riquadro per container: stato del container, giorni al rinnovo del cookie, Apple ID,
 cosa scarica (libreria PrimarySync o SharedSync-…, album), cartella, chat Telegram, ultimo evento. Azioni: **Riautentica**,
 **Invia codice** (alternativa a Telegram), azioni rapide **↻ Riavvia** (fa partire subito un giro), **■ Ferma**, **▶ Avvia** e **📜 Log**, **Impostazioni** (libreria, album, struttura cartelle, chat,
-giorni di promemoria: aggiorna `/config/icloudpd.conf`, il template Unraid e riavvia), **Rimuovi dalla GUI**. **Nuovo utente** crea cartelle,
-template Unraid e container: per le foto copiando le impostazioni da un container esistente (poi `--Initialise`), per iCloud Drive scrivendo
-`config.yaml` (destinazione sotto `/mnt/user/documents`, controllo ogni 30 minuti, nessuna porta pubblicata: lo stato si legge qui) e la variabile
+giorni di promemoria: aggiorna `/config/icloudpd.conf`, il template Unraid e riavvia), **Rimuovi dalla GUI**. **Nuovo utente** (dalla 2.4 solo container
+📁 **iclouddr**, mandarons/icloud-drive: i container icloudpd esistenti restano gestibili ma non se ne creano più) crea cartelle, template Unraid e
+container scrivendo `config.yaml`: iCloud Drive sotto `/mnt/user/documents/<Persona>/iCloud Drive` (cartelle da saltare, default `Home`),
+e a scelta le foto personali (libreria `PrimarySync`, `%Y/%m`, nomi `simple`) sotto `/mnt/user/media/photos/<Persona>/Personale`
+montate su `/icloud/photos/all`; controllo ogni 30 minuti (foto ogni ora), nessuna porta pubblicata: lo stato si legge qui e la variabile
 `ENV_CONFIG_FILE_PATH=/config/config.yaml` senza la quale l'immagine legge un config vuoto; poi il primo login manuale
 `docker exec -it iclouddr-<nome> /bin/sh -c "su-exec abc icloud --username=<apple id> --session-directory=/config/session_data"` (password, codice, `y` al keyring).
 Utenti e alias stanno in `/app/config.json`, condiviso con il bot; ogni utente ha `type` (`icloudpd` o `iclouddrive`), `container`, `label`, `chat_id` e, per iCloud Drive, `apple_id` e `person`. La GUI non ha autenticazione: tenerla in LAN o dietro un proxy.

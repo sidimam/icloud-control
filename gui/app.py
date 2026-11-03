@@ -288,44 +288,28 @@ def u_delete(name):
     flash(f"{name}: tolto dalla GUI e dal bot (il container {u['container']} e le sue cartelle restano: gestiscili da Unraid)"); return redirect(url_for("index"))
 @app.route("/new", methods=["GET", "POST"])
 def new():
+    """Nuovo utente = sempre un container iclouddr (mandarons/icloud-drive: iCloud Drive + foto). I container icloudpd esistenti restano gestibili, ma non se ne creano più."""
     c = cfg()
-    if request.method == "GET": return render_template("new.html", cfg=c, bases=[u["container"] for u in c["users"].values() if inspect(u["container"])])
+    if request.method == "GET": return render_template("new.html", cfg=c)
     f = request.form; name = re.sub(r"[^a-z0-9-]", "", f["name"].lower()); short = re.sub(r"[^A-Za-z0-9]", "", f["short"]) or name
-    if f.get("type") == "iclouddrive": return new_drive(c, f, name, short)
-    cont = f"iCloudpd-{short}"; base = f["base"]; apple = f["apple_id"].strip(); chat = f.get("chat_id", "").strip(); lib = f.get("photo_library", "PrimarySync").strip() or "PrimarySync"
-    if not name or not apple or name in c["users"]: flash("Dati mancanti o nome già usato"); return redirect(url_for("new"))
-    p = c["paths"]; d = c["defaults"]; appdata = f"{p['appdata']}/icloudpd-{short.lower()}"; photos = f"{p['photos']}/{short}"
-    os.makedirs(appdata, exist_ok=True); os.makedirs(photos, exist_ok=True); shutil.chown(appdata, int(d["user_id"]), int(d["group_id"])); shutil.chown(photos, int(d["user_id"]), int(d["group_id"]))
-    binfo = inspect(base); benv = env_of(binfo); bm = mounts(binfo)
-    env = {**{k: v for k, v in benv.items() if k not in ("PATH", "HOME", "HOSTNAME")}, "apple_id": apple, "photo_library": lib, "photo_album": f.get("photo_album", "").strip(), "TZ": d["tz"],
-           "folder_structure": f.get("folder_structure", d["folder_structure"]).strip() or d["folder_structure"], "user": d["user"], "user_id": d["user_id"], "group": d["group"], "group_id": d["group_id"],
-           "notification_type": "telegram", "telegram_token": TOKEN, "telegram_chat_id": chat or benv.get("telegram_chat_id", ""), "telegram_polling": "false", "notification_days": d["notification_days"], "download_path": "/home/user/iCloud"}
-    host_appdata = appdata.replace(p["appdata"], "/mnt/user/appdata", 1); host_photos = photos.replace(p["photos"], "/mnt/user/media/photos", 1)
-    # template Unraid dal container base
-    bt = tpl_path(base)
-    if os.path.exists(bt):
-        s = open(bt).read(); s = re.sub(r"<Name>[^<]*</Name>", f"<Name>{cont}</Name>", s)
-        s = s.replace(bm["/config"], host_appdata).replace(bm["/home/user/iCloud"].rstrip("/"), host_photos)
-        open(tpl_path(cont), "w").write(s)
-        for k in ("apple_id", "photo_library", "photo_album", "folder_structure", "telegram_chat_id", "notification_days", "user", "user_id", "group", "group_id", "TZ"): tpl_set(cont, k, env[k])
-    envs = " ".join(f"-e {json.dumps(k + '=' + v)}" for k, v in env.items())
-    labels = f'-l net.unraid.docker.managed=dockerman -l net.unraid.docker.icon={json.dumps(binfo["Config"]["Labels"].get("net.unraid.docker.icon", ""))}'
-    rc, out, err = sh(f"docker run -d --name {cont} --restart=no --net=bridge {labels} {envs} -v {host_appdata}:/config -v {host_photos}:/home/user/iCloud {binfo['Config']['Image']}", 120)
-    if rc != 0: flash(f"docker run fallito: {err[-300:]}"); return redirect(url_for("new"))
-    c["users"][name] = {"container": cont, "label": f.get("label", name).strip() or name, "chat_id": chat}; c["aliases"][short.lower()] = name; save(c)
-    flash(f"{cont} creato e avviato: ora il primo login Apple. Da Unraid: docker exec -it {cont} sync-icloud.sh --Initialise (password + codice 2FA). Autostart: attivalo dalla pagina Docker di Unraid.")
-    return redirect(url_for("index"))
+    return new_drive(c, f, name, short)
 def new_drive(c, f, name, short):
     """Nuovo container iCloud Drive (mandarons/icloud-drive): cartelle, config.yaml, template Unraid, container. Primo login manuale."""
     apple = f["apple_id"].strip(); chat = f.get("chat_id", "").strip(); label = f.get("label", name).strip() or name
     dest_host = (f.get("drive_dest", "") or f"/mnt/user/documents/{label}/iCloud Drive").strip().rstrip("/")
+    photos = f.get("photos") == "on"; photos_host = (f.get("photos_dest", "") or f"/mnt/user/media/photos/{label}/Personale").strip().rstrip("/")
+    ignore = [x.strip() for x in f.get("ignore", "").split(",") if x.strip()]
+    photos_note = f" e foto → {photos_host}" if photos else ""; photos_mount = f" -v {json.dumps(photos_host)}:/icloud/photos/all" if photos else ""
+    photos_overview = f" e le foto personali in {html.escape(photos_host)}" if photos else ""
     if not name or not apple or name in c["users"]: flash("Dati mancanti o nome già usato"); return redirect(url_for("new"))
     p = c["paths"]; d = c["defaults"]; cont = f"iclouddr-{short.lower()}"; host_appdata = f"/mnt/user/appdata/{cont}"
     appdata = host_to_local(host_appdata); dest = host_to_local(dest_host)
     if dest == dest_host: flash("La destinazione deve stare sotto /mnt/user/documents (montato nel dispatcher come /documents)"); return redirect(url_for("new"))
-    for path in (appdata, dest):
+    photos_local = host_to_local(photos_host) if photos else None
+    if photos and photos_local == photos_host: flash("La cartella foto deve stare sotto /mnt/user/media/photos (montato nel dispatcher come /photos)"); return redirect(url_for("new"))
+    for path in [appdata, dest] + ([photos_local] if photos else []):
         os.makedirs(path, exist_ok=True); shutil.chown(path, int(d["user_id"]), int(d["group_id"]))
-    open(os.path.join(appdata, "config.yaml"), "w").write(f"""# {cont} — iCloud Drive di {label} → {dest_host} (solo download, {d.get('drive_image', 'mandarons/icloud-drive')})
+    open(os.path.join(appdata, "config.yaml"), "w").write(f"""# {cont} — iCloud Drive di {label} → {dest_host}{photos_note} (solo download, {d.get('drive_image', 'mandarons/icloud-drive')})
 app:
   logger:
     level: "info"
@@ -335,11 +319,26 @@ app:
     retry_login_interval: 600
   root: "/icloud"
   region: global
+  max_threads: 4
 drive:
   destination: "drive"
   remove_obsolete: false
   sync_interval: {d.get('drive_sync_interval', 1800)}
-"""); shutil.chown(os.path.join(appdata, "config.yaml"), int(d["user_id"]), int(d["group_id"]))
+""" + ("  ignore:\n" + "".join(f'    - "{x}"\n' for x in ignore) if ignore else "") + ("""photos:
+  destination: "photos"
+  sync_interval: 3600
+  remove_obsolete: false
+  all_albums: false
+  folder_format: "%Y/%m"
+  filename_format: simple
+  filters:
+    libraries:
+      - PrimarySync
+    file_sizes:
+      - "original"
+      - "live_video_original"
+      - "original_alt"
+""" if photos else "")); shutil.chown(os.path.join(appdata, "config.yaml"), int(d["user_id"]), int(d["group_id"]))
     icon = "https://raw.githubusercontent.com/sidimam/icloud-dispatcher/main/assets/icloud-drive.png"   # quadrata 256x256 (l'icona dashboard-icons è 797x512 e Unraid la deforma)
     open(tpl_path(cont), "w").write(f"""<?xml version="1.0"?>
 <Container version="2">
@@ -351,7 +350,7 @@ drive:
   <Privileged>false</Privileged>
   <Support>https://github.com/mandarons/icloud-docker</Support>
   <Project>https://github.com/mandarons/icloud-docker</Project>
-  <Overview>Scarica iCloud Drive di {html.escape(label)} in {html.escape(dest_host)} (solo download). Primo login: docker exec -it {cont} /bin/sh -c "su-exec abc icloud --username={apple} --session-directory=/config/session_data"</Overview>
+  <Overview>Scarica iCloud Drive di {html.escape(label)} in {html.escape(dest_host)}{photos_overview} (solo download). Primo login: docker exec -it {cont} /bin/sh -c "su-exec abc icloud --username={apple} --session-directory=/config/session_data"</Overview>
   <Category>Backup: Cloud:</Category>
   <WebUI/>
   <Icon>{icon}</Icon>
@@ -362,9 +361,10 @@ drive:
   <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="" Type="Variable" Display="advanced" Required="false" Mask="false">{d["user_id"]}</Config>
   <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="" Type="Variable" Display="advanced" Required="false" Mask="false">{d["group_id"]}</Config>
   <Config Name="TZ" Target="TZ" Default="Europe/Rome" Mode="" Description="" Type="Variable" Display="advanced" Required="false" Mask="false">{d["tz"]}</Config>
-</Container>
+""" + (f'''  <Config Name="Foto personali" Target="/icloud/photos/all" Default="{html.escape(photos_host)}" Mode="rw" Description="Libreria PrimarySync, cartelle %Y/%m" Type="Path" Display="always" Required="false" Mask="false">{html.escape(photos_host)}</Config>
+''' if photos else "") + """</Container>
 """)
-    rc, out, err = sh(f"docker run -d --name {cont} --restart unless-stopped --label net.unraid.docker.managed=dockerman -e PUID={d['user_id']} -e PGID={d['group_id']} -e TZ={d['tz']} -e ENV_CONFIG_FILE_PATH=/config/config.yaml -v {host_appdata}:/config -v {json.dumps(dest_host)}:/icloud/drive {d.get('drive_image', 'mandarons/icloud-drive')}", 180)
+    rc, out, err = sh(f"docker run -d --name {cont} --restart unless-stopped --label net.unraid.docker.managed=dockerman -e PUID={d['user_id']} -e PGID={d['group_id']} -e TZ={d['tz']} -e ENV_CONFIG_FILE_PATH=/config/config.yaml -v {host_appdata}:/config -v {json.dumps(dest_host)}:/icloud/drive{photos_mount} --label net.unraid.docker.icon={icon} {d.get('drive_image', 'mandarons/icloud-drive')}", 180)
     if rc != 0: flash(f"docker run fallito: {err[-300:]}"); return redirect(url_for("new"))
     c["users"][name] = {"type": "iclouddrive", "container": cont, "label": label, "chat_id": chat, "apple_id": apple}; c["aliases"][short.lower() + "-drive"] = name; save(c)
     flash(f"{cont} creato. Primo login Apple dal terminale di Unraid: docker exec -it {cont} /bin/sh -c \"su-exec abc icloud --username={apple} --session-directory=/config/session_data\" — password, codice, y al keyring. Poi #{name} auth / #{name} 123456 funzionano dal bot.")
