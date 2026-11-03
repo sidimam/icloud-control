@@ -33,4 +33,5 @@
   <Config Name="App (config.json + stato)" Target="/app" Default="/mnt/user/appdata/icloud-dispatcher" Mode="rw" Description="" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/icloud-dispatcher</Config>
   <Config Name="Utente GUI" Target="GUI_USER" Default="admin" Mode="" Description="utente della pagina di accesso" Type="Variable" Display="always" Required="false" Mask="false">admin</Config>
   <Config Name="Hash password GUI" Target="GUI_PASSWORD_HASH" Default="" Mode="" Description="hash werkzeug della password (vuoto = GUI senza accesso). Genera con: docker exec -i icloud-dispatcher python3 -c &quot;import sys; from werkzeug.security import generate_password_hash as g; print(g(sys.stdin.read().strip()))&quot;" Type="Variable" Display="always" Required="false" Mask="true"></Config>
+  <Config Name="Reimposta password GUI" Target="GUI_RESET_PASSWORD" Default="" Mode="" Description="password dimenticata: scrivi qui la nuova, applica, entra nella GUI e poi SVUOTA il campo (finché è compilato a ogni riavvio rimette questa)" Type="Variable" Display="always" Required="false" Mask="true"></Config>
 </Container>

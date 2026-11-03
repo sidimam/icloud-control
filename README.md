@@ -85,6 +85,11 @@ docker exec -i icloud-dispatcher python3 -c "import sys; from werkzeug.security 
 
 (scrivi la password, Invio, Ctrl-D) e incolla il risultato nella variabile del template.
 
+Dalla 2.3 la password si cambia anche dalla pagina **Password** della GUI (attuale + nuova, almeno 8 caratteri): l'hash nuovo va in
+`/app/state/gui_password` e ha la precedenza su `GUI_PASSWORD_HASH`. **Password dimenticata**: compila `GUI_RESET_PASSWORD` nel template
+Unraid con la nuova password e applica; all'avvio il container la salva (come hash) e la GUI mostra un avviso finché la variabile resta
+compilata. Entra, poi svuota la variabile e applica di nuovo, altrimenti a ogni riavvio rimette quella.
+
 ## Installazione (Unraid)
 
 1. Copia `bot.sh` in `/mnt/user/appdata/icloudpd-dispatcher/bot.sh`.

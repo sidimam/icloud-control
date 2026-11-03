@@ -7,8 +7,17 @@ from werkzeug.security import check_password_hash, generate_password_hash
 APP_DIR = os.environ.get("APP_DIR", "/app"); CFG = os.path.join(APP_DIR, "config.json")
 TOKEN = os.environ.get("TELEGRAM_TOKEN", ""); PORT = int(os.environ.get("GUI_PORT", "8787"))
 app = Flask(__name__, template_folder=os.path.join(os.path.dirname(__file__), "templates"))
-# ---- accesso: GUI_USER + GUI_PASSWORD_HASH (hash werkzeug, mai la password in chiaro). Senza hash la GUI resta aperta come prima.
-GUI_USER = os.environ.get("GUI_USER", "admin"); GUI_HASH = os.environ.get("GUI_PASSWORD_HASH", "")
+# ---- accesso: GUI_USER + password. L'hash valido è quello salvato in /app/state/gui_password (cambio dalla pagina «Password»),
+# altrimenti GUI_PASSWORD_HASH (hash werkzeug). GUI_RESET_PASSWORD, se compilata, all'avvio reimposta la password a quel valore
+# (password dimenticata): poi va svuotata, se no a ogni riavvio rimette quella. Senza nessuna password la GUI resta aperta come prima.
+GUI_USER = os.environ.get("GUI_USER", "admin"); GUI_HASH = os.environ.get("GUI_PASSWORD_HASH", ""); GUI_RESET = os.environ.get("GUI_RESET_PASSWORD", "")
+PW_FILE = os.path.join(APP_DIR, "state", "gui_password")
+def save_password(pw):
+    os.makedirs(os.path.dirname(PW_FILE), exist_ok=True); open(PW_FILE, "w").write(generate_password_hash(pw)); os.chmod(PW_FILE, 0o600)
+def password_hash():
+    try: return open(PW_FILE).read().strip()
+    except FileNotFoundError: return GUI_HASH
+if GUI_RESET: save_password(GUI_RESET); print("GUI: password reimpostata da GUI_RESET_PASSWORD (svuota la variabile e riavvia)", flush=True)
 def _secret():   # chiave di sessione persistente in /app/state: un riavvio non disconnette
     f = os.path.join(APP_DIR, "state", "gui_secret")
     try: return open(f, "rb").read()
@@ -19,7 +28,7 @@ app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax", P
 FAILS = {}   # ip -> [orari dei tentativi falliti]: oltre 10 in 10 minuti l'ip aspetta
 @app.before_request
 def require_login():
-    if not GUI_HASH or request.endpoint in ("login", "healthz", "static") or session.get("user") == GUI_USER: return None
+    if not password_hash() or request.endpoint in ("login", "healthz", "static") or session.get("user") == GUI_USER: return None
     return redirect(url_for("login", next=request.full_path if request.method == "GET" else "/"))
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -28,12 +37,23 @@ def login():
         ip = request.headers.get("CF-Connecting-IP") or request.remote_addr; now = time.time()
         recent = FAILS[ip] = [t for t in FAILS.get(ip, []) if now - t < 600]
         if len(recent) >= 10: flash("Troppi tentativi: riprova fra qualche minuto"); return render_template("login.html", next=nxt), 429
-        if request.form.get("user", "") == GUI_USER and check_password_hash(GUI_HASH, request.form.get("password", "")):
+        if request.form.get("user", "") == GUI_USER and check_password_hash(password_hash(), request.form.get("password", "")):
             session.clear(); session["user"] = GUI_USER; session.permanent = request.form.get("remember") == "on"; FAILS.pop(ip, None); return redirect(nxt)
         recent.append(now); time.sleep(1); flash("Utente o password errati")
     return render_template("login.html", next=nxt)
 @app.post("/logout")
 def logout(): session.clear(); return redirect(url_for("login"))
+@app.route("/password", methods=["GET", "POST"])
+def password():
+    if request.method == "POST":
+        f = request.form; cur = password_hash()
+        if cur and not check_password_hash(cur, f.get("current", "")): time.sleep(1); flash("La password attuale non è corretta")
+        elif len(f.get("new", "")) < 8: flash("La nuova password deve avere almeno 8 caratteri")
+        elif f.get("new") != f.get("confirm"): flash("Le due password nuove non coincidono")
+        else: save_password(f["new"]); session.clear(); session["user"] = GUI_USER; flash("Password cambiata"); return redirect(url_for("index"))
+    return render_template("password.html", has_password=bool(password_hash()), config_user=GUI_USER)
+@app.context_processor
+def reset_warning(): return {"reset_set": bool(GUI_RESET)}
 
 def cfg(): return json.load(open(CFG))
 def save(c): json.dump(c, open(CFG, "w"), indent=2, ensure_ascii=False)
