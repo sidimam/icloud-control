@@ -5,11 +5,13 @@
 {% if not u.exists %}<p class="bad">Container non trovato.</p>{% else %}
 <div class="row">{% if u.running %}<span class="pill ok">in esecuzione{% if u.health %} · {{u.health}}{% endif %}</span>{% else %}<span class="pill bad">fermo</span>{% endif %}
 {% if u.days %}<span class="pill {% if u.days|int <= 3 %}warn{% else %}ok{% endif %}">sessione: {{u.days}} giorni</span>{% endif %}{% if u.auth %}<span class="pill warn">autenticazione in corso</span>{% endif %}</div>
-{% if u.type == "iclouddrive" %}<dl><dt>Apple ID</dt><dd>{{u.apple_id}}</dd><dt>Scarica</dt><dd>iCloud Drive, ogni {{u.sync_interval or '?'}} s{% if u.remove_obsolete == 'true' %} · rimuove i file cancellati{% endif %}</dd><dt>Cartella</dt><dd>{{u.drive_host}}</dd><dt>Telegram</dt><dd>chat {{u.chat_id or '—'}}</dd><dt>Ultimo evento</dt><dd>{{u.last or '—'}}</dd></dl>
-{% else %}<dl><dt>Apple ID</dt><dd>{{u.apple_id}}</dd><dt>Scarica</dt><dd>{{u.photo_library}}{% if u.photo_album %} · album: {{u.photo_album}}{% endif %}</dd><dt>Cartella</dt><dd>{{u.photos_host}}</dd><dt>Telegram</dt><dd>chat {{u.tg_chat or '—'}}</dd><dt>Ultimo evento</dt><dd>{{u.last or '—'}}</dd></dl>{% endif %}
+{% include "actions.html" %}
+{% if u.type == "iclouddrive" %}<dl><dt>Apple ID</dt><dd>{{u.apple_id}}</dd><dt>Scarica</dt><dd>iCloud Drive, ogni {{u.sync_interval or '?'}} s{% if u.remove_obsolete == 'true' %} · rimuove i file cancellati{% endif %}</dd><dt>Cartella</dt><dd>{{u.drive_host}}</dd><dt>Telegram</dt><dd>chat {{u.chat_id or '—'}}</dd><dt>Ultimo evento</dt><dd>{{u.last or '—'}}</dd>
+{% for g in u.cycles or [] %}<dt>Giro {{g.kind}}</dt><dd>{% if g.running_min is not none %}<span class="{% if g.stalled %}bad{% else %}ok{% endif %}">in corso dalle {{g.since}} ({{g.running_min}} min){% if g.stalled %} — sembra bloccato: «Riavvia»{% endif %}</span>{% if g.last_min is not none %} · <span class="mut">l'ultimo è durato {{g.last_min}} min</span>{% endif %}{% else %}completato {{g.last_end}}{% if g.last_min is not none %} in {{g.last_min}} min{% endif %}{% endif %}</dd>{% endfor %}
+<dt>Ultima riga di log</dt><dd>{{u.activity or '—'}}</dd></dl>
+{% else %}<dl><dt>Apple ID</dt><dd>{{u.apple_id}}</dd><dt>Scarica</dt><dd>{{u.photo_library}}{% if u.photo_album %} · album: {{u.photo_album}}{% endif %}</dd><dt>Cartella</dt><dd>{{u.photos_host}}</dd><dt>Telegram</dt><dd>chat {{u.tg_chat or '—'}}</dd><dt>Ultimo evento</dt><dd>{{u.last or '—'}}</dd><dt>Ultima riga di log</dt><dd>{{u.activity or '—'}}</dd></dl>{% endif %}
 <div class="row"><form class="inline" method="post" action="/u/{{u.name}}/auth" onsubmit="return confirm('Invalida il cookie attuale e chiede un nuovo codice Apple. Continuare?')"><button>Riautentica</button></form>
-<form class="inline" method="post" action="/u/{{u.name}}/code"><input name="code" placeholder="codice a 6 cifre" style="width:11em;display:inline" inputmode="numeric" pattern="[0-9]{6}"> <button class="sec">Invia codice</button></form>
-<form class="inline" method="post" action="/u/{{u.name}}/restart"><button class="sec">Scarica ora</button></form></div>
+<form class="inline" method="post" action="/u/{{u.name}}/code"><input name="code" placeholder="codice a 6 cifre" style="width:11em;display:inline" inputmode="numeric" pattern="[0-9]{6}"> <button class="sec">Invia codice</button></form></div>
 <details><summary>Impostazioni</summary><form method="post" action="/u/{{u.name}}/settings">
 <label>Etichetta</label><input name="label" value="{{u.label}}">
 {% if u.type == "iclouddrive" %}<label>Apple ID</label><input name="apple_id" value="{{u.apple_id}}">

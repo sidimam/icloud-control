@@ -1,4 +1,4 @@
-<!doctype html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>iCloud dispatcher</title>
+<!doctype html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>iCloud dispatcher</title>{% block head %}{% endblock %}
 <style>
 :root{--bg:#f6f7f9;--card:#fff;--fg:#1d1d1f;--mut:#6e6e73;--acc:#0a84ff;--ok:#30a14e;--warn:#d97706;--bad:#d1242f;--bd:#e5e5ea}
 @media(prefers-color-scheme:dark){:root{--bg:#111;--card:#1c1c1e;--fg:#f2f2f7;--mut:#98989d;--bd:#3a3a3c}}
@@ -13,6 +13,7 @@ h2.section{font-size:1rem;color:var(--mut);text-transform:uppercase;letter-spaci
 .pill{display:inline-block;padding:.1rem .55rem;border-radius:999px;font-size:.8rem;border:1px solid var(--bd)}.ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}
 form.inline{display:inline}button,input,select{font:inherit}button{background:var(--acc);color:#fff;border:0;border-radius:8px;padding:.4rem .75rem;cursor:pointer}button.sec{background:transparent;color:var(--acc);border:1px solid var(--acc)}button.danger{background:transparent;color:var(--bad);border:1px solid var(--bad)}
 input,select{width:100%;box-sizing:border-box;padding:.4rem .5rem;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--fg)}label{display:block;font-size:.85rem;color:var(--mut);margin:.5rem 0 .15rem}
+pre.log{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:.8rem;font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;word-break:break-all;overflow-x:auto}
 details{margin-top:.6rem}summary{cursor:pointer;color:var(--acc)}.row{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin-top:.6rem}
 </style></head><body><header><h1>iCloud dispatcher</h1><nav><a href="/">Utenti</a> · <a href="/new">Nuovo utente</a></nav></header><main>
 {% with m=get_flashed_messages() %}{% for x in m %}<div class="flash">{{x}}</div>{% endfor %}{% endwith %}{% block body %}{% endblock %}</main></body></html>

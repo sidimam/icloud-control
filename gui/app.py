@@ -93,6 +93,46 @@ def d_start_auth(c, apple):
     dexec(c, f"rm -f /tmp/2fa.fifo /tmp/2fa.log; mkfifo -m 666 /tmp/2fa.fifo; nohup sh -c 'exec 3<>/tmp/2fa.fifo; su-exec abc icloud --username={apple} --session-directory=/config/session_data <&3 >/tmp/2fa.log 2>&1; echo EXIT=$? >>/tmp/2fa.log; rm -f /tmp/2fa.fifo' >/dev/null 2>&1 &")
 def d_send_code(c, code): dexec(c, f"printf '%s\\n' '{code}' > /tmp/2fa.fifo")
 
+# ---- log e giri di sincronizzazione
+ANSI = re.compile(r"\x1b\[[0-9;]*m"); TS = re.compile(r"^(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2})")
+NOISE = re.compile(r"ObjectNotFoundException|Could not find document|File not found in iCloud Drive|not found on server\. Skipping")   # errori innocui ripetuti a ogni giro
+CYCLES = (("Drive", "Syncing drive...", "Drive synced"), ("Foto", "Syncing photos...", "Photos synced"))   # righe di inizio/fine giro di mandarons/icloud-drive
+def log_ts(line):
+    m = TS.match(line)
+    return datetime.datetime.strptime(m.group(1).replace("T", " "), "%Y-%m-%d %H:%M:%S") if m else None
+def ago(t):
+    if not t: return ""
+    m = int((datetime.datetime.now() - t).total_seconds() // 60)
+    return "adesso" if m < 1 else f"{m} min fa" if m < 120 else f"{m // 60} h {m % 60:02d} min fa" if m < 2880 else f"{m // 1440} giorni fa"
+def container_logs(c, n=300):
+    rc, out, err = sh(f"docker logs --tail {int(n)} {c} 2>&1", 60)
+    return [ANSI.sub("", l) for l in (out or err).splitlines()]
+def last_activity(c):
+    for l in reversed(container_logs(c, 20)):
+        t = log_ts(l)
+        if t: return t
+    return None
+def sync_cycles(c, interval):
+    """Per ogni giro (Drive, Foto): in corso da quando, fine e durata dell'ultimo completo, e se sembra bloccato
+    (in corso da più del doppio dell'ultimo giro completo, minimo un'ora)."""
+    pat = "|".join(re.escape(x) for _, a, b in CYCLES for x in (a, b))
+    rc, out, _ = sh(f"docker logs --since 48h {c} 2>&1 | grep -E {json.dumps(pat)}", 60); out = ANSI.sub("", out)
+    res = []
+    for kind, start, end in CYCLES:
+        since = last = None
+        for l in out.splitlines():
+            t = log_ts(l)
+            if not t: continue
+            if start in l: since = t
+            elif end in l and since: last = (since, t); since = None
+        if not (since or last): continue
+        dur = int((last[1] - last[0]).total_seconds() // 60) if last else None
+        running = int((datetime.datetime.now() - since).total_seconds() // 60) if since else None
+        stalled = running is not None and running > max(60, 2 * (dur or 0))
+        res.append({"kind": kind, "running_min": running, "since": since.strftime("%H:%M") if since else "", "last_end": ago(last[1]) if last else "",
+                    "last_min": dur, "stalled": stalled})
+    return res
+
 def user_view(name, u):
     if utype(u) == "iclouddrive": return drive_view(name, u)
     return photos_view(name, u)
@@ -106,7 +146,11 @@ def drive_view(name, u):
              webui_port=(ports[0].get("HostPort") if ports else ""), days=drive_days(local))
     if v["running"]:
         v["auth"] = d_auth_running(c)
-        rc, last, _ = sh(f"docker logs --since 72h {c} 2>&1 | grep -E 'Downloading|completed|2FA|Retrying login|Syncing drive' | tail -1", 30); v["last"] = re.sub(r"^.*?:: (INFO|WARNING|ERROR) :: \S+ :: \S+ :: \d+ :: ", "", last)[:140]
+        rc, last, _ = sh(f"docker logs --since 72h {c} 2>&1 | grep -E 'Downloading|completed|2FA|Retrying login|Syncing drive' | tail -1", 30); v["last"] = re.sub(r"^.*?:: (INFO|WARNING|ERROR) :: \S+ :: \S+ :: \d+ :: ", "", ANSI.sub("", last))[:140]
+        v["cycles"] = sync_cycles(c, v["sync_interval"]); t = last_activity(c); v["activity"] = ago(t)
+        # nessuna riga di log da più di due intervalli di sincronizzazione (+10 min) e nessun giro in corso: anche questo è un blocco
+        quiet = t and (datetime.datetime.now() - t).total_seconds() > 2 * int(v["sync_interval"] or 1800) + 600
+        v["stalled"] = any(x["stalled"] for x in v["cycles"]) or bool(quiet and not any(x["running_min"] is not None for x in v["cycles"]))
     return v
 def photos_view(name, u):
     c = u["container"]; info = inspect(c); v = {"name": name, "type": "icloudpd", "label": u.get("label", name), "container": c, "chat_id": u.get("chat_id", ""), "exists": info is not None}
@@ -117,7 +161,8 @@ def photos_view(name, u):
              photos_host=mounts(info).get("/home/user/iCloud", ""), config_host=mounts(info).get("/config", ""), image=info["Config"]["Image"])
     if v["running"]:
         v["days"] = dexec(c, "cat /config/DAYS_REMAINING 2>/dev/null")[1]; v["auth"] = auth_running(c)
-        rc, last, _ = sh(f"docker logs --since 72h {c} 2>&1 | grep -E 'Downloaded /|Check successful|New files detected|Waiting for' | tail -1", 30); v["last"] = re.sub(r"^\S+ \S+ +\w+ +", "", last)[:120]
+        rc, last, _ = sh(f"docker logs --since 72h {c} 2>&1 | grep -E 'Downloaded /|Check successful|New files detected|Waiting for' | tail -1", 30); v["last"] = re.sub(r"^\S+ \S+ +\w+ +", "", ANSI.sub("", last))[:120]
+        v["activity"] = ago(last_activity(c))
     return v
 
 @app.route("/")
@@ -149,9 +194,31 @@ def u_code(name):
         else: flash(f"{name}: esito non ancora confermato ({out[-120:]}) — ricontrolla tra poco o riprova «Riautentica»")
         return redirect(url_for("index"))
     flash(f"Codice consegnato a {u['container']}: verifica tra ~30 s nei giorni rimanenti"); return redirect(url_for("index"))
-@app.post("/u/<name>/restart")
-def u_restart(name):
-    u = cfg()["users"].get(name) or abort(404); sh(f"docker restart {u['container']}", 120); flash(f"{u['container']} riavviato: ricontrolla iCloud subito"); return redirect(url_for("index"))
+@app.post("/u/<name>/<action>")
+def u_power(name, action):
+    """Azioni rapide sul container: avvia, ferma, riavvia (il riavvio fa partire subito un giro di sincronizzazione)."""
+    if action not in ("start", "stop", "restart"): abort(404)
+    u = cfg()["users"].get(name) or abort(404); rc, out, err = sh(f"docker {action} {u['container']}", 120)
+    done = {"start": "avviato", "stop": "fermato", "restart": "riavviato: il giro di sincronizzazione riparte subito"}[action]
+    flash(f"{u['container']} {done}" if rc == 0 else f"{u['container']}: docker {action} non riuscito ({err[-200:]})")
+    back = request.form.get("back", ""); return redirect(back if back.startswith("/") and not back.startswith("//") else url_for("index"))
+@app.route("/u/<name>/logs")
+def u_logs(name):
+    u = cfg()["users"].get(name) or abort(404); c = u["container"]; info = inspect(c) or abort(404)
+    n = min(max(int(request.args.get("n", 300) or 300), 50), 5000); show_noise = request.args.get("all") == "1"; only_err = request.args.get("err") == "1"; q = request.args.get("q", "").strip()
+    lines = container_logs(c, n); hidden = 0; rows = []
+    for l in lines:
+        if not show_noise and NOISE.search(l): hidden += 1; continue
+        lvl = "bad" if re.search(r"\bERROR\b|Traceback|Exception", l) else "warn" if re.search(r"\bWARNING\b", l) else ""
+        if only_err and lvl != "bad": continue
+        if q and q.lower() not in l.lower(): continue
+        rows.append((lvl, l))
+    v = user_view(name, u)
+    return render_template("logs.html", u=v, rows=rows, n=n, hidden=hidden, show_noise=show_noise, only_err=only_err, q=q, refresh=request.args.get("refresh", ""), now=datetime.datetime.now().strftime("%H:%M:%S"))
+@app.route("/u/<name>/logs.txt")
+def u_logs_txt(name):
+    u = cfg()["users"].get(name) or abort(404)
+    return "\n".join(container_logs(u["container"], 5000)) + "\n", 200, {"Content-Type": "text/plain; charset=utf-8", "Content-Disposition": f'attachment; filename="{u["container"]}.log"'}
 @app.post("/u/<name>/settings")
 def u_settings(name):
     c = cfg(); u = c["users"].get(name) or abort(404); f = request.form; info = inspect(u["container"]) or abort(404)

@@ -6,6 +6,8 @@
 #   #sofia auth        → avvia la riautenticazione del container di "sofia" (Apple manda il codice ai dispositivi dell'account)
 #   #sofia 123456      → consegna il codice al container
 #   #stato             → giorni rimanenti del cookie di fiducia Apple di ogni container
+#   #sofia log         → ultime righe utili del log del container (senza gli errori innocui ripetuti)
+#   #sofia riavvia | ferma | avvia → azioni rapide sul container (il riavvio fa partire subito un giro)
 #   #aiuto             → elenco comandi
 # Utenti, container, tipo e alias stanno in config.json (condiviso con la GUI). Richiede TELEGRAM_TOKEN e ALLOWED_CHATS.
 set -u
@@ -20,6 +22,7 @@ load_cfg(){ C=(); T=(); A=(); U=()
   }
 load_cfg
 log(){ echo "$(date '+%F %T') $*"; }
+NOISE="ObjectNotFoundException|Could not find document|File not found in iCloud Drive|not found on server\. Skipping"   # errori innocui ripetuti a ogni giro (come NOISE nella GUI)
 say(){ curl -s -X POST "$API/sendMessage" -d chat_id="$1" --data-urlencode text="$2" >/dev/null; }
 allowed(){ case ",${ALLOWED_CHATS}," in *",$1,"*) return 0;; *) return 1;; esac; }
 icon(){ [ "${T[$1]}" = iclouddrive ] && echo "📁" || echo "📷"; }
@@ -57,7 +60,7 @@ while true; do
     allowed "$CHAT" || { log "ignoro chat $CHAT ($FROM): $TEXT"; continue; }
     TXT=$(echo "$TEXT" | tr 'A-Z' 'a-z' | sed -E 's/^\s+|\s+$//g')
     case "$TXT" in
-      "#aiuto"|"#help") say "$CHAT" "Comandi iCloud: #stato · #<nome> auth (riautentica) · #<nome> 123456 (codice Apple). Nomi: $NAMES (📷 foto, 📁 iCloud Drive; valgono anche gli alias dei container).";;
+      "#aiuto"|"#help") say "$CHAT" "Comandi iCloud: #stato · #<nome> auth (riautentica) · #<nome> 123456 (codice Apple) · #<nome> log · #<nome> riavvia|ferma|avvia. Nomi: $NAMES (📷 foto, 📁 iCloud Drive; valgono anche gli alias dei container).";;
       "#stato") M="iCloud, giorni al rinnovo della sessione Apple:"; for n in $NAMES; do d=$(days "$n"); M="$M"$'\n'"$(icon "$n") $n: ${d:-n/d}"; running "$n" && M="$M (autenticazione in corso)"; done; say "$CHAT" "$M";;
       \#*)
         N=${TXT#\#}; N=${N%% *}; ARG=${TXT#* }; N=${U[$N]:-}
@@ -77,7 +80,13 @@ while true; do
             [ "${T[$N]}" = iclouddrive ] && docker restart "$CT" >/dev/null 2>&1
             d=$(days "$N"); say "$CHAT" "✅ $I $N: autenticazione riuscita, sessione rinnovata${d:+ (~$d giorni)}. La sincronizzazione riprende da sola."
           else say "$CHAT" "❌ $I $N: autenticazione non riuscita (codice errato o scaduto). Riprova con #$N auth"; fi
-        else say "$CHAT" "Comando non capito. Usa: #$N auth oppure #$N 123456"; fi;;
+        elif [ "$ARG" = "log" ]; then
+          L=$(docker logs --tail 400 "$CT" 2>&1 | sed -E 's/\x1b\[[0-9;]*m//g' | grep -vE "$NOISE" | tail -8 | sed -E 's/^([0-9-]+ [0-9:]+),[0-9]+ :: ([A-Z]+) :: \S+ :: \S+ :: [0-9]+ :: /\1 \2 /' | cut -c1-200)
+          say "$CHAT" "📜 $I $N ($CT), ultime righe:"$'\n'"${L:-nessuna riga}"
+        elif [[ "$ARG" =~ ^(riavvia|ferma|avvia)$ ]]; then
+          case "$ARG" in riavvia) A2=restart; F="riavviato: il giro di sincronizzazione riparte subito";; ferma) A2=stop; F="fermato";; avvia) A2=start; F="avviato";; esac
+          if docker "$A2" "$CT" >/dev/null 2>&1; then say "$CHAT" "✅ $I $N: $CT $F."; log "$FROM: docker $A2 $CT"; else say "$CHAT" "❌ $I $N: docker $A2 $CT non riuscito."; fi
+        else say "$CHAT" "Comando non capito. Usa: #$N auth · #$N 123456 · #$N log · #$N riavvia|ferma|avvia"; fi;;
       *) ;;
     esac
   done < <(echo "$R" | jq -r '.result[] | [.update_id, .message.chat.id, (.message.text // ""), (.message.from.first_name // "")] | @tsv')

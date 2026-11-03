@@ -27,6 +27,8 @@ al container giusto tramite il socket Docker:
 | `#drive-sdimambro auth`  | per un container iCloud Drive: lancia `icloud --username … --session-directory=/config/session_data` nel container (password dal keyring, salvato al primo login manuale); Apple invia il codice |
 | `#drive-sdimambro 123456`| scrive il codice nella FIFO `/tmp/2fa.fifo` da cui `icloud` legge; se il login riesce (`EXIT=0` in `/tmp/2fa.log`) il container viene riavviato e riprende a scaricare |
 | `#stato`                 | giorni rimanenti della sessione Apple di ogni container (foto: `DAYS_REMAINING`; Drive: scadenza reale del cookie di fiducia `X-APPLE-WEBAUTH-HSA-TRUST`, ~90 giorni, che l'app rinnova da sola finché la sessione resta viva) |
+| `#sofia log`             | ultime 8 righe utili del log del container (senza gli errori innocui ripetuti a ogni giro) |
+| `#sofia riavvia` / `ferma` / `avvia` | azioni rapide sul container (`docker restart/stop/start`); il riavvio fa partire subito un giro di sincronizzazione |
 | `#aiuto`                 | elenco comandi                                                                           |
 
 I container iCloudpd restano con `telegram_polling=false` e usano il bot solo per **inviare**: le loro notifiche operative (avvio, download,
@@ -49,13 +51,26 @@ Con il plugin [FolderView3](https://github.com/chodeus/folder.view3) i container
 
 La GUI (Flask, nello stesso container) mostra due sezioni con intestazione — 📷 Foto iCloud (icloudpd) sopra, 📁 iCloud Drive sotto — e un riquadro per container: stato del container, giorni al rinnovo del cookie, Apple ID,
 cosa scarica (libreria PrimarySync o SharedSync-…, album), cartella, chat Telegram, ultimo evento. Azioni: **Riautentica**,
-**Invia codice** (alternativa a Telegram), **Scarica ora** (riavvio), **Impostazioni** (libreria, album, struttura cartelle, chat,
+**Invia codice** (alternativa a Telegram), azioni rapide **↻ Riavvia** (fa partire subito un giro), **■ Ferma**, **▶ Avvia** e **📜 Log**, **Impostazioni** (libreria, album, struttura cartelle, chat,
 giorni di promemoria: aggiorna `/config/icloudpd.conf`, il template Unraid e riavvia), **Rimuovi dalla GUI**. **Nuovo utente** crea cartelle,
 template Unraid e container: per le foto copiando le impostazioni da un container esistente (poi `--Initialise`), per iCloud Drive scrivendo
 `config.yaml` (destinazione sotto `/mnt/user/documents`, controllo ogni 30 minuti, nessuna porta pubblicata: lo stato si legge qui) e la variabile
 `ENV_CONFIG_FILE_PATH=/config/config.yaml` senza la quale l'immagine legge un config vuoto; poi il primo login manuale
 `docker exec -it iclouddr-<nome> /bin/sh -c "su-exec abc icloud --username=<apple id> --session-directory=/config/session_data"` (password, codice, `y` al keyring).
 Utenti e alias stanno in `/app/config.json`, condiviso con il bot; ogni utente ha `type` (`icloudpd` o `iclouddrive`), `container`, `label`, `chat_id` e, per iCloud Drive, `apple_id` e `person`. La GUI non ha autenticazione: tenerla in LAN o dietro un proxy.
+
+### Log e blocchi (dalla 2.1)
+
+Per i container iCloud Drive il riquadro mostra lo stato di ogni **giro** (Drive e Foto), ricavato dalle righe `Syncing drive...` /
+`Drive synced` e `Syncing photos...` / `Photos synced` delle ultime 48 ore: «in corso dalle 17:19 (14 min) · l'ultimo è durato 55 min»
+oppure «completato 18 min fa in 0 min», più l'ora dell'ultima riga di log. Un giro in corso da più del **doppio dell'ultimo giro completo**
+(minimo un'ora), o nessuna riga di log da più di due intervalli di sincronizzazione, accende **⚠️ sembra bloccato**: di solito basta
+**↻ Riavvia** (la sessione Apple resta valida, nessun codice). Caso reale del 3 nov 2026: un giro su un iCloud Drive con 8.500 cartelle
+(libreria Calibre) è rimasto appeso quattro ore su una richiesta ad Apple, con il container acceso e nessun traffico.
+
+**📜 Log** apre l'ultima parte del log del container (100–5000 righe) con errori in rosso e avvisi in arancione, ricerca, filtro «solo errori»,
+aggiornamento automatico ogni 15 s e download del file. Per default nasconde gli errori innocui ripetuti a ogni giro (file che iCloud elenca
+ma non lascia scaricare, come i database dei password manager, e foto senza versione alternativa), con il conteggio delle righe nascoste.
 
 ## Installazione (Unraid)
 

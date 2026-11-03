@@ -1,0 +1,6 @@
+{# Azioni rapide sul container (card della pagina Utenti e pagina Log). `back` = pagina a cui tornare dopo l'azione. #}
+<div class="row">{% if u.stalled %}<span class="pill bad">⚠️ sembra bloccato</span>{% endif %}
+{% if u.running %}<form class="inline" method="post" action="/u/{{u.name}}/restart"><input type="hidden" name="back" value="{{back or request.path}}"><button class="sec" title="Riavvia il container: il giro di sincronizzazione riparte subito">↻ Riavvia</button></form>
+<form class="inline" method="post" action="/u/{{u.name}}/stop" onsubmit="return confirm('Ferma {{u.container}}: la sincronizzazione si interrompe finché non lo riavvii. Continuare?')"><input type="hidden" name="back" value="{{back or request.path}}"><button class="danger">■ Ferma</button></form>
+{% else %}<form class="inline" method="post" action="/u/{{u.name}}/start"><input type="hidden" name="back" value="{{back or request.path}}"><button>▶ Avvia</button></form>{% endif %}
+{% if request.endpoint != "u_logs" %}<a href="/u/{{u.name}}/logs"><button type="button" class="sec">📜 Log</button></a>{% endif %}</div>
