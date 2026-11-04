@@ -97,6 +97,32 @@ def tpl_set(c, key, value):
     open(p, "w").write(s); return True
 def telegram(chat, text):
     if TOKEN and chat: sh(f"curl -s -X POST https://api.telegram.org/bot{TOKEN}/sendMessage -d chat_id={chat} --data-urlencode text={json.dumps(text)} >/dev/null", 20)
+# ---- notifiche automatiche (2.6): chat, tipi e ore silenziose dalle variabili del template. Le risposte ai comandi del bot e della GUI
+# non passano di qui e arrivano sempre subito. Nelle ore silenziose gli avvisi si accodano in /app/state/notify_queue.json e
+# partono tutti insieme in un solo messaggio appena finiscono.
+NOTIFY_CHAT = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
+NOTIFY_RESTART = os.environ.get("NOTIFY_AUTOHEAL_RESTART", "1") != "0"; NOTIFY_GAVE_UP = os.environ.get("NOTIFY_AUTOHEAL_GAVE_UP", "1") != "0"
+QUIET = os.environ.get("NOTIFY_QUIET_HOURS", "23:00-07:30").strip(); NQ_FILE = os.path.join(APP_DIR, "state", "notify_queue.json")
+def notify_chat(c): return NOTIFY_CHAT or c.get("default_chat_id", "")
+def in_quiet(now=None):
+    m = re.fullmatch(r"(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})", QUIET)
+    if not m: return False
+    a, b = int(m[1]) * 60 + int(m[2]), int(m[3]) * 60 + int(m[4]); now = now or datetime.datetime.now(); t = now.hour * 60 + now.minute
+    return a <= t < b if a <= b else (t >= a or t < b)
+def _nq():
+    try: return json.load(open(NQ_FILE))
+    except (FileNotFoundError, ValueError): return []
+def notify(c, text):
+    chat = notify_chat(c)
+    if not chat: return
+    if in_quiet():
+        q = (_nq() + [{"ts": time.time(), "text": text}])[-50:]; os.makedirs(os.path.dirname(NQ_FILE), exist_ok=True); json.dump(q, open(NQ_FILE, "w"), ensure_ascii=False)
+    else: telegram(chat, text)
+def notify_flush(c):
+    q = _nq()
+    if not q or in_quiet() or not notify_chat(c): return
+    body = "\n\n".join(f"{datetime.datetime.fromtimestamp(x['ts']).strftime('%H:%M')} {x['text']}" for x in q)
+    telegram(notify_chat(c), ("🌙 Avvisi della notte (icloud-dispatcher):\n\n" + body)[:4000]); os.remove(NQ_FILE)
 def cookie_name(c): return dexec(c, 'ls /config | grep -E "^[a-z0-9]+(com|it)$" | head -1')[1]
 def auth_running(c): return dexec(c, "pgrep -f authenticate.exp >/dev/null")[0] == 0
 def start_auth(c):
@@ -421,17 +447,18 @@ def ah_check(name, u, c):
     if len(recent) >= AH_MAXR:
         if not any(e.get("container") == ct and e.get("action") == "gave_up" and now - e.get("ts", 0) < 6 * 3600 for e in ah_events()):
             ah_log({"ts": now, "container": ct, "action": "gave_up", "reason": reason})
-            telegram(c.get("default_chat_id"), f"⚠️ {name}: {ct} si blocca di continuo ({len(recent)} riavvii automatici in 6 ore, ultimo motivo: {reason}). Per 6 ore non lo riavvio più in automatico: guarda la GUI del dispatcher (📜 Log).")
+            if NOTIFY_GAVE_UP: notify(c, f"⚠️ {name}: {ct} si blocca di continuo ({len(recent)} riavvii automatici in 6 ore, ultimo motivo: {reason}). Per 6 ore non lo riavvio più in automatico: guarda la GUI del dispatcher (📜 Log).")
         return
     rc, _, err = sh(f"docker restart {ct}", 120); _ah_samples.pop(ct, None); _log_cache.pop(ct, None)
     ah_log({"ts": now, "container": ct, "action": "restart", "reason": reason, "ok": rc == 0})
     print(f"autoheal: {ct} riavviato ({reason})" if rc == 0 else f"autoheal: {ct} riavvio fallito: {err[-200:]}", flush=True)
+    if NOTIFY_RESTART: notify(c, f"🔁 {name}: {ct} riavviato in automatico ({reason})." if rc == 0 else f"❌ {name}: riavvio automatico di {ct} non riuscito.")
 def ah_loop():
     while True:
         try:
-            c = cfg()
+            c = cfg(); notify_flush(c)
             for name, u in c["users"].items():
-                if utype(u) == "iclouddrive":
+                if AH_ON and utype(u) == "iclouddrive":
                     try: ah_check(name, u, c)
                     except Exception as e: print(f"autoheal {name}: {e}", flush=True)
         except Exception as e: print(f"autoheal: {e}", flush=True)
@@ -444,5 +471,5 @@ def ah_view(ct):
 @app.route("/healthz")
 def healthz(): return "ok"
 if __name__ == "__main__":
-    if AH_ON: threading.Thread(target=ah_loop, daemon=True).start()
+    threading.Thread(target=ah_loop, daemon=True).start()   # controlli (se AUTOHEAL) e invio degli avvisi accodati di notte
     app.run(host="0.0.0.0", port=PORT, debug=False)

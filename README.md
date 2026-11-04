@@ -90,6 +90,20 @@ riautenticazione né sui container fermati a mano. Variabili (facoltative): `AUT
 
 Dalla 2.4.1 la pagina principale legge i log una sola volta per container (in parallelo, cache di 15 s): prima impiegava ~7 s.
 
+### Notifiche (dalla 2.6)
+
+Gli avvisi automatici del dispatcher si impostano dalle variabili del template Unraid:
+
+| Variabile | Default | Effetto |
+|---|---|---|
+| `TELEGRAM_CHAT_ID` | vuoto | Chat degli avvisi automatici; vuoto = `default_chat_id` di `config.json` |
+| `NOTIFY_AUTOHEAL_RESTART` | `1` | Un messaggio a ogni riavvio automatico di un iclouddr bloccato |
+| `NOTIFY_AUTOHEAL_GAVE_UP` | `1` | Avviso quando un container si blocca 3 volte in 6 ore e i riavvii si sospendono |
+| `NOTIFY_QUIET_HOURS` | `23:00-07:30` | In questa fascia gli avvisi si accodano (`/app/state/notify_queue.json`) e arrivano insieme in un solo messaggio alla fine; vuoto = sempre subito |
+
+`TELEGRAM_TOKEN` e `ALLOWED_CHATS` (le chat da cui il bot accetta comandi) restano come prima. Le risposte ai comandi del bot e
+della GUI non passano dalle ore silenziose: arrivano sempre subito alla chat che le ha chieste.
+
 ### Accesso (dalla 2.2)
 
 La GUI chiede utente e password se il container ha `GUI_PASSWORD_HASH` (hash werkzeug/scrypt, mai la password in chiaro; `GUI_USER`,
