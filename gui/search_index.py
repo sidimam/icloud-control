@@ -4,6 +4,7 @@ SQLite in /app/state/iclouddb.db con FTS5 (tokenizer unicode61 senza accenti). U
 `fts` (rowid = items.id). Ogni giro rilegge solo ciò che è cambiato (percorso + mtime + dimensione) e toglie ciò che non
 c'è più. Le sorgenti sono le cartelle che i container iclouddr scrivono sul NAS, montate qui in sola lettura:
   file       <persona>/iCloud Drive/**            nome, cartella, tipo, dimensione, data
+  foto       media/photos/<persona>/<album>/**    nome, album, tipo, dimensione, data (3.9)
   note       <persona>/iCloud/Note/**/*.html      titolo e testo
   promemoria <persona>/iCloud/Promemoria/*.json   titolo, note, lista, scadenza, fatto
   posta      <persona>/<account>/Posta (Maildir)  da, a, cc, oggetto, data, testo, allegati
@@ -14,7 +15,7 @@ import datetime, email, email.policy, html, json, os, re, sqlite3, threading, ti
 
 DB = os.path.join(os.environ.get("APP_DIR", "/app"), "state", "iclouddb.db")   # «iclouddb»: un file, nessun container a parte
 _lock = threading.Lock()
-KINDS = ("file", "note", "reminder", "mail", "event", "contact")
+KINDS = ("file", "photo", "note", "reminder", "mail", "event", "contact")
 MAX_BODY = 20000
 
 
@@ -31,6 +32,12 @@ def connect():
     create virtual table if not exists fts using fts5(title, body, meta, tokenize='unicode61 remove_diacritics 2');
     create table if not exists runs(source text primary key, finished real, count integer, seconds real, error text);
     """)
+    # foto (3.9): coordinate e data di scatto lette dall'EXIF in background (geo: null = da leggere, 1 = letto)
+    cols = {r[1] for r in c.execute("pragma table_info(items)")}
+    for col, typ in (("lat", "real"), ("lon", "real"), ("geo", "integer")):
+        if col not in cols:
+            c.execute(f"alter table items add column {col} {typ}")
+    c.execute("create index if not exists items_geo on items(kind, geo)")
     return c
 
 
@@ -45,7 +52,7 @@ def _upsert(c, row, body="", meta=""):
     cols = ("kind", "person", "account", "path", "title", "ext", "size", "mtime", "date", "date_end", "extra")
     vals = [row.get(k) for k in cols]
     if cur:
-        c.execute(f"update items set {', '.join(k + '=?' for k in cols)} where id=?", vals + [cur["id"]])
+        c.execute(f"update items set {', '.join(k + '=?' for k in cols)}, geo=null where id=?", vals + [cur["id"]])
         c.execute("delete from fts where rowid=?", (cur["id"],))
         rid = cur["id"]
     else:
@@ -93,6 +100,28 @@ def index_files(c, person, local_root, host_root):
                 body=rel.replace("/", " "), meta=ext)
         n += 1
     _prune(c, "file", person, seen)
+    return len(seen)
+
+
+def index_photos(c, person, album, local_root, host_root):
+    """Foto e video scaricati da iclouddr (media/photos/<persona>/<album>): nome, cartella, tipo, dimensione, data del file."""
+    known, seen = _known(c, "photo", person), set()
+    for p in _walk(local_root):
+        try:
+            st = os.stat(p)
+        except OSError:
+            continue
+        key = host_root + p[len(local_root):]
+        seen.add(key)
+        if known.get(key) == (st.st_mtime, st.st_size):
+            continue
+        rel = p[len(local_root):].lstrip("/")
+        name = os.path.basename(p)
+        ext = os.path.splitext(name)[1].lower().lstrip(".")
+        _upsert(c, {"kind": "photo", "person": person, "account": album, "path": key, "title": name, "ext": ext,
+                    "size": st.st_size, "mtime": st.st_mtime, "date": st.st_mtime, "extra": json.dumps({"rel": rel, "local": p, "album": album})},
+                body=rel.replace("/", " "), meta=f"{ext} {album}")
+    _prune(c, "photo", person, seen, host_root)
     return len(seen)
 
 
@@ -317,6 +346,9 @@ def run(sources, log=print):
             jobs = []
             if s.get("drive"):
                 jobs.append(("file", lambda s=s: index_files(c, person, *s["drive"])))
+            for album, pl_, ph_ in s.get("photos", []):
+                if os.path.isdir(pl_):
+                    jobs.append(("photo", lambda album=album, pl_=pl_, ph_=ph_: index_photos(c, person, album, pl_, ph_)))
             pl, ph = s.get("person_dir") or (None, None)
             if pl and os.path.isdir(pl):
                 if os.path.isdir(os.path.join(pl, "iCloud", "Note")):

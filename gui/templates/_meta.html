@@ -1,0 +1,18 @@
+{# Riquadro «Informazioni»: metadati di qualsiasi file (exiftool), raggruppati e ripiegabili; mappa se ci sono coordinate GPS. #}
+<script>
+window.renderMeta = function (box, rid) {
+  box.innerHTML = '<div class="li"><span class="mut">{{ _("Lettura dei metadati…") }}</span></div>';
+  fetch("/meta/" + rid).then(function (r) { return r.json(); }).then(function (d) {
+    var esc = function (s) { return String(s).replace(/[&<>"]/g, function (c) { return {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]; }); };
+    var order = ["File", "System", "Composite", "IFD0", "ExifIFD", "GPS", "XMP-xmp", "QuickTime", "Track1", "PDF", "XMP-dc", "MakerNotes", "ICC_Profile"];
+    var groups = Object.keys(d.groups || {}).sort(function (a, b) { var ia = order.indexOf(a), ib = order.indexOf(b); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b); });
+    var html = "";
+    if (d.gps) html += '<div class="li col"><span class="k">GPS</span><a href="https://www.openstreetmap.org/?mlat=' + d.gps[0] + '&mlon=' + d.gps[1] + '#map=15/' + d.gps[0] + '/' + d.gps[1] + '" target="_blank" rel="noopener">' + d.gps[0].toFixed(5) + ", " + d.gps[1].toFixed(5) + ' ↗</a></div>';
+    groups.forEach(function (g, i) {
+      var rows = Object.keys(d.groups[g]).map(function (k) { return '<div class="li" style="min-height:0;padding:5px 12px"><span class="mut" style="flex:none;max-width:45%">' + esc(k) + '</span><span class="v" style="font-size:13px">' + esc(d.groups[g][k]) + "</span></div>"; }).join("");
+      html += '<details ' + (i < 2 ? "open" : "") + ' style="border-top:.5px solid var(--sep)"><summary style="padding:8px 12px;cursor:pointer;font-size:12px;text-transform:uppercase;color:var(--mut)">' + esc(g) + " · " + Object.keys(d.groups[g]).length + "</summary>" + rows + "</details>";
+    });
+    box.innerHTML = html || '<div class="li"><span class="mut">{{ _("Nessun metadato.") }}</span></div>';
+  }).catch(function () { box.innerHTML = '<div class="li"><span class="bad">{{ _("Metadati non disponibili.") }}</span></div>'; });
+};
+</script>

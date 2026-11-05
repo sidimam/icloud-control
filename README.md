@@ -108,6 +108,22 @@ Gli avvisi automatici del dispatcher si impostano dalle variabili del template U
 `TELEGRAM_TOKEN` e `ALLOWED_CHATS` (le chat da cui il bot accetta comandi) restano come prima. Le risposte ai comandi del bot e
 della GUI non passano dalle ore silenziose: arrivano sempre subito alla chat che le ha chieste.
 
+### Foto, mappa, miniature e metadati (dalla 3.9)
+
+- L'indice comprende le **foto e i video** che iclouddr scarica in `media/photos/<Persona>/<album>` (Personale, Famiglia):
+  188.113 elementi in circa 90 s. Gli amministratori vedono tutte le persone, un utente solo le proprie.
+- **Foto**: galleria per persona, album, anno, foto o video, 120 per pagina; visualizzatore a schermo intero (frecce, Esc, «i»
+  per i metadati; HEIC mostrato come JPEG, video riprodotti dal browser). **Mappa** in stile app Foto: i punti vicini si
+  raggruppano in una miniatura con il conteggio (Leaflet.markercluster 1.5.3), il clic avvicina la zona e mostra sotto la griglia
+  delle foto di quel gruppo; si allarga a tutto schermo.
+- **Coordinate e data di scatto**: un ciclo in background legge con exiftool (`-fast2`, priorità bassa) 400 foto ogni ~10 s
+  finché non le ha lette tutte (circa 80 minuti), poi solo le nuove; la data di scatto sostituisce quella del file.
+- **Miniature** con vips (JPEG, HEIC, PNG, TIFF, PDF) e ffmpeg (fotogramma dei video), in cache in `/app/state/thumbs`
+  (circa 20 KB l'una); si creano al primo sguardo e un ciclo a bassa priorità le prepara tutte, dalle più recenti
+  (`THUMB_WARM=0` lo spegne).
+- **Riquadro Informazioni** nella scheda di ogni elemento e nel visualizzatore: tutti i metadati del file letti da exiftool
+  (qualsiasi formato: foto, video, audio, PDF, Office…), raggruppati, con il link alla mappa se c'è il GPS; in cache nell'indice.
+
 ### Calendario, Posta, Contatti e anteprime (dalla 3.7)
 
 - **Calendario**: viste anno, mese, settimana, giorno e agenda (FullCalendar 6.1.15, dentro l'immagine), tutti o una persona,

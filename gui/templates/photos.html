@@ -1,0 +1,72 @@
+{% extends "base.html" %}{% block head %}<link rel="stylesheet" href="/static/vendor/leaflet.css"><link rel="stylesheet" href="/static/vendor/markercluster.css">{% endblock %}{% block body %}
+<h1 class="title">{{ _('Foto') }}</h1>
+<form method="get" action="/photos">{% include "_personfilter.html" %}
+<div class="row" style="margin-bottom:.8rem">
+<select name="album" onchange="this.form.submit()" style="width:auto"><option value="">{{ _('Tutti gli album') }}</option>{% for a in albums %}<option value="{{ a.account }}" {% if album == a.account %}selected{% endif %}>{{ a.account }}{% if not person and persons|length > 1 %} · {{ a.person }}{% endif %} ({{ a.n }})</option>{% endfor %}</select>
+<select name="year" onchange="this.form.submit()" style="width:auto"><option value="">{{ _('Tutti gli anni') }}</option>{% for y in years %}<option {% if year == y %}selected{% endif %}>{{ y }}</option>{% endfor %}</select>
+<span class="seg">{% for k, l in (('', _('Tutto')), ('photo', _('Foto')), ('video', _('Video'))) %}<label><input type="radio" name="what" value="{{ k }}" {% if what == k %}checked{% endif %} onchange="this.form.submit()"><span>{{ l }}</span></label>{% endfor %}</span>
+</div></form>
+<details class="grp" data-k="photo-map" open><summary>{{ icon('globe', 15) }}{{ _('Mappa') }} <span class="mut" id="mapcount"></span>{{ icon('chevron', 15, 'ic chev') }}</summary>
+<div class="list" id="mapwrap" style="position:relative"><div id="pmap" style="height:380px"></div>
+<button class="tint small" id="mapbig" style="position:absolute;top:10px;right:10px;z-index:500" title="{{ _('Allarga') }}">⤢</button></div>
+<div id="zone" hidden style="margin-top:.8rem"><p class="note" id="zonetitle"></p><div id="zonegrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:4px"></div></div></details>
+<div id="grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:4px">
+{% for r in rows %}<a href="/item/{{ r.id }}" data-i="{{ loop.index0 }}" class="ph" style="position:relative;display:block;aspect-ratio:1;background:var(--fill);border-radius:6px;overflow:hidden">
+<img loading="lazy" src="/thumb/{{ r.id }}" alt="" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'">
+{% if r.media == 'video' %}<span style="position:absolute;right:6px;bottom:4px;color:#fff;text-shadow:0 1px 3px #000;font-size:12px">▶︎ {{ r.ext }}</span>{% endif %}</a>{% else %}<p class="mut">{{ _('Nessuna foto con questi filtri.') }}</p>{% endfor %}</div>
+<div class="row" style="justify-content:center;margin:1rem 0">{% if page > 0 %}<a class="btn tint" href="{{ qs(page=page - 1) }}">← {{ _('Più recenti') }}</a>{% endif %}{% if more %}<a class="btn tint" href="{{ qs(page=page + 1) }}">{{ _('Meno recenti') }} →</a>{% endif %}</div>
+<div id="lb" hidden style="position:fixed;inset:0;z-index:20;background:rgba(0,0,0,.92);display:flex">
+<div style="flex:1;position:relative;display:flex;align-items:center;justify-content:center;min-width:0" id="lbmain"></div>
+<aside id="lbinfo" hidden style="width:min(360px,90vw);background:var(--card);color:var(--fg);overflow:auto;padding:12px 0"></aside>
+<div style="position:absolute;top:calc(10px + env(safe-area-inset-top,0px));right:12px;display:flex;gap:6px;z-index:2">
+<button class="tint small" id="lbi" title="{{ _('Informazioni') }}">ⓘ</button><a class="btn tint" style="font-size:13px;padding:.32rem .65rem" id="lbopen" href="#">{{ _('Scheda') }}</a><button class="tint small" id="lbx" title="{{ _('Chiudi') }}">✕</button></div>
+<button class="tint small" id="lbp" style="position:absolute;left:10px;top:50%">‹</button><button class="tint small" id="lbn" style="position:absolute;right:10px;top:50%">›</button></div>
+{% include "_meta.html" %}
+<style>.pcl{position:relative;width:54px;height:54px;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.35);border:2px solid #fff;background:#888}.pcl img{width:100%;height:100%;object-fit:cover}.pcl b{position:absolute;right:-2px;top:-2px;background:var(--acc);color:#fff;font:600 11px -apple-system,system-ui;padding:1px 6px;border-radius:99px;border:2px solid #fff}
+#mapwrap.big{position:fixed;inset:0;z-index:30;border-radius:0}#mapwrap.big #pmap{height:100vh!important}</style>
+<script src="/static/vendor/leaflet.js"></script><script src="/static/vendor/markercluster.js"></script>
+<script>
+(function(){
+  var q = new URLSearchParams(location.search), api = "/api/photo_geo?" + ["person", "album", "year"].map(function(k){ return k + "=" + encodeURIComponent(q.get(k) || ""); }).join("&");
+  var map = L.map("pmap", {worldCopyJump: true}).setView([42, 12.5], 5);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {maxZoom: 19, attribution: "© OpenStreetMap"}).addTo(map);
+  function thumbIcon(id, n){ return L.divIcon({className: "", iconSize: [54, 54], iconAnchor: [27, 27], html: '<div class="pcl"><img loading="lazy" src="/thumb/' + id + '">' + (n > 1 ? "<b>" + n + "</b>" : "") + "</div>"}); }
+  var cl = L.markerClusterGroup({chunkedLoading: true, showCoverageOnHover: false, maxClusterRadius: 70, zoomToBoundsOnClick: true,
+    iconCreateFunction: function(c){ var m = c.getAllChildMarkers(); return thumbIcon(m[0].options.pid, c.getChildCount()); }});
+  function zone(markers){
+    var ids = markers.map(function(m){ return m.options.pid; }), kinds = markers.map(function(m){ return m.options.vid ? "video" : "image"; });
+    document.getElementById("zone").hidden = false;
+    document.getElementById("zonetitle").textContent = {{ _('In questa zona: ')|tojson }} + ids.length + " " + {{ _('foto')|tojson }};
+    document.getElementById("zonegrid").innerHTML = ids.slice(0, 300).map(function(id, i){ return '<a href="/item/' + id + '" data-z="' + i + '" style="display:block;aspect-ratio:1;border-radius:6px;overflow:hidden;background:var(--fill)"><img loading="lazy" src="/thumb/' + id + '" style="width:100%;height:100%;object-fit:cover"></a>'; }).join("");
+    document.querySelectorAll("#zonegrid a").forEach(function(a){ a.addEventListener("click", function(e){ e.preventDefault(); openLB(ids, kinds, +a.dataset.z); }); });
+  }
+  cl.on("clusterclick", function(e){ zone(e.layer.getAllChildMarkers()); });
+  cl.on("click", function(e){ zone([e.layer]); openLB([e.layer.options.pid], [e.layer.options.vid ? "video" : "image"], 0); });
+  map.addLayer(cl);
+  fetch(api).then(function(r){ return r.json(); }).then(function(d){
+    var ms = d.points.map(function(p){ return L.marker([p[1], p[2]], {pid: p[0], vid: p[3], icon: thumbIcon(p[0], 1)}); });
+    cl.addLayers(ms); if (ms.length) map.fitBounds(cl.getBounds(), {maxZoom: 12, padding: [20, 20]});
+    document.getElementById("mapcount").textContent = "· " + d.points.length + " " + {{ _('con posizione')|tojson }} + (d.pending ? " · " + d.pending + " " + {{ _('ancora da leggere')|tojson }} : "");
+  });
+  document.getElementById("mapbig").onclick = function(){ document.getElementById("mapwrap").classList.toggle("big"); setTimeout(function(){ map.invalidateSize(); }, 50); };
+  document.addEventListener("keydown", function(e){ if (e.key === "Escape") document.getElementById("mapwrap").classList.remove("big"); });
+})();
+</script>
+<script>
+(function(){
+  var items = {{ rows|map(attribute='id')|list|tojson }}, media = {{ rows|map(attribute='media')|list|tojson }};
+  var lb = document.getElementById("lb"), main = document.getElementById("lbmain"), info = document.getElementById("lbinfo"), cur = 0;
+  window.openLB = function (ids, kinds, i) { items = ids; media = kinds; lb.hidden = false; show(i); };
+  function show(i){ cur = (i + items.length) % items.length; var id = items[cur];
+    main.innerHTML = media[cur] === "video" ? '<video src="/item/' + id + '/raw" controls autoplay playsinline style="max-width:100%;max-height:100vh"></video>'
+      : '<img src="/thumb/' + id + '?s=big" alt="" style="max-width:100%;max-height:100vh;object-fit:contain">';
+    document.getElementById("lbopen").href = "/item/" + id; if (!info.hidden) renderMeta(info, id); }
+  var gridIds = items.slice(), gridKinds = media.slice();
+  document.querySelectorAll("a.ph").forEach(function(a){ a.addEventListener("click", function(e){ e.preventDefault(); openLB(gridIds, gridKinds, +a.dataset.i); }); });
+  document.getElementById("lbx").onclick = function(){ lb.hidden = true; main.innerHTML = ""; };
+  document.getElementById("lbp").onclick = function(){ show(cur - 1); }; document.getElementById("lbn").onclick = function(){ show(cur + 1); };
+  document.getElementById("lbi").onclick = function(){ info.hidden = !info.hidden; if (!info.hidden) renderMeta(info, items[cur]); };
+  document.addEventListener("keydown", function(e){ if (lb.hidden) return; if (e.key === "Escape") document.getElementById("lbx").click(); if (e.key === "ArrowLeft") show(cur - 1); if (e.key === "ArrowRight") show(cur + 1); if (e.key === "i") document.getElementById("lbi").click(); });
+})();
+</script>
+{% endblock %}

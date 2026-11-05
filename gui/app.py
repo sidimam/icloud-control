@@ -169,7 +169,8 @@ def _icloud_of(profile):
     except Exception: return ""
 @app.context_processor
 def page_ctx():
-    n = me(); return {"reset_set": bool(GUI_RESET), "me": n, "me_admin": bool(n and accounts.is_admin(n)), "fmt_ts": lambda t: datetime.datetime.fromtimestamp(t).strftime("%d/%m/%Y %H:%M") if t else "mai"}
+    from urllib.parse import urlencode
+    n = me(); return {"qs": lambda **kw: request.path + "?" + urlencode({**request.args.to_dict(), **{k: v for k, v in kw.items()}}), "reset_set": bool(GUI_RESET), "me": n, "me_admin": bool(n and accounts.is_admin(n)), "fmt_ts": lambda t: datetime.datetime.fromtimestamp(t).strftime("%d/%m/%Y %H:%M") if t else "mai"}
 
 def cfg(): return json.load(open(CFG))
 def save(c): json.dump(c, open(CFG, "w"), indent=2, ensure_ascii=False)
@@ -810,8 +811,8 @@ def admin_notify_test():
 import search_index as SI
 from flask import send_file, Response
 IDX_INTERVAL = int(os.environ.get("INDEX_INTERVAL", "900"))
-KIND_NAMES = {"file": "File", "note": "Note", "reminder": "Promemoria", "mail": "Posta", "event": "Calendario", "contact": "Contatti"}
-KIND_ICONS = {"file": ("folder", "b-blue"), "note": ("doc", "b-orange"), "reminder": ("check", "b-red"), "mail": ("send", "b-blue"), "event": ("doc", "b-red"), "contact": ("users", "b-gray")}
+KIND_NAMES = {"file": "File", "photo": "Foto", "note": "Note", "reminder": "Promemoria", "mail": "Posta", "event": "Calendario", "contact": "Contatti"}
+KIND_ICONS = {"file": ("folder", "b-blue"), "photo": ("photo", "b-orange"), "note": ("doc", "b-orange"), "reminder": ("check", "b-red"), "mail": ("send", "b-blue"), "event": ("doc", "b-red"), "contact": ("users", "b-gray")}
 def idx_sources():
     out = []
     for n, u in cfg()["users"].items():
@@ -820,7 +821,8 @@ def idx_sources():
         if not info: continue
         m = mounts(info); dh = m.get("/icloud/drive", "")
         ph = m.get("/icloud/persona") or (os.path.dirname(dh) if dh else "")
-        out.append({"person": u.get("label", n), "user": n, "drive": (host_to_local(dh), dh) if dh else None,
+        photos = [(os.path.basename(src.rstrip("/")) or dst, host_to_local(src), src) for dst, src in sorted(m.items()) if dst.startswith("/icloud/photos")]
+        out.append({"person": u.get("label", n), "user": n, "drive": (host_to_local(dh), dh) if dh else None, "photos": photos,
                     "person_dir": (host_to_local(ph), ph) if ph else None, "accounts": [a.get("label") for a in acc_load(u) if a.get("label")]})
     return out
 def idx_loop():
@@ -843,7 +845,7 @@ def _item(rid):
     d = dict(r); d["x"] = json.loads(d.get("extra") or "{}"); return d
 def _local_ok(p):
     p = os.path.realpath(p)
-    return any(p.startswith(os.path.realpath(r) + "/") for r in ("/documents",))
+    return any(p.startswith(os.path.realpath(r) + "/") for r in ("/documents", "/photos"))
 def _mark(snip):
     return Markup(html.escape(snip or "").replace("\x02", "<mark>").replace("\x03", "</mark>"))
 @app.route("/search")
@@ -902,11 +904,12 @@ def item(rid):
             part = msg.get_body(preferencelist=("plain", "html")); body = part.get_content() if part else ""
             if part and part.get_content_type() == "text/html": d["html_mail"] = True
         except Exception as e: body = f"({e})"
-    if d["kind"] == "file":   # anteprima nella pagina
+    if d["kind"] in ("file", "photo"):   # anteprima nella pagina
         ext = (d.get("ext") or "").lower()
-        d["preview"] = ("image" if ext in ("jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "bmp", "svg", "tif", "tiff") else
+        d["thumbable"] = ext in IMG_EXT or ext in VID_EXT or ext == "pdf"
+        d["preview"] = ("image" if ext in ("jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "bmp", "svg", "tif", "tiff", "dng", "avif") else
                         "pdf" if ext == "pdf" else
-                        "video" if ext in ("mp4", "mov", "m4v", "webm") else
+                        "video" if ext in ("mp4", "mov", "m4v", "webm", "3gp") else
                         "audio" if ext in ("mp3", "m4a", "aac", "wav", "ogg", "flac") else
                         "text" if ext in ("txt", "md", "csv", "json", "log", "xml", "yaml", "yml", "ini", "conf", "py", "sh", "js", "css", "html", "swift", "go", "ics", "vcf") else "")
         if d["preview"] == "text" and _local_ok(d["x"].get("local", "")):
@@ -946,6 +949,161 @@ def item_att(rid, n):
     parts = [x for x in msg.walk() if x.get_filename()]
     if n >= len(parts): abort(404)
     part = parts[n]; return Response(part.get_payload(decode=True) or b"", mimetype=part.get_content_type(), headers={"Content-Disposition": f'attachment; filename="{part.get_filename()}"'})
+# ---- foto, miniature e metadati (3.9)
+import hashlib, subprocess as _sp
+THUMBS = os.path.join(APP_DIR, "state", "thumbs")
+IMG_EXT = {"jpg", "jpeg", "png", "heic", "heif", "tif", "tiff", "webp", "gif", "bmp", "dng", "avif"}
+VID_EXT = {"mov", "mp4", "m4v", "avi", "mkv", "3gp", "webm"}
+AUD_EXT = {"mp3", "m4a", "aac", "wav", "flac", "ogg"}
+_thumb_sem = threading.Semaphore(4)   # al massimo 4 miniature alla volta: il NAS serve anche Plex
+def _cache_path(d, tag):
+    h = hashlib.sha1(f"{d['path']}|{d.get('mtime')}|{d.get('size')}|{tag}".encode()).hexdigest()
+    return os.path.join(THUMBS, h[:2], h + ".jpg")
+THUMB_WARM = os.environ.get("THUMB_WARM", "1") != "0"
+def thumb_warm_loop():
+    """Prepara le miniature in background, dalle foto più recenti, a bassa priorità: la galleria e la mappa si aprono subito."""
+    time.sleep(300)
+    while True:
+        done = 0
+        try:
+            con = SI.connect()
+            rows = [dict(r) for r in con.execute("select id, path, mtime, size, ext, extra from items where kind in ('photo','file') order by date desc")]
+            con.close()
+            for d in rows:
+                ext = (d["ext"] or "").lower()
+                if not (ext in IMG_EXT or ext in VID_EXT or ext == "pdf"): continue
+                out = _cache_path(d, 360)
+                if os.path.exists(out): continue
+                p = json.loads(d["extra"] or "{}").get("local", "")
+                if not _local_ok(p): continue
+                with _thumb_sem:
+                    try: _make_jpeg(p, out, 360, ext, nice=True)
+                    except Exception: pass
+                done += 1
+        except Exception as e: print(f"miniature: {e}", flush=True)
+        if done: print(f"miniature: {done} preparate", flush=True)
+        time.sleep(1800)
+def _make_jpeg(src, out, size, ext, nice=False):
+    os.makedirs(os.path.dirname(out), exist_ok=True); tmp = out + ".tmp.jpg"
+    if ext in VID_EXT:
+        for ss in ("1", "0"):
+            r = _sp.run((["nice", "-n", "15"] if nice else []) + ["ffmpeg", "-v", "error", "-y", "-ss", ss, "-i", src, "-frames:v", "1", "-vf", f"scale='min({size},iw)':-2", tmp], capture_output=True, timeout=60)
+            if r.returncode == 0 and os.path.exists(tmp): break
+    else:
+        _sp.run((["nice", "-n", "15"] if nice else []) + ["vipsthumbnail", src + ("[n=1]" if ext == "pdf" else ""), "--size", f"{size}x{size}", "-o", tmp + "[Q=80,strip]"], capture_output=True, timeout=60)
+    if os.path.exists(tmp) and os.path.getsize(tmp) > 0: os.replace(tmp, out); return True
+    return False
+@app.route("/thumb/<int:rid>")
+def thumb(rid):
+    d = _item(rid); p = d["x"].get("local", ""); ext = (d.get("ext") or "").lower()
+    size = 1600 if request.args.get("s") == "big" else 360
+    if not _local_ok(p) or not (ext in IMG_EXT or ext in VID_EXT or ext == "pdf"): abort(404)
+    out = _cache_path(d, size)
+    if not os.path.exists(out):
+        with _thumb_sem:
+            if not os.path.exists(out) and not _make_jpeg(p, out, size, ext): abort(404)
+    r = send_file(out, mimetype="image/jpeg"); r.headers["Cache-Control"] = "private, max-age=2592000"; return r
+_meta_lock = threading.Lock()
+@app.route("/meta/<int:rid>")
+def meta(rid):
+    """Metadati del file con exiftool (qualsiasi formato), raggruppati; in cache nell'indice."""
+    d = _item(rid); p = d["x"].get("local", "")
+    if not _local_ok(p) or not os.path.isfile(p): return {"groups": {}}
+    con = SI.connect()
+    try:
+        con.execute("create table if not exists meta(path text primary key, mtime real, data text)")
+        hit = con.execute("select data from meta where path=? and mtime=?", (d["path"], d.get("mtime"))).fetchone()
+        if hit: return json.loads(hit["data"])
+        r = _sp.run(["exiftool", "-j", "-G1", "-s", "-c", "%.6f", "-api", "LargeFileSupport=1", p], capture_output=True, text=True, timeout=60)
+        try: raw = json.loads(r.stdout)[0]
+        except Exception: raw = {}
+        groups = {}
+        for k, v in raw.items():
+            if k in ("SourceFile",) or k.startswith("ExifTool:"): continue
+            g, _, name = k.partition(":")
+            if isinstance(v, str) and (v.startswith("(Binary data") or len(v) > 400): continue
+            groups.setdefault(g or "File", {})[name or k] = v
+        gps = None
+        for g in groups.values():
+            lat, lon = g.get("GPSLatitude"), g.get("GPSLongitude")
+            if isinstance(lat, (int, float)) and isinstance(lon, (int, float)): gps = [lat, lon]; break
+            if isinstance(lat, str) and isinstance(lon, str):
+                try:
+                    la = float(lat.split()[0]) * (-1 if lat.strip().endswith("S") else 1); lo = float(lon.split()[0]) * (-1 if lon.strip().endswith("W") else 1); gps = [la, lo]; break
+                except ValueError: pass
+        res = {"groups": groups, "gps": gps}
+        con.execute("insert or replace into meta values(?,?,?)", (d["path"], d.get("mtime"), json.dumps(res, ensure_ascii=False))); con.commit()
+        return res
+    finally: con.close()
+GEO_BATCH = int(os.environ.get("GEO_BATCH", "400"))
+def geo_batch():
+    """Un blocco: coordinate GPS e data di scatto di GEO_BATCH foto non ancora lette. Restituisce quante ne ha lette."""
+    con = SI.connect()
+    try:
+            rows = con.execute("select id, extra from items where kind='photo' and geo is null limit ?", (GEO_BATCH,)).fetchall()
+            if not rows: return 0
+            paths = {}
+            for r in rows:
+                p = json.loads(r["extra"] or "{}").get("local", "")
+                if _local_ok(p): paths[p] = r["id"]
+            lst = os.path.join(APP_DIR, "state", "geo-list.txt"); open(lst, "w").write("\n".join(paths))
+            out = _sp.run(["nice", "-n", "15", "exiftool", "-j", "-n", "-fast2", "-q", "-q", "-GPSLatitude", "-GPSLongitude", "-DateTimeOriginal", "-CreateDate", "-@", lst],
+                          capture_output=True, text=True, timeout=1800).stdout
+            try: data = {d["SourceFile"]: d for d in json.loads(out or "[]")}
+            except ValueError: data = {}
+            for p, rid in paths.items():
+                d = data.get(p, {}); lat, lon = d.get("GPSLatitude"), d.get("GPSLongitude"); taken = None
+                for k in ("DateTimeOriginal", "CreateDate"):
+                    v = str(d.get(k) or "")
+                    try: taken = datetime.datetime.strptime(v[:19], "%Y:%m:%d %H:%M:%S").timestamp(); break
+                    except ValueError: pass
+                if not (isinstance(lat, (int, float)) and isinstance(lon, (int, float))) or (lat == 0 and lon == 0): lat = lon = None
+                if taken and taken > 0: con.execute("update items set lat=?, lon=?, geo=1, date=? where id=?", (lat, lon, taken, rid))
+                else: con.execute("update items set lat=?, lon=?, geo=1 where id=?", (lat, lon, rid))
+            con.execute("update items set geo=1 where kind='photo' and geo is null and id in (%s)" % ",".join(str(r["id"]) for r in rows))
+            con.commit(); return len(rows)
+    finally: con.close()
+def geo_loop():
+    """Legge coordinate e data di scatto delle foto a blocchi, finché ce ne sono; poi controlla ogni 10 minuti."""
+    time.sleep(120)
+    while True:
+        try: time.sleep(3 if geo_batch() else 600)
+        except Exception as e: print(f"geo: {e}", flush=True); time.sleep(300)
+@app.route("/api/photo_geo")
+def api_photo_geo():
+    a = request.args; persons = allowed_persons(); person = a.get("person", ""); sel = [person] if person in persons else persons
+    where, args = [f"kind='photo' and lat is not null and person in ({','.join('?' * len(sel))})"], list(sel)
+    if a.get("album"): where.append("account=?"); args.append(a["album"])
+    if a.get("year", "").isdigit():
+        y = int(a["year"]); where.append("date >= ? and date < ?"); args += [datetime.datetime(y, 1, 1).timestamp(), datetime.datetime(y + 1, 1, 1).timestamp()]
+    con = SI.connect()
+    try:
+        pts = [[r["id"], round(r["lat"], 5), round(r["lon"], 5), 1 if r["ext"] in VID_EXT else 0] for r in con.execute(f"select id, lat, lon, ext from items where {' and '.join(where)} order by date desc", args)]
+        todo = con.execute("select count(*) n from items where kind='photo' and geo is null").fetchone()["n"]
+    finally: con.close()
+    return {"points": pts, "pending": todo}
+@app.route("/photos")
+def photos():
+    a = request.args; persons = allowed_persons(); person = a.get("person", ""); sel = [person] if person in persons else persons
+    album = a.get("album", ""); what = a.get("what", "")
+    try: page = max(0, int(a.get("page", "0")))
+    except ValueError: page = 0
+    where, args = [f"kind='photo' and person in ({','.join('?' * len(sel))})"], list(sel)
+    if album: where.append("account=?"); args.append(album)
+    if what == "photo": where.append(f"ext in ({','.join('?' * len(IMG_EXT))})"); args += sorted(IMG_EXT)
+    elif what == "video": where.append(f"ext in ({','.join('?' * len(VID_EXT))})"); args += sorted(VID_EXT)
+    if a.get("year", "").isdigit():
+        y = int(a["year"]); where.append("date >= ? and date < ?"); args += [datetime.datetime(y, 1, 1).timestamp(), datetime.datetime(y + 1, 1, 1).timestamp()]
+    per = 120
+    con = SI.connect()
+    try:
+        rows = [{**dict(r), "x": json.loads(r["extra"] or "{}")} for r in con.execute(f"select * from items where {' and '.join(where)} order by date desc limit ? offset ?", args + [per + 1, page * per])]
+        albums = con.execute(f"select person, account, count(*) n from items where kind='photo' and person in ({','.join('?' * len(sel))}) group by person, account order by person, account", sel).fetchall()
+        years = [r["y"] for r in con.execute(f"select distinct strftime('%Y', date, 'unixepoch') y from items where kind='photo' and person in ({','.join('?' * len(sel))}) order by y desc", sel) if r["y"]]
+    finally: con.close()
+    more = len(rows) > per; rows = rows[:per]
+    for r in rows: r["media"] = "video" if r["ext"] in VID_EXT else ("audio" if r["ext"] in AUD_EXT else "image")
+    return render_template("photos.html", rows=rows, albums=albums, years=years, persons=persons, person=person, album=album, what=what, year=a.get("year", ""), page=page, more=more, fmt_date=_fmt_date, fmt_size=_fmt_size)
 @app.route("/notes")
 def notes():
     persons = allowed_persons(); person = request.args.get("person", ""); sel = [person] if person in persons else persons
@@ -1119,4 +1277,6 @@ def healthz(): return "ok"
 if __name__ == "__main__":
     threading.Thread(target=ah_loop, daemon=True).start()   # controlli (se AUTOHEAL) e invio degli avvisi accodati di notte
     threading.Thread(target=idx_loop, daemon=True).start()  # indice di ricerca
+    threading.Thread(target=geo_loop, daemon=True).start()  # coordinate e data di scatto delle foto
+    if THUMB_WARM: threading.Thread(target=thumb_warm_loop, daemon=True).start()   # miniature preparate in anticipo
     app.run(host="0.0.0.0", port=PORT, debug=False)
