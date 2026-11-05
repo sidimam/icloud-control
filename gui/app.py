@@ -424,7 +424,7 @@ def drive_view(name, u):
         stt = st_acc.get(a["id"], {})
         v["accounts"].append({**{k: a.get(k) for k in ("id", "type", "label", "email", "mail", "calendar", "contacts", "ics", "exclude", "imap_host", "imap_port")},
                               "has_pw": bool(a.get("password")), "type_name": ACC_TYPES.get(a.get("type"), a.get("type")),
-                              "dir": (person + "/" + a.get("label", "")) if person else stt.get("dir", ""), "st": stt, "error": stt.get("error")})
+                              "folder": acc_folder(a), "dir": (person + "/" + acc_folder(a)) if person else stt.get("dir", ""), "st": stt, "error": stt.get("error")})
     def agg(key, flag, unit_key, unit_fmt):
         rows = [a for a in v["accounts"] if a.get(flag) or (key == "calendar" and a.get("ics"))]
         if not rows: return False, [], "", _("non ancora attivo: aggiungi un account qui sotto")
@@ -519,6 +519,8 @@ def u_logs_txt(name):
 # Il file /config/pim-accounts.json del container iclouddr (600, utente abc 99:100) contiene anche le password per app:
 # la GUI non le mostra mai, le sostituisce solo se ne viene scritta una nuova.
 ACC_TYPES = {"icloud": "iCloud", "gmail": "Gmail", "outlook": "Outlook", "other": "Altro (IMAP)"}
+ACC_FOLDERS = {"icloud": "iCloud", "gmail": "Gmail", "outlook": "Outlook"}   # cartella fissa per servizio (3.8.3)
+def acc_folder(a): return a.get("folder") or ACC_FOLDERS.get(a.get("type")) or a.get("label") or "Account"
 def _acc_path(u):
     info = inspect(u["container"]) or {}
     return os.path.join(host_to_local(mounts(info).get("/config", "")), "pim-accounts.json")
@@ -548,7 +550,10 @@ def u_acc_add(name):
     base = re.sub(r"[^a-z0-9]+", "-", a["label"].lower()).strip("-") or a["type"]; aid = base; i = 2
     while any(x["id"] == aid for x in accs): aid = f"{base}-{i}"; i += 1
     a["id"] = aid
-    if any(x["label"].lower() == a["label"].lower() for x in accs): flash(_("Esiste già un account con l'etichetta {a0}: la cartella sarebbe la stessa", a0=a["label"])); return redirect(url_for("index"))
+    # cartella: il nome del servizio (iCloud, Gmail, Outlook); se è già usata da un altro account della persona, l'etichetta
+    used = {acc_folder(x).lower() for x in accs}
+    a["folder"] = ACC_FOLDERS.get(a["type"]) if ACC_FOLDERS.get(a["type"], "").lower() not in used and a["type"] in ACC_FOLDERS else a["label"]
+    if a["folder"].lower() in used: flash(_("Esiste già un account con la cartella {a0}: scegli un'altra etichetta", a0=a["folder"])); return redirect(url_for("index"))
     accs.append(a); acc_save(u, accs); _pim_kick(u)
     flash(_("Account {a0} aggiunto: la prima sincronizzazione parte entro un minuto", a0=a["label"])); return redirect(url_for("index"))
 @app.post("/u/<name>/accounts/<aid>/save")
@@ -609,7 +614,7 @@ def new_drive(c, f, name, short):
     p = c["paths"]; d = c["defaults"]; cont = f"iclouddr-{short.lower()}"; host_appdata = f"/mnt/user/appdata/{cont}"
     # Dalla 3.8 i container nuovi usano l'immagine con il modulo PIM, come quelli di famiglia: note e promemoria in
     # <persona>/iCloud, account collegati nella cartella della persona (la cartella che contiene «iCloud Drive»).
-    image = os.environ.get("ICLOUDDR_IMAGE", "ghcr.io/sidimam/iclouddr:0.2.2")
+    image = os.environ.get("ICLOUDDR_IMAGE", "ghcr.io/sidimam/iclouddr:0.2.3")
     person_host = os.path.dirname(dest_host); pim_host = person_host + "/iCloud"
     appdata = host_to_local(host_appdata); dest = host_to_local(dest_host)
     if dest == dest_host: flash(_("La destinazione deve stare sotto /mnt/user/documents (montato in iCloud Dashboard come /documents)")); return redirect(url_for("new"))

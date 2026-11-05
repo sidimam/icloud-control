@@ -1,5 +1,9 @@
 """Traduzioni inglesi della GUI: chiave = testo italiano usato nel codice e nei template (vedi ui.py)."""
 EN = {
+    "Esiste già un account con la cartella {a0}: scegli un'altra etichetta": "An account already uses the folder {a0}: choose another label",
+    "cartella": "folder",
+    "Posta, calendari e contatti in sola lettura, nella cartella del servizio: {a0}/iCloud, Gmail, Outlook… con dentro Posta, Calendario, Contatti.": "Mail, calendars and contacts, read-only, in the service folder: {a0}/iCloud, Gmail, Outlook… with Posta, Calendario, Contatti inside.",
+    "Etichetta (es. Gmail di Sofia)": "Label (e.g. Sofia's Gmail)",
     "Crea un container iclouddr (ghcr.io/sidimam/iclouddr: mandarons/icloud-drive con il modulo PIM) che scarica iCloud Drive, le note e i promemoria e, se vuoi, le foto personali: cartelle, config.yaml, template Unraid e container. Posta, calendari e contatti si aggiungono poi da «Account collegati». Serve il primo login Apple con il codice 2FA dal terminale di Unraid (il comando compare dopo la creazione).": "Creates an iclouddr container (ghcr.io/sidimam/iclouddr: mandarons/icloud-drive with the PIM module) that downloads iCloud Drive, notes and reminders and, optionally, personal photos: folders, config.yaml, Unraid template and container. Mail, calendars and contacts are added later from «Linked accounts». The first Apple sign-in with the 2FA code is needed from the Unraid terminal (the command appears after creation).",
     "Ricerca delle coordinate con OpenStreetMap: {a0}": "Coordinate lookup with OpenStreetMap: {a0}",
     "Nome, e-mail, telefono, organizzazione…": "Name, email, phone, organization…",
