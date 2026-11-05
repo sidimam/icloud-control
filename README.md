@@ -108,6 +108,12 @@ Gli avvisi automatici del dispatcher si impostano dalle variabili del template U
 `TELEGRAM_TOKEN` e `ALLOWED_CHATS` (le chat da cui il bot accetta comandi) restano come prima. Le risposte ai comandi del bot e
 della GUI non passano dalle ore silenziose: arrivano sempre subito alla chat che le ha chieste.
 
+### Ruoli (dalla 3.4)
+
+Ogni profilo è **Amministratore** (vede tutti i container, «Nuovo utente» e «Amministrazione») oppure **Utente** (vede e gestisce
+solo il proprio container, quello che si chiama `iclouddr-<profilo>`, più il proprio profilo; le altre pagine rispondono 403).
+Il ruolo si sceglie dalla scheda Amministrazione; il profilo `admin` resta sempre amministratore e deve restarne almeno uno.
+
 ### Aspetto, lingua e messaggi (dalla 3.2)
 
 - Grafica nello stile delle Impostazioni di iOS/macOS: liste raggruppate, colori di sistema Apple, icone SVG proprie nello stile dei

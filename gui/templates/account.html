@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% block body %}
 <h1 class="title">{{ _('Il mio profilo') }}</h1>
 <details class="grp" data-k="acc-info" open><summary>{{ icon('person', 15) }}{{ name }}{{ icon('chevron', 15, 'ic chev') }}</summary><div class="list">
-<div class="li"><span class="badge b-gray">{{ icon('shield', 17) }}</span><span class="k">{{ _('Ruolo') }}</span><span class="v">{{ _('Amministratore') }}</span></div>
+<div class="li"><span class="badge b-gray">{{ icon('shield', 17) }}</span><span class="k">{{ _('Ruolo') }}</span><span class="v">{{ _('Amministratore') if p.role == 'admin' else _('Utente') }}</span></div>
 <div class="li"><span class="badge b-teal">{{ icon('cloud', 17) }}</span><span class="k">{{ _('Utente iCloud') }}</span><span class="v">{{ icloud or "—" }}</span></div>
 <div class="li"><span class="badge b-gray">{{ icon('doc', 17) }}</span><span class="k">{{ _('Ultimo accesso') }}</span><span class="v">{{ fmt_ts(p.last_login) }}</span></div></div></details>
 

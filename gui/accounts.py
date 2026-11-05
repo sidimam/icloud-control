@@ -19,7 +19,7 @@ FILE = os.path.join(APP_DIR, "state", "profiles.json")
 OLD_PW_FILE = os.path.join(APP_DIR, "state", "gui_password")
 ADMIN = os.environ.get("GUI_USER", "admin")
 DEFAULT_PROFILES = [p.strip() for p in os.environ.get("GUI_PROFILES", "sdimambro,dmanieri,sofdimambro,mdimambro").split(",") if p.strip()]
-ROLES = {"admin": "Amministratore"}
+ROLES = {"admin": "Amministratore", "user": "Utente"}   # utente: vede e gestisce solo il proprio container
 ISSUER = "iCloud Dashboard"
 
 
@@ -114,6 +114,10 @@ def remove(name):
     del d["profiles"][name]
     save(d)
     return True
+
+
+def admins():
+    return [n for n, p in profiles().items() if p.get("role") == "admin"]
 
 
 def is_admin(name):

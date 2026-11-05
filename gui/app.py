@@ -31,8 +31,17 @@ def _fail(): FAILS.setdefault(_ip(), []).append(time.time()); time.sleep(1)
 def _safe_next(n): return n if n and n.startswith("/") and not n.startswith("//") else "/"
 @app.before_request
 def require_login():
-    if request.endpoint in ("login", "login_2fa", "recover", "prefs", "healthz", "static") or not accounts.any_password() or me(): return None
-    return redirect(url_for("login", next=request.full_path if request.method == "GET" else "/"))
+    if request.endpoint in ("login", "login_2fa", "recover", "prefs", "healthz", "static") or not accounts.any_password(): return None
+    if not me(): return redirect(url_for("login", next=request.full_path if request.method == "GET" else "/"))
+    # Ruoli (3.4): l'amministratore vede tutto; l'utente solo il proprio container iCloud e il proprio profilo.
+    if accounts.is_admin(me()): return None
+    if request.endpoint in ("new", "admin", "admin_profile", "admin_profile_new", "admin_notify", "admin_notify_test"): abort(403)
+    name = (request.view_args or {}).get("name")
+    if request.endpoint and request.endpoint.startswith("u_") and name != _own_icloud(): abort(403)
+    return None
+def _own_icloud():
+    """Utente iCloud del profilo: quello il cui container è iclouddr-<profilo>."""
+    return _icloud_of(me()) if me() else ""
 def _complete_login(name, remember):
     session.clear(); session["user"] = name; session.permanent = remember; FAILS.pop(_ip(), None); accounts.update(name, last_login=time.time())
 @app.route("/login", methods=["GET", "POST"])
@@ -421,8 +430,9 @@ def photos_view(name, u):
 @app.route("/")
 def index():
     c = cfg()
+    mine = c["users"].items() if (not accounts.any_password() or accounts.is_admin(me())) else [(n, u) for n, u in c["users"].items() if n == _own_icloud()]
     # i thread ricevono una copia della richiesta, così lingua e profilo valgono anche per i testi calcolati lì
-    jobs = [copy_current_request_context(lambda nu=nu: user_view(*nu)) for nu in c["users"].items()]   # una copia per utente
+    jobs = [copy_current_request_context(lambda nu=nu: user_view(*nu)) for nu in mine]   # una copia per utente
     with ThreadPoolExecutor(max_workers=8) as ex: users = list(ex.map(lambda f: f(), jobs))
     # Due sezioni per tipo: prima le foto (icloudpd), poi iCloud Drive; dentro ogni sezione l'ordine di config.json.
     sections = [("Foto iCloud (icloudpd)", [v for v in users if v["type"] == "icloudpd"]), ("iCloud Drive (mandarons/icloud-drive)", [v for v in users if v["type"] == "iclouddrive"])]
@@ -646,7 +656,7 @@ def admin():
     _admin_only()
     ps = accounts.profiles()
     rows = [{"name": n, "p": p, "icloud": _icloud_of(n), "role": accounts.ROLES.get(p.get("role"), p.get("role"))} for n, p in sorted(ps.items(), key=lambda x: (x[0] != accounts.ADMIN, x[0]))]
-    return render_template("admin.html", rows=rows, n=nset(), default_chat=cfg().get("default_chat_id", ""))
+    return render_template("admin.html", rows=rows, n=nset(), default_chat=cfg().get("default_chat_id", ""), roles=accounts.ROLES)
 @app.post("/admin/profile/<name>/<action>")
 def admin_profile(name, action):
     _admin_only(); f = request.form
@@ -655,6 +665,12 @@ def admin_profile(name, action):
         if len(f.get("new", "")) < 8: flash(_("La password deve avere almeno 8 caratteri"))
         else: accounts.set_password(name, f["new"]); flash(_("Password di {a0} impostata", a0=name))
     elif action == "totp_off": accounts.update(name, totp="", totp_on=False, recovery=[]); flash(_("Verifica in due passaggi di {a0} disattivata", a0=name))
+    elif action == "role":
+        role = f.get("role")
+        if role not in accounts.ROLES: abort(400)
+        if name == accounts.ADMIN and role != "admin": flash(_("Il profilo admin resta amministratore"))
+        elif role != "admin" and accounts.admins() == [name]: flash(_("Serve almeno un amministratore"))
+        else: accounts.update(name, role=role); flash(_("Ruolo di {a0}: {a1}", a0=name, a1=_(accounts.ROLES[role])))
     elif action == "telegram":
         chat = f.get("chat", "").strip()
         if chat and not re.fullmatch(r"\d{4,15}", chat): flash(_("La chat privata è un numero (es. 141880239)"))

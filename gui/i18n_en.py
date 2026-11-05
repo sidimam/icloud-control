@@ -1,5 +1,11 @@
 """Traduzioni inglesi della GUI: chiave = testo italiano usato nel codice e nei template (vedi ui.py)."""
 EN = {
+    "Utente": "User",
+    "Il profilo admin resta amministratore": "The admin profile stays an administrator",
+    "Serve almeno un amministratore": "At least one administrator is needed",
+    "Ruolo di {a0}: {a1}": "Role of {a0}: {a1}",
+    "vede solo il proprio container": "sees only their own container",
+    "vede tutto": "sees everything",
     "spento": "off",
     "ogni {a0} min": "every {a0} min",
     "ogni {a0} h": "every {a0} h",

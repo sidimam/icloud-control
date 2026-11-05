@@ -86,7 +86,7 @@ table.t tr:last-child td{border-bottom:0}
 <a class="brand" href="/"><img src="/static/icon.png" alt="">iCloud Dashboard</a>
 <nav class="tabs" aria-label="{{ _('Menu') }}">{% if me or request.endpoint not in ("login", "login_2fa", "recover") %}
 <a href="/" class="{{ 'on' if request.endpoint in ('index','u_logs') }}">{{ icon('users') }}{{ _('Utenti iCloud') }}</a>
-<a href="/new" class="{{ 'on' if request.endpoint == 'new' }}">{{ icon('plus') }}{{ _('Nuovo utente') }}</a>
+{% if me_admin or not me %}<a href="/new" class="{{ 'on' if request.endpoint == 'new' }}">{{ icon('plus') }}{{ _('Nuovo utente') }}</a>{% endif %}
 <a href="/account" class="{{ 'on' if request.endpoint == 'account' }}">{{ icon('person') }}{{ _('Il mio profilo') }}</a>
 {% if me_admin %}<a href="/admin" class="{{ 'on' if request.endpoint == 'admin' }}">{{ icon('gear') }}{{ _('Amministrazione') }}</a>{% endif %}
 {% if me %}<span class="who">{{ me }}</span><form class="inline" method="post" action="/logout"><button type="submit" title="{{ _('Esci') }}">{{ icon('logout') }}{{ _('Esci') }}</button></form>{% endif %}
