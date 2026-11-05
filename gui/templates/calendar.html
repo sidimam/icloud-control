@@ -8,7 +8,7 @@
 <input type="color" class="calcol" data-id="{{ c.id }}" value="{{ c.color }}" title="{{ _('Colore') }}" style="width:34px;height:28px;padding:0;border:0;background:none"></div>{% else %}<div class="li"><span class="mut">{{ _('Nessun calendario ancora: collega un account (iCloud con password per app, oppure link ICS) dalla scheda dell\'utente.') }}</span></div>{% endfor %}
 </div></details>
 <details class="grp" data-k="cal-map" open style="margin:0"><summary>{{ icon('globe', 15) }}{{ _('Mappa degli appuntamenti') }}{{ icon('chevron', 15, 'ic chev') }}</summary>
-<div class="list"><div id="map" style="height:300px"></div></div>
+<div class="list" style="isolation:isolate"><div id="map" style="height:300px"></div></div>
 <p class="note">{% if geocode %}{{ _('I luoghi senza coordinate vengono cercati con OpenStreetMap.') }}{% else %}{{ _('Sulla mappa solo i luoghi con coordinate (scelti da Mappe). La ricerca degli altri indirizzi con OpenStreetMap si attiva in Amministrazione.') }}{% endif %}</p></details>
 </div>
 <div class="list" style="padding:.8rem"><div id="cal"></div></div>

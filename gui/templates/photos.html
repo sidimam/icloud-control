@@ -7,7 +7,7 @@
 <span class="seg">{% for k, l in (('', _('Tutto')), ('photo', _('Foto')), ('video', _('Video'))) %}<label><input type="radio" name="what" value="{{ k }}" {% if what == k %}checked{% endif %} onchange="this.form.submit()"><span>{{ l }}</span></label>{% endfor %}</span>
 </div></form>
 <details class="grp" data-k="photo-map" open><summary>{{ icon('globe', 15) }}{{ _('Mappa') }} <span class="mut" id="mapcount"></span>{{ icon('chevron', 15, 'ic chev') }}</summary>
-<div class="list" id="mapwrap" style="position:relative"><div id="pmap" style="height:380px"></div>
+<div class="list" id="mapwrap" style="position:relative;isolation:isolate"><div id="pmap" style="height:380px"></div>
 <button class="tint small" id="mapbig" style="position:absolute;top:10px;right:10px;z-index:500" title="{{ _('Allarga') }}">⤢</button></div>
 <div id="zone" hidden style="margin-top:.8rem"><p class="note" id="zonetitle"></p><div id="zonegrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:4px"></div></div></details>
 <div id="grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:4px">
@@ -15,7 +15,7 @@
 <img loading="lazy" src="/thumb/{{ r.id }}" alt="" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'">
 {% if r.media == 'video' %}<span style="position:absolute;right:6px;bottom:4px;color:#fff;text-shadow:0 1px 3px #000;font-size:12px">▶︎ {{ r.ext }}</span>{% endif %}</a>{% else %}<p class="mut">{{ _('Nessuna foto con questi filtri.') }}</p>{% endfor %}</div>
 <div class="row" style="justify-content:center;margin:1rem 0">{% if page > 0 %}<a class="btn tint" href="{{ qs(page=page - 1) }}">← {{ _('Più recenti') }}</a>{% endif %}{% if more %}<a class="btn tint" href="{{ qs(page=page + 1) }}">{{ _('Meno recenti') }} →</a>{% endif %}</div>
-<div id="lb" hidden style="position:fixed;inset:0;z-index:20;background:rgba(0,0,0,.92);display:flex">
+<div id="lb" hidden style="position:fixed;inset:0;z-index:5000;background:rgba(0,0,0,.92);display:flex">
 <div style="flex:1;position:relative;display:flex;align-items:center;justify-content:center;min-width:0" id="lbmain"></div>
 <aside id="lbinfo" hidden style="width:min(360px,90vw);background:var(--card);color:var(--fg);overflow:auto;padding:12px 0"></aside>
 <div style="position:absolute;top:calc(10px + env(safe-area-inset-top,0px));right:12px;display:flex;gap:6px;z-index:2">
@@ -23,7 +23,7 @@
 <button class="tint small" id="lbp" style="position:absolute;left:10px;top:50%">‹</button><button class="tint small" id="lbn" style="position:absolute;right:10px;top:50%">›</button></div>
 {% include "_meta.html" %}
 <style>.pcl{position:relative;width:54px;height:54px;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.35);border:2px solid #fff;background:#888}.pcl img{width:100%;height:100%;object-fit:cover}.pcl b{position:absolute;right:-2px;top:-2px;background:var(--acc);color:#fff;font:600 11px -apple-system,system-ui;padding:1px 6px;border-radius:99px;border:2px solid #fff}
-#mapwrap.big{position:fixed;inset:0;z-index:30;border-radius:0}#mapwrap.big #pmap{height:100vh!important}</style>
+#mapwrap.big{position:fixed;inset:0;z-index:4000;border-radius:0}#mapwrap.big #pmap{height:100vh!important}</style>
 <script src="/static/vendor/leaflet.js"></script><script src="/static/vendor/markercluster.js"></script>
 <script>
 (function(){
