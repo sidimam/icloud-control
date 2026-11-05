@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """iCloud Dashboard (ex icloud-dispatcher) GUI: utenti = container iCloud (foto: boredazfcuk/icloudpd; iCloud Drive: mandarons/icloud-drive), chat Telegram, cosa scaricare, rinnovo 2FA."""
-import json, os, re, subprocess, shutil, datetime, html, time, threading
+import json, os, re, secrets, subprocess, shutil, datetime, html, time, threading
+from werkzeug.security import check_password_hash, generate_password_hash
 from concurrent.futures import ThreadPoolExecutor
 from flask import Flask, request, redirect, url_for, render_template, flash, abort, session
 
@@ -28,7 +29,7 @@ def _fail(): FAILS.setdefault(_ip(), []).append(time.time()); time.sleep(1)
 def _safe_next(n): return n if n and n.startswith("/") and not n.startswith("//") else "/"
 @app.before_request
 def require_login():
-    if request.endpoint in ("login", "login_2fa", "healthz", "static") or not accounts.any_password() or me(): return None
+    if request.endpoint in ("login", "login_2fa", "recover", "healthz", "static") or not accounts.any_password() or me(): return None
     return redirect(url_for("login", next=request.full_path if request.method == "GET" else "/"))
 def _complete_login(name, remember):
     session.clear(); session["user"] = name; session.permanent = remember; FAILS.pop(_ip(), None); accounts.update(name, last_login=time.time())
@@ -52,8 +53,14 @@ def login_2fa():
     if not name or time.time() - session.get("pending_ts", 0) > 300: session.clear(); flash("Accedi di nuovo"); return redirect(url_for("login", next=nxt))
     if request.method == "POST":
         if _throttled(): flash("Troppi tentativi: riprova fra qualche minuto"); return render_template("login_2fa.html", next=nxt), 429
-        if accounts.verify_totp(accounts.get(name).get("totp", ""), request.form.get("code", "")):
+        code = request.form.get("code", "")
+        if accounts.verify_totp(accounts.get(name).get("totp", ""), code):
             _complete_login(name, session.get("pending_remember", False)); return redirect(nxt)
+        if accounts.use_recovery_code(name, code):
+            left = len(accounts.get(name).get("recovery", []))
+            _security_alert(f"🔑 iCloud Dashboard: {name} è entrato con un codice di recupero (ne restano {left}).")
+            _complete_login(name, session.get("pending_remember", False))
+            flash(f"Sei entrato con un codice di recupero: ne restano {left}. Se hai perso il telefono, genera codici nuovi o disattiva il 2FA da «Il mio profilo»."); return redirect(nxt)
         _fail(); flash("Codice non valido")
     return render_template("login_2fa.html", next=nxt, user=name)
 @app.post("/logout")
@@ -74,15 +81,65 @@ def account():
             session["totp_new"] = accounts.new_secret()
         elif act == "totp_confirm":
             sec = session.get("totp_new", "")
-            if accounts.verify_totp(sec, f.get("code", "")): accounts.update(name, totp=sec, totp_on=True); session.pop("totp_new", None); flash("Verifica in due passaggi attivata")
+            if accounts.verify_totp(sec, f.get("code", "")):
+                accounts.update(name, totp=sec, totp_on=True); session.pop("totp_new", None); flash("Verifica in due passaggi attivata")
+                return render_template("codes.html", codes=accounts.new_recovery_codes(name), name=name)
             else: flash("Codice non valido: controlla l'ora del telefono e riprova")
         elif act == "totp_off":
             if accounts.check_password(name, f.get("current", "")): accounts.update(name, totp="", totp_on=False); flash("Verifica in due passaggi disattivata")
             else: _fail(); flash("Password non corretta")
         elif act == "totp_cancel": session.pop("totp_new", None)
+        elif act == "recovery_new":
+            if accounts.check_password(name, f.get("current", "")): return render_template("codes.html", codes=accounts.new_recovery_codes(name), name=name)
+            _fail(); flash("Password non corretta")
+        elif act == "tg_send":
+            chat = f.get("chat", "").strip()
+            if not re.fullmatch(r"\d{4,15}", chat): flash("La chat privata è un numero (es. 141880239): i gruppi non vanno bene per il recupero")
+            elif not TOKEN: flash("Manca il token del bot")
+            else:
+                code = f"{secrets.randbelow(10**6):06d}"; session["tg_new"] = {"chat": chat, "code": code, "exp": time.time() + 600}
+                telegram(chat, f"🔐 iCloud Dashboard: codice per collegare questa chat al profilo {name}: {code}"); flash("Ti ho mandato un codice su Telegram: scrivilo qui sotto")
+        elif act == "tg_confirm":
+            t = session.get("tg_new") or {}
+            if t and time.time() < t["exp"] and f.get("code", "").strip() == t["code"]: accounts.update(name, telegram=t["chat"]); session.pop("tg_new", None); flash("Chat Telegram collegata: potrai usarla per recuperare l'accesso")
+            else: flash("Codice non valido o scaduto")
+        elif act == "tg_remove": accounts.update(name, telegram=""); flash("Chat Telegram scollegata")
         return redirect(url_for("account"))
     sec = session.get("totp_new"); qr = accounts.totp_qr_svg(accounts.totp_uri(name, sec)) if sec else ""
-    return render_template("account.html", name=name, p=accounts.get(name) or {}, totp_new=sec, qr=qr, icloud=_icloud_of(name))
+    return render_template("account.html", name=name, p=accounts.get(name) or {}, totp_new=sec, qr=qr, icloud=_icloud_of(name), tg_pending=bool(session.get("tg_new")))
+# ---- recupero accesso (3.0): codice a 6 cifre alla chat Telegram privata del profilo, valido 10 minuti, 5 tentativi.
+# La risposta al primo passo è sempre la stessa, così dalla pagina non si capisce quali profili esistono.
+RECOVER = {}   # profilo -> {"code": hash, "exp": ts, "tries": n}
+def _security_alert(text):
+    try:
+        chat = notify_chat(cfg())
+        if chat: telegram(chat, text)
+    except Exception: pass
+@app.route("/recover", methods=["GET", "POST"])
+def recover():
+    f = request.form; step = f.get("step", "start")
+    if request.method == "POST" and _throttled(): flash("Troppi tentativi: riprova fra qualche minuto"); return render_template("recover.html", step="start"), 429
+    if request.method == "POST" and step == "start":
+        name = f.get("user", "").strip().lower(); p = accounts.get(name)
+        if p and p.get("telegram") and TOKEN:
+            code = f"{secrets.randbelow(10**6):06d}"; RECOVER[name] = {"code": generate_password_hash(code), "exp": time.time() + 600, "tries": 0}
+            telegram(p["telegram"], f"🔐 iCloud Dashboard: codice di recupero per {name}: {code} (valido 10 minuti). Se non l'hai chiesto tu, ignoralo e avvisa Simone.")
+        else: _fail()
+        flash("Se il profilo ha una chat Telegram collegata, il bot ti ha appena mandato un codice."); return render_template("recover.html", step="finish", user=name)
+    if request.method == "POST" and step == "finish":
+        name = f.get("user", "").strip().lower(); r = RECOVER.get(name)
+        if not r or time.time() > r["exp"] or r["tries"] >= 5: RECOVER.pop(name, None); flash("Codice scaduto: ricomincia"); return render_template("recover.html", step="start")
+        r["tries"] += 1
+        if not check_password_hash(r["code"], f.get("code", "").strip()): _fail(); flash("Codice non valido"); return render_template("recover.html", step="finish", user=name)
+        if f.get("new") and (len(f["new"]) < 8 or f["new"] != f.get("confirm")): flash("Password nuova: almeno 8 caratteri e uguale nei due campi"); return render_template("recover.html", step="finish", user=name)
+        done = []
+        if f.get("new"): accounts.set_password(name, f["new"]); done.append("password cambiata")
+        if f.get("totp_off") == "on": accounts.update(name, totp="", totp_on=False, recovery=[]); done.append("verifica in due passaggi disattivata")
+        RECOVER.pop(name, None)
+        if not done: flash("Codice giusto, ma non hai chiesto niente: scegli una password nuova o spegni il 2FA"); return render_template("recover.html", step="start")
+        _security_alert(f"🔐 iCloud Dashboard: recupero dell'accesso per {name} ({', '.join(done)}).")
+        flash("Fatto: " + ", ".join(done) + ". Ora puoi entrare."); return redirect(url_for("login"))
+    return render_template("recover.html", step="start")
 def _icloud_of(profile):
     try: return next((n for n, u in cfg()["users"].items() if u.get("container") == f"iclouddr-{profile}"), "")
     except Exception: return ""
@@ -529,7 +586,11 @@ def admin_profile(name, action):
     if action == "password":
         if len(f.get("new", "")) < 8: flash("La password deve avere almeno 8 caratteri")
         else: accounts.set_password(name, f["new"]); flash(f"Password di {name} impostata")
-    elif action == "totp_off": accounts.update(name, totp="", totp_on=False); flash(f"Verifica in due passaggi di {name} disattivata")
+    elif action == "totp_off": accounts.update(name, totp="", totp_on=False, recovery=[]); flash(f"Verifica in due passaggi di {name} disattivata")
+    elif action == "telegram":
+        chat = f.get("chat", "").strip()
+        if chat and not re.fullmatch(r"\d{4,15}", chat): flash("La chat privata è un numero (es. 141880239)")
+        else: accounts.update(name, telegram=chat); flash(f"Chat Telegram di {name} " + ("salvata" if chat else "rimossa"))
     elif action == "delete":
         if name == me() or name == accounts.ADMIN: flash("Non puoi eliminare questo profilo")
         else: accounts.remove(name); flash(f"Profilo {name} eliminato")

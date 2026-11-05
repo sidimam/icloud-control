@@ -1,0 +1,7 @@
+{% extends "base.html" %}{% block body %}
+<div class="card" style="max-width:520px;margin:2rem auto"><h2>Codici di recupero · {{ name }}</h2>
+<p>Conservali in un posto sicuro, per esempio in Vaultwarden. Ognuno vale <b>una volta</b> al posto del codice dell'app, se perdi o cambi telefono. Questa è l'unica volta che li vedi: i codici di prima non valgono più.</p>
+<pre class="log" style="font-size:15px;columns:2">{% for c in codes %}{{ c }}
+{% endfor %}</pre>
+<div class="row"><a href="/account"><button>Li ho salvati</button></a></div></div>
+{% endblock %}

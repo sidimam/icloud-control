@@ -10,6 +10,8 @@
 <div class="card"><h2>Verifica in due passaggi (TOTP)</h2>
 {% if p.totp_on %}
 <p><span class="pill ok">attiva</span> All'accesso, dopo la password, serve il codice a 6 cifre dell'app di autenticazione.</p>
+<p class="mut">Codici di recupero rimasti: <b>{{ (p.recovery or [])|length }}</b> su 8.</p>
+<details><summary>Genera codici di recupero nuovi</summary><form method="post"><input type="hidden" name="action" value="recovery_new"><label for="cur3">Password</label><input id="cur3" name="current" type="password" autocomplete="current-password" required><div class="row"><button class="sec">Genera</button></div></form></details>
 <form method="post"><input type="hidden" name="action" value="totp_off"><label for="cur2">Password, per disattivarla</label><input id="cur2" name="current" type="password" autocomplete="current-password" required>
 <div class="row"><button class="danger">Disattiva</button></div></form>
 {% elif totp_new %}
@@ -23,6 +25,12 @@
 <p><span class="pill">spenta</span> Aggiunge un codice a 6 cifre dall'app di autenticazione a ogni accesso.</p>
 <form method="post"><input type="hidden" name="action" value="totp_start"><div class="row"><button>Attiva la verifica in due passaggi</button></div></form>
 {% endif %}</div>
+<div class="card"><h2>Recupero via Telegram</h2>
+{% if p.telegram %}<p><span class="pill ok">collegata</span> Chat <code>{{ p.telegram }}</code>: se dimentichi la password o perdi il telefono, il bot ti manda qui un codice di recupero.</p>
+<form method="post"><input type="hidden" name="action" value="tg_remove"><button class="sec">Scollega</button></form>
+{% elif tg_pending %}<form method="post"><input type="hidden" name="action" value="tg_confirm"><label for="tgc">Codice arrivato su Telegram</label><input id="tgc" name="code" inputmode="numeric" maxlength="6" required><div class="row"><button>Collega</button></div></form>
+{% else %}<p class="mut">La chat privata con il bot di casa (un numero, non il gruppo). Se non la conosci, scrivi /start al bot e chiedi a Simone.</p>
+<form method="post"><input type="hidden" name="action" value="tg_send"><label for="tg">ID della chat privata</label><input id="tg" name="chat" inputmode="numeric" required><div class="row"><button>Mandami un codice di verifica</button></div></form>{% endif %}</div>
 <div class="card"><h2>Collegamenti</h2><dl><dt>Ruolo</dt><dd>Amministratore</dd><dt>Utente iCloud</dt><dd>{{ icloud or "—" }}</dd><dt>Ultimo accesso</dt><dd>{{ fmt_ts(p.last_login) }}</dd></dl></div>
 </div>
 {% endblock %}

@@ -121,6 +121,12 @@ Stanno in `/app/state/profiles.json` (permessi 600): hash scrypt della password,
   password, spegnimento del 2FA di un profilo, nuovi profili, eliminazione (non di sé stessi né dell'admin); notifiche Telegram
   (chat, avvisi di riavvio e di blocco, ore silenziose) salvate in `/app/state/settings.json` con precedenza sulle variabili del
   template, e un messaggio di prova.
+- **Recupero**: all'attivazione del 2FA la GUI mostra **8 codici di recupero** monouso (formato `k7m2-x9qp`, salvati solo come hash;
+  rigenerabili dal profilo con la password). In alternativa «Password dimenticata o telefono perso?» manda un codice a 6 cifre
+  (10 minuti, 5 tentativi) alla **chat Telegram privata** collegata al profilo, con cui si sceglie una password nuova e/o si spegne il
+  2FA. La chat la collega la persona dal suo profilo (verifica con un codice) o un amministratore. La pagina risponde sempre allo
+  stesso modo, così non rivela quali profili esistono; ogni recupero e ogni accesso con codice di recupero viene segnalato alla chat
+  delle notifiche.
 - **Password dell'admin dimenticata o telefono perso**: compila `GUI_RESET_PASSWORD` nel template e applica: all'avvio reimposta la
   password dell'admin e gli spegne il 2FA. Poi svuota la variabile, altrimenti lo rifà a ogni riavvio (la GUI lo segnala).
 - Sessione firmata con chiave persistente (`/app/state/gui_secret`), «Ricordami» 30 giorni, cookie `HttpOnly` e `SameSite=Lax`,

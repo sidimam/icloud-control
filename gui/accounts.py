@@ -2,12 +2,15 @@
 
 Stato in /app/state/profiles.json:
   {"seeded": true, "profiles": {"<nome>": {"role": "admin", "pw": "<hash werkzeug>", "totp": "<segreto base32>",
-                                           "totp_on": false, "created": ts, "last_login": ts}}}
+                                           "totp_on": false, "recovery": ["<hash>", …], "telegram": "<chat id privata>",
+                                           "created": ts, "last_login": ts}}}
+Recupero (3.0): codici monouso generati all'attivazione del 2FA e codice a 6 cifre mandato dal bot alla chat Telegram privata
+del profilo (vedi app.py, /recover).
 Al primo avvio della 3.0 il profilo admin eredita la password della 2.x (/app/state/gui_password o GUI_PASSWORD_HASH) e vengono
 creati i profili di DEFAULT_PROFILES senza password: entrano solo dopo che un amministratore gliela imposta.
 GUI_RESET_PASSWORD reimposta la password dell'admin e gli spegne il 2FA (password o telefono persi).
 """
-import io, json, os, time
+import io, json, os, secrets, time
 import pyotp, qrcode, qrcode.image.svg
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -21,7 +24,7 @@ ISSUER = "iCloud Dashboard"
 
 
 def _blank(role="admin"):
-    return {"role": role, "pw": "", "totp": "", "totp_on": False, "created": time.time(), "last_login": 0}
+    return {"role": role, "pw": "", "totp": "", "totp_on": False, "recovery": [], "telegram": "", "created": time.time(), "last_login": 0}
 
 
 def load():
@@ -137,3 +140,31 @@ def totp_qr_svg(uri):
 def verify_totp(secret, code):
     code = "".join(ch for ch in str(code) if ch.isdigit())
     return bool(secret and len(code) == 6 and pyotp.TOTP(secret).verify(code, valid_window=1))
+
+
+# ---- codici di recupero: 8 codici monouso tipo «k7m2-x9qp», salvati solo come hash
+_ALPHA = "abcdefghjkmnpqrstuvwxyz23456789"   # senza 0/o, 1/l/i
+
+
+def new_recovery_codes(name, n=8):
+    codes = ["".join(secrets.choice(_ALPHA) for _ in range(4)) + "-" + "".join(secrets.choice(_ALPHA) for _ in range(4)) for _ in range(n)]
+    update(name, recovery=[generate_password_hash(c) for c in codes])
+    return codes
+
+
+def _norm(code):
+    c = "".join(ch for ch in str(code).lower() if ch.isalnum())
+    return c[:4] + "-" + c[4:] if len(c) == 8 else ""
+
+
+def use_recovery_code(name, code):
+    c = _norm(code)
+    p = get(name)
+    if not c or not p:
+        return False
+    left = p.get("recovery", [])
+    for h in left:
+        if check_password_hash(h, c):
+            update(name, recovery=[x for x in left if x != h])
+            return True
+    return False

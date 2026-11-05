@@ -1,14 +1,16 @@
 {% extends "base.html" %}{% block body %}
 <h2 class="section">Profili</h2>
 <div class="card" style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.92rem">
-<thead><tr style="text-align:left;color:var(--mut)"><th>Profilo</th><th>Ruolo</th><th>Utente iCloud</th><th>Password</th><th>2FA</th><th>Ultimo accesso</th><th>Azioni</th></tr></thead><tbody>
+<thead><tr style="text-align:left;color:var(--mut)"><th>Profilo</th><th>Ruolo</th><th>Utente iCloud</th><th>Password</th><th>2FA</th><th>Telegram</th><th>Ultimo accesso</th><th>Azioni</th></tr></thead><tbody>
 {% for r in rows %}<tr style="border-top:1px solid var(--bd);vertical-align:top">
 <td style="padding:.5rem .4rem"><b>{{ r.name }}</b>{% if r.name == me %} <span class="mut">(tu)</span>{% endif %}</td><td style="padding:.5rem .4rem">{{ r.role }}</td><td style="padding:.5rem .4rem">{{ r.icloud or "—" }}</td>
 <td style="padding:.5rem .4rem">{% if r.p.pw %}<span class="pill ok">impostata</span>{% else %}<span class="pill warn">da impostare</span>{% endif %}</td>
 <td style="padding:.5rem .4rem">{% if r.p.totp_on %}<span class="pill ok">attiva</span>{% else %}<span class="pill">spenta</span>{% endif %}</td>
+<td style="padding:.5rem .4rem">{% if r.p.telegram %}<span class="pill ok">collegato</span>{% else %}<span class="pill">no</span>{% endif %}</td>
 <td style="padding:.5rem .4rem" class="mut">{{ fmt_ts(r.p.last_login) }}</td>
 <td style="padding:.5rem .4rem"><details><summary>Gestisci</summary>
 <form method="post" action="/admin/profile/{{ r.name }}/password"><label for="pw-{{ r.name }}">{% if r.p.pw %}Reimposta la password{% else %}Imposta la password{% endif %}</label><input id="pw-{{ r.name }}" name="new" type="password" autocomplete="new-password" minlength="8" required><div class="row"><button>Salva</button></div></form>
+<form method="post" action="/admin/profile/{{ r.name }}/telegram"><label for="tg-{{ r.name }}">Chat Telegram privata per il recupero</label><input id="tg-{{ r.name }}" name="chat" value="{{ r.p.telegram or '' }}" inputmode="numeric" placeholder="vuoto = nessuna"><div class="row"><button class="sec">Salva chat</button></div></form>
 {% if r.p.totp_on %}<form method="post" action="/admin/profile/{{ r.name }}/totp_off"><div class="row"><button class="sec">Disattiva il 2FA</button></div></form>{% endif %}
 {% if r.name != me and r.name != "admin" %}<form method="post" action="/admin/profile/{{ r.name }}/delete" onsubmit="return this.querySelector('input').checked"><label style="display:flex;gap:.4rem;align-items:center"><input type="checkbox" style="width:auto"> confermo</label><div class="row"><button class="danger">Elimina profilo</button></div></form>{% endif %}
 </details></td></tr>{% endfor %}
