@@ -59,7 +59,9 @@
   window.openLB = function (ids, kinds, i) { items = ids; media = kinds; lb.hidden = false; show(i); };
   function show(i){ cur = (i + items.length) % items.length; var id = items[cur];
     main.innerHTML = media[cur] === "video" ? '<video src="/item/' + id + '/raw" controls autoplay playsinline style="max-width:100%;max-height:100vh"></video>'
-      : '<img src="/thumb/' + id + '?s=big" alt="" style="max-width:100%;max-height:100vh;object-fit:contain">';
+      : '<img src="/thumb/' + id + '" alt="" style="width:min(100%,100vh);max-height:100vh;object-fit:contain;filter:blur(2px)">';
+    if (media[cur] !== "video") { var big = new Image(); big.onload = function(){ if (items[cur] !== id) return; var im = main.querySelector("img"); if (im) { im.src = big.src; im.style.filter = ""; im.style.width = ""; im.style.maxWidth = "100%"; } }; big.src = "/thumb/" + id + "?s=big";
+      [cur + 1, cur - 1].forEach(function(j){ if (items[j] && media[j] !== "video") (new Image()).src = "/thumb/" + items[j] + "?s=big"; }); }
     document.getElementById("lbopen").href = "/item/" + id; if (!info.hidden) renderMeta(info, id); }
   var gridIds = items.slice(), gridKinds = media.slice();
   document.querySelectorAll("a.ph").forEach(function(a){ a.addEventListener("click", function(e){ e.preventDefault(); openLB(gridIds, gridKinds, +a.dataset.i); }); });
