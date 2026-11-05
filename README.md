@@ -108,6 +108,14 @@ Gli avvisi automatici del dispatcher si impostano dalle variabili del template U
 `TELEGRAM_TOKEN` e `ALLOWED_CHATS` (le chat da cui il bot accetta comandi) restano come prima. Le risposte ai comandi del bot e
 della GUI non passano dalle ore silenziose: arrivano sempre subito alla chat che le ha chieste.
 
+### Account collegati (dalla 3.5)
+
+Nella scheda di ogni utente iclouddr (immagine `ghcr.io/sidimam/iclouddr` ≥ 0.2) la sezione **Account collegati** aggiunge uno o
+più account di posta, calendari e contatti: iCloud, Gmail, Outlook o un altro IMAP. Ognuno scrive in
+`documents/<Persona>/<etichetta>/{Posta,Calendario,Contatti}`, in sola lettura. Il file è `/config/pim-accounts.json` del container
+(600, utente 99:100): la GUI non mostra mai le password e le sostituisce solo se ne viene scritta una nuova. «Sincronizza ora» crea
+`/config/pim-run-now`. La sezione «Cosa scarica» riassume lo stato di ogni servizio per tutti gli account.
+
 ### Ruoli (dalla 3.4)
 
 Ogni profilo è **Amministratore** (vede tutti i container, «Nuovo utente» e «Amministrazione») oppure **Utente** (vede e gestisce

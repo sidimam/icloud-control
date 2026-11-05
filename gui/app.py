@@ -410,8 +410,37 @@ def drive_view(name, u):
              "freq": every(env_of(info).get("PIM_INTERVAL", "21600")) if pim_on else "", "last": _("ultimo giro {a0}", a0=pim["when"]) if pim else "",
              "info": (_("{a0} promemoria in {a1} liste", a0=pim["promemoria"], a1=pim["liste"]) if pim and pim.get("ok") else "") if pim_on else _("non attivo: serve l'immagine sidimam/iclouddr"),
              "err": bool(pim and not pim.get("ok"))}]
-    for name, icon_, badge in ((_("Posta"), "send", "b-blue"), (_("Calendario"), "doc", "b-red"), (_("Contatti"), "users", "b-gray")):
-        svc.append({"name": name, "icon": icon_, "badge": badge, "on": False, "paths": [], "freq": "", "last": "", "info": _("non ancora attivo: serve una password per app")})
+    # account collegati e loro stato
+    accs = acc_load(u) if pim_on or "/icloud/persona" in m else []
+    st_acc = {}
+    try: st_acc = json.load(open(os.path.join(local, "pim-status.json"))).get("accounts", {})
+    except (FileNotFoundError, ValueError): pass
+    person = m.get("/icloud/persona", "")
+    v["can_accounts"] = bool(env_of(info) and info["Config"]["Image"].startswith("ghcr.io/sidimam/iclouddr") and (person or pim_on))
+    v["person_dir"] = person
+    v["accounts"] = []
+    for a in accs:
+        stt = st_acc.get(a["id"], {})
+        v["accounts"].append({**{k: a.get(k) for k in ("id", "type", "label", "email", "mail", "calendar", "contacts", "ics", "exclude", "imap_host", "imap_port")},
+                              "has_pw": bool(a.get("password")), "type_name": ACC_TYPES.get(a.get("type"), a.get("type")),
+                              "dir": (person + "/" + a.get("label", "")) if person else stt.get("dir", ""), "st": stt, "error": stt.get("error")})
+    def agg(key, flag, unit_key, unit_fmt):
+        rows = [a for a in v["accounts"] if a.get(flag) or (key == "calendar" and a.get("ics"))]
+        if not rows: return False, [], "", _("non ancora attivo: aggiungi un account qui sotto")
+        parts = []; last = 0
+        for a in rows:
+            r = a["st"].get(key) or {}
+            if a["error"] and not r: parts.append(f'{a["label"]}: ' + _("errore"))
+            elif r: parts.append(f'{a["label"]}: ' + unit_fmt(r)); last = max(last, r.get("when") or 0)
+            else: parts.append(f'{a["label"]}: ' + _("in attesa del primo giro"))
+        return True, [a["dir"] + "/" + unit_key for a in rows if a["dir"]], (_("ultimo giro {a0}", a0=ago(datetime.datetime.fromtimestamp(last))) if last else ""), " · ".join(parts)
+    for key, flag, folder, name, icon_, badge, freq, fmt in (
+            ("mail", "mail", "Posta", _("Posta"), "send", "b-blue", env_of(info).get("PIM_MAIL_INTERVAL", "900"), lambda r: _("{a0} messaggi", a0=r.get("messaggi", 0))),
+            ("calendar", "calendar", "Calendario", _("Calendario"), "doc", "b-red", env_of(info).get("PIM_DAV_INTERVAL", "3600"), lambda r: _("{a0} eventi", a0=r.get("eventi", 0)) + (f' + {r["link_ics"]} ICS' if r.get("link_ics") else "")),
+            ("contacts", "contacts", "Contatti", _("Contatti"), "users", "b-gray", env_of(info).get("PIM_DAV_INTERVAL", "3600"), lambda r: _("{a0} contatti", a0=r.get("contatti", 0)))):
+        on, paths, last, txt = agg(key, flag, folder, fmt)
+        svc.append({"name": name, "icon": icon_, "badge": badge, "on": on, "paths": paths, "freq": every(freq) if on else "", "last": last, "info": txt,
+                    "err": any(a["error"] for a in v["accounts"] if a.get(flag))})
     v["services"] = svc
     return v
 def photos_view(name, u):
@@ -485,6 +514,62 @@ def u_logs(name):
 def u_logs_txt(name):
     u = cfg()["users"].get(name) or abort(404)
     return "\n".join(container_logs(u["container"], 5000)) + "\n", 200, {"Content-Type": "text/plain; charset=utf-8", "Content-Disposition": f'attachment; filename="{u["container"]}.log"'}
+# ---- account collegati (3.5): posta, calendario e contatti per persona, sincronizzati dal modulo PIM di sidimam/iclouddr.
+# Il file /config/pim-accounts.json del container iclouddr (600, utente abc 99:100) contiene anche le password per app:
+# la GUI non le mostra mai, le sostituisce solo se ne viene scritta una nuova.
+ACC_TYPES = {"icloud": "iCloud", "gmail": "Gmail", "outlook": "Outlook", "other": "Altro (IMAP)"}
+def _acc_path(u):
+    info = inspect(u["container"]) or {}
+    return os.path.join(host_to_local(mounts(info).get("/config", "")), "pim-accounts.json")
+def acc_load(u):
+    try: return json.load(open(_acc_path(u))).get("accounts", [])
+    except (FileNotFoundError, ValueError): return []
+def acc_save(u, accs):
+    p = _acc_path(u); tmp = p + ".tmp"
+    with open(tmp, "w") as f: json.dump({"accounts": accs}, f, ensure_ascii=False, indent=1)
+    os.chmod(tmp, 0o600)
+    try: os.chown(tmp, 99, 100)
+    except OSError: pass
+    os.replace(tmp, p)
+def _acc_from_form(f, old=None):
+    t = f.get("type", (old or {}).get("type", "icloud")); t = t if t in ACC_TYPES else "other"
+    a = dict(old or {}); a.update(type=t, label=(f.get("label") or "").strip() or ACC_TYPES[t].split(" ")[0], email=f.get("email", "").strip(),
+        mail=f.get("mail") == "on", calendar=f.get("calendar") == "on", contacts=f.get("contacts") == "on",
+        ics=[x.strip() for x in f.get("ics", "").splitlines() if x.strip().startswith("http")],
+        exclude=[x.strip() for x in f.get("exclude", "").split(",") if x.strip()],
+        imap_host=f.get("imap_host", "").strip(), imap_port=f.get("imap_port", "").strip())
+    if f.get("password"): a["password"] = f["password"]
+    a["label"] = re.sub(r'[\\/:*?"<>|]', "_", a["label"])[:40]
+    return a
+@app.post("/u/<name>/accounts/add")
+def u_acc_add(name):
+    u = cfg()["users"].get(name) or abort(404); accs = acc_load(u); a = _acc_from_form(request.form)
+    base = re.sub(r"[^a-z0-9]+", "-", a["label"].lower()).strip("-") or a["type"]; aid = base; i = 2
+    while any(x["id"] == aid for x in accs): aid = f"{base}-{i}"; i += 1
+    a["id"] = aid
+    if any(x["label"].lower() == a["label"].lower() for x in accs): flash(_("Esiste già un account con l'etichetta {a0}: la cartella sarebbe la stessa", a0=a["label"])); return redirect(url_for("index"))
+    accs.append(a); acc_save(u, accs); _pim_kick(u)
+    flash(_("Account {a0} aggiunto: la prima sincronizzazione parte entro un minuto", a0=a["label"])); return redirect(url_for("index"))
+@app.post("/u/<name>/accounts/<aid>/save")
+def u_acc_save(name, aid):
+    u = cfg()["users"].get(name) or abort(404); accs = acc_load(u)
+    for i, x in enumerate(accs):
+        if x["id"] == aid: accs[i] = _acc_from_form(request.form, x); break
+    else: abort(404)
+    acc_save(u, accs); _pim_kick(u); flash(_("Account {a0} salvato", a0=accs[i]["label"])); return redirect(url_for("index"))
+@app.post("/u/<name>/accounts/<aid>/delete")
+def u_acc_delete(name, aid):
+    u = cfg()["users"].get(name) or abort(404); accs = acc_load(u)
+    acc_save(u, [x for x in accs if x["id"] != aid]); flash(_("Account tolto: i file già scaricati restano nella cartella")); return redirect(url_for("index"))
+def _pim_kick(u):
+    """Chiede al modulo PIM di ripartire subito (file /config/pim-run-now, lo controlla ogni 30 s)."""
+    p = os.path.join(os.path.dirname(_acc_path(u)), "pim-run-now")
+    try:
+        open(p, "w").close(); os.chown(p, 99, 100)
+    except OSError: pass
+@app.post("/u/<name>/sync")
+def u_sync(name):
+    u = cfg()["users"].get(name) or abort(404); _pim_kick(u); flash(_("Sincronizzazione chiesta: parte entro un minuto")); return redirect(url_for("index"))
 @app.post("/u/<name>/settings")
 def u_settings(name):
     c = cfg(); u = c["users"].get(name) or abort(404); f = request.form; info = inspect(u["container"]) or abort(404)
