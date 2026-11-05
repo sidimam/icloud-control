@@ -1,5 +1,6 @@
 """Traduzioni inglesi della GUI: chiave = testo italiano usato nel codice e nei template (vedi ui.py)."""
 EN = {
+    "Crea un container iclouddr (ghcr.io/sidimam/iclouddr: mandarons/icloud-drive con il modulo PIM) che scarica iCloud Drive, le note e i promemoria e, se vuoi, le foto personali: cartelle, config.yaml, template Unraid e container. Posta, calendari e contatti si aggiungono poi da «Account collegati». Serve il primo login Apple con il codice 2FA dal terminale di Unraid (il comando compare dopo la creazione).": "Creates an iclouddr container (ghcr.io/sidimam/iclouddr: mandarons/icloud-drive with the PIM module) that downloads iCloud Drive, notes and reminders and, optionally, personal photos: folders, config.yaml, Unraid template and container. Mail, calendars and contacts are added later from «Linked accounts». The first Apple sign-in with the 2FA code is needed from the Unraid terminal (the command appears after creation).",
     "Ricerca delle coordinate con OpenStreetMap: {a0}": "Coordinate lookup with OpenStreetMap: {a0}",
     "Nome, e-mail, telefono, organizzazione…": "Name, email, phone, organization…",
     "{a0} persone da {a1} schede: la stessa persona salvata da più di voi compare una volta sola.": "{a0} people from {a1} cards: the same person saved by more than one of you appears once.",

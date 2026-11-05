@@ -607,13 +607,17 @@ def new_drive(c, f, name, short):
     photos_overview = f" e le foto personali in {html.escape(photos_host)}" if photos else ""
     if not name or not apple or name in c["users"]: flash(_("Dati mancanti o nome già usato")); return redirect(url_for("new"))
     p = c["paths"]; d = c["defaults"]; cont = f"iclouddr-{short.lower()}"; host_appdata = f"/mnt/user/appdata/{cont}"
+    # Dalla 3.8 i container nuovi usano l'immagine con il modulo PIM, come quelli di famiglia: note e promemoria in
+    # <persona>/iCloud, account collegati nella cartella della persona (la cartella che contiene «iCloud Drive»).
+    image = os.environ.get("ICLOUDDR_IMAGE", "ghcr.io/sidimam/iclouddr:0.2.0")
+    person_host = os.path.dirname(dest_host); pim_host = person_host + "/iCloud"
     appdata = host_to_local(host_appdata); dest = host_to_local(dest_host)
     if dest == dest_host: flash(_("La destinazione deve stare sotto /mnt/user/documents (montato in iCloud Dashboard come /documents)")); return redirect(url_for("new"))
     photos_local = host_to_local(photos_host) if photos else None
     if photos and photos_local == photos_host: flash(_("La cartella foto deve stare sotto /mnt/user/media/photos (montato in iCloud Dashboard come /photos)")); return redirect(url_for("new"))
-    for path in [appdata, dest] + ([photos_local] if photos else []):
+    for path in [appdata, dest, host_to_local(pim_host)] + ([photos_local] if photos else []):
         os.makedirs(path, exist_ok=True); shutil.chown(path, int(d["user_id"]), int(d["group_id"]))
-    open(os.path.join(appdata, "config.yaml"), "w").write(f"""# {cont} — iCloud Drive di {label} → {dest_host}{photos_note} (solo download, {d.get('drive_image', 'mandarons/icloud-drive')})
+    open(os.path.join(appdata, "config.yaml"), "w").write(f"""# {cont} — iCloud Drive di {label} → {dest_host}{photos_note} (solo download, {image})
 app:
   logger:
     level: "info"
@@ -647,8 +651,8 @@ drive:
     open(tpl_path(cont), "w").write(f"""<?xml version="1.0"?>
 <Container version="2">
   <Name>{cont}</Name>
-  <Repository>{d.get('drive_image', 'mandarons/icloud-drive')}</Repository>
-  <Registry>https://hub.docker.com/r/mandarons/icloud-drive</Registry>
+  <Repository>{image}</Repository>
+  <Registry>https://github.com/sidimam/iclouddr/pkgs/container/iclouddr</Registry>
   <Network>bridge</Network>
   <Shell>sh</Shell>
   <Privileged>false</Privileged>
@@ -665,10 +669,14 @@ drive:
   <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="" Type="Variable" Display="advanced" Required="false" Mask="false">{d["user_id"]}</Config>
   <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="" Type="Variable" Display="advanced" Required="false" Mask="false">{d["group_id"]}</Config>
   <Config Name="TZ" Target="TZ" Default="Europe/Rome" Mode="" Description="" Type="Variable" Display="advanced" Required="false" Mask="false">{d["tz"]}</Config>
+  <Config Name="Note, promemoria (PIM)" Target="/icloud/pim" Default="{html.escape(pim_host)}" Mode="rw" Description="Modulo PIM: Note/ (HTML) e Promemoria/ (JSON e testo), sola lettura da iCloud" Type="Path" Display="always" Required="false" Mask="false">{html.escape(pim_host)}</Config>
+  <Config Name="Cartella della persona (account collegati)" Target="/icloud/persona" Default="{html.escape(person_host)}" Mode="rw" Description="Posta, calendari e contatti degli account collegati: una sottocartella per account" Type="Path" Display="always" Required="false" Mask="false">{html.escape(person_host)}</Config>
+  <Config Name="PIM attivo" Target="PIM_ENABLED" Default="1" Mode="" Description="0 = solo iclouddr originale" Type="Variable" Display="always" Required="false" Mask="false">1</Config>
+  <Config Name="PIM ogni (secondi)" Target="PIM_INTERVAL" Default="21600" Mode="" Description="intervallo fra un giro e l altro di note e promemoria" Type="Variable" Display="advanced" Required="false" Mask="false">21600</Config>
 """ + (f'''  <Config Name="Foto personali" Target="/icloud/photos/all" Default="{html.escape(photos_host)}" Mode="rw" Description="Libreria PrimarySync, cartelle %Y/%m" Type="Path" Display="always" Required="false" Mask="false">{html.escape(photos_host)}</Config>
 ''' if photos else "") + """</Container>
 """)
-    rc, out, err = sh(f"docker run -d --name {cont} --restart unless-stopped --label net.unraid.docker.managed=dockerman -e PUID={d['user_id']} -e PGID={d['group_id']} -e TZ={d['tz']} -e ENV_CONFIG_FILE_PATH=/config/config.yaml -v {host_appdata}:/config -v {json.dumps(dest_host)}:/icloud/drive{photos_mount} --label net.unraid.docker.icon={icon} {d.get('drive_image', 'mandarons/icloud-drive')}", 180)
+    rc, out, err = sh(f"docker run -d --name {cont} --restart unless-stopped --label net.unraid.docker.managed=dockerman -e PUID={d['user_id']} -e PGID={d['group_id']} -e TZ={d['tz']} -e ENV_CONFIG_FILE_PATH=/config/config.yaml -v {host_appdata}:/config -v {json.dumps(dest_host)}:/icloud/drive{photos_mount} -v {json.dumps(pim_host)}:/icloud/pim -v {json.dumps(person_host)}:/icloud/persona -e PIM_ENABLED=1 --label net.unraid.docker.icon={icon} {image}", 180)
     if rc != 0: flash(_("docker run fallito: {a0}", a0=err[-300:])); return redirect(url_for("new"))
     c["users"][name] = {"type": "iclouddrive", "container": cont, "label": label, "chat_id": chat, "apple_id": apple}; c["aliases"][short.lower() + "-drive"] = name; save(c)
     flash(_("{a0} creato. Primo login Apple dal terminale di Unraid: docker exec -it {a1} /bin/sh -c \"su-exec abc icloud --username={a2} --session-directory=/config/session_data\" — password, codice, y al keyring. Poi #{a3} auth / #{a4} 123456 funzionano dal bot.", a0=cont, a1=cont, a2=apple, a3=name, a4=name))

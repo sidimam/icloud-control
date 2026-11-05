@@ -1,6 +1,6 @@
 {% extends "base.html" %}{% block body %}
 <h1 class="title">{{ _('Nuovo utente iCloud') }}</h1>
-<p class="note">{{ _("Crea un container iclouddr (mandarons/icloud-drive) che scarica iCloud Drive e, se vuoi, le foto personali: cartelle, config.yaml, template Unraid e container. Poi serve il primo login Apple con il codice 2FA dal terminale di Unraid (il comando compare dopo la creazione).") }}</p>
+<p class="note">{{ _("Crea un container iclouddr (ghcr.io/sidimam/iclouddr: mandarons/icloud-drive con il modulo PIM) che scarica iCloud Drive, le note e i promemoria e, se vuoi, le foto personali: cartelle, config.yaml, template Unraid e container. Posta, calendari e contatti si aggiungono poi da «Account collegati». Serve il primo login Apple con il codice 2FA dal terminale di Unraid (il comando compare dopo la creazione).") }}</p>
 <form method="post" style="max-width:640px"><div class="list">
 <div class="li col"><label class="f" for="l">{{ _('Persona (etichetta e nome delle cartelle, es. Luca)') }}</label><input id="l" name="label" required oninput="hint(this.value)"></div>
 <div class="li col"><label class="f" for="s">{{ _('Nome breve del container (es. ldimambro → iclouddr-ldimambro)') }}</label><input id="s" name="short" required pattern="[A-Za-z0-9]+"></div>
