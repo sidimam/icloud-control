@@ -605,7 +605,7 @@ def new():
 def new_drive(c, f, name, short):
     """Nuovo container iCloud Drive (mandarons/icloud-drive): cartelle, config.yaml, template Unraid, container. Primo login manuale."""
     apple = f["apple_id"].strip(); chat = f.get("chat_id", "").strip(); label = f.get("label", name).strip() or name
-    dest_host = (f.get("drive_dest", "") or f"/mnt/user/documents/{label}/iCloud Drive").strip().rstrip("/")
+    dest_host = (f.get("drive_dest", "") or f"/mnt/user/documents/{label}/iCloud/iCloud Drive").strip().rstrip("/")
     photos = f.get("photos") == "on"; photos_host = (f.get("photos_dest", "") or f"/mnt/user/media/photos/{label}/Personale").strip().rstrip("/")
     ignore = [x.strip() for x in f.get("ignore", "").split(",") if x.strip()]
     photos_note = f" e foto → {photos_host}" if photos else ""; photos_mount = f" -v {json.dumps(photos_host)}:/icloud/photos/all" if photos else ""
@@ -615,7 +615,8 @@ def new_drive(c, f, name, short):
     # Dalla 3.8 i container nuovi usano l'immagine con il modulo PIM, come quelli di famiglia: note e promemoria in
     # <persona>/iCloud, account collegati nella cartella della persona (la cartella che contiene «iCloud Drive»).
     image = os.environ.get("ICLOUDDR_IMAGE", "ghcr.io/sidimam/iclouddr:0.2.3")
-    person_host = os.path.dirname(dest_host); pim_host = person_host + "/iCloud"
+    # struttura (5/11/2026): documents/<Persona>/iCloud/{iCloud Drive, Note, Promemoria, Posta, Calendario, Contatti}
+    person_host = f"/mnt/user/documents/{label}"; pim_host = person_host + "/iCloud"
     appdata = host_to_local(host_appdata); dest = host_to_local(dest_host)
     if dest == dest_host: flash(_("La destinazione deve stare sotto /mnt/user/documents (montato in iCloud Dashboard come /documents)")); return redirect(url_for("new"))
     photos_local = host_to_local(photos_host) if photos else None
