@@ -623,7 +623,7 @@ def new_drive(c, f, name, short):
     p = c["paths"]; d = c["defaults"]; cont = f"iclouddr-{short.lower()}"; host_appdata = f"/mnt/user/appdata/{cont}"
     # Dalla 3.8 i container nuovi usano l'immagine con il modulo PIM, come quelli di famiglia: note e promemoria in
     # <persona>/iCloud, account collegati nella cartella della persona (la cartella che contiene «iCloud Drive»).
-    image = os.environ.get("ICLOUDDR_IMAGE", "ghcr.io/sidimam/iclouddr:0.2.5")
+    image = os.environ.get("ICLOUDDR_IMAGE", "ghcr.io/sidimam/iclouddr:0.2.6")
     # struttura (5/11/2026): documents/<Persona>/iCloud/{iCloud Drive, Note, Promemoria, Posta, Calendario, Contatti}
     person_host = f"/mnt/user/documents/{label}"; pim_host = person_host + "/iCloud"
     appdata = host_to_local(host_appdata); dest = host_to_local(dest_host)
@@ -828,16 +828,48 @@ def idx_loop():
         try: SI.run(idx_sources(), log=lambda x: print(x, flush=True)); print(f"indice: giro completato in {time.time() - t:.0f} s", flush=True)
         except Exception as e: print(f"indice: {e}", flush=True)
         time.sleep(IDX_INTERVAL)
+# ---- elementi condivisi (3.11): li segnala il modulo PIM di iclouddr ≥ 0.2.6 in pim-status.json («condivisi»)
+_SHARED = {"t": 0, "v": {}}
+def shared_map():
+    """{persona: {"note": {file relativo}, "liste": {titolo}, "drive": [percorsi]}}, riletto ogni 2 minuti."""
+    if time.time() - _SHARED["t"] < 120: return _SHARED["v"]
+    out = {}
+    for n, u in cfg()["users"].items():
+        if utype(u) != "iclouddrive": continue
+        info = inspect(u["container"])
+        if not info: continue
+        try: c = json.load(open(os.path.join(host_to_local(mounts(info).get("/config", "")), "pim-status.json"))).get("condivisi") or {}
+        except (FileNotFoundError, ValueError, TypeError, OSError): continue
+        out[u.get("label", n)] = {"note": set(c.get("note") or []), "liste": set(c.get("liste") or []),
+                                  "drive": [d.get("path", "") for d in c.get("drive") or [] if d.get("path")]}
+    _SHARED.update(t=time.time(), v=out); return out
+def is_shared(r):
+    """Nota, promemoria (della lista) o file di iCloud Drive (anche dentro una cartella condivisa) condiviso con altri."""
+    s = shared_map().get(r.get("person"))
+    if not s: return False
+    x = r.get("x") or {}; kind = r.get("kind")
+    if kind == "note": return x.get("rel") in s["note"]
+    if kind == "reminder": return x.get("list") in s["liste"]
+    if kind == "file": rel = x.get("rel", ""); return any(rel == p or rel.startswith(p + "/") for p in s["drive"])
+    return False
+def list_shared(person, name):
+    return name in (shared_map().get(person) or {}).get("liste", ())
+app.jinja_env.globals.update(is_shared=is_shared, list_shared=list_shared)
 def allowed_persons():
     """Persone visibili: tutte per l'amministratore (o senza password), altrimenti solo quella del proprio container."""
     c = cfg()["users"]
     if not accounts.any_password() or accounts.is_admin(me()): return [u.get("label", n) for n, u in c.items()]
     own = _own_icloud(); return [c[own].get("label", own)] if own in c else []
+PERSONAL_ALBUMS = {"Personale"}   # gli altri album di foto (es. Famiglia) sono librerie condivise, visibili a tutta la famiglia
+def shared_albums():
+    con = SI.connect()
+    try: return [r["account"] for r in con.execute("select distinct account from items where kind='photo' and account is not null order by account") if r["account"] not in PERSONAL_ALBUMS]
+    finally: con.close()
 def _item(rid):
     con = SI.connect()
     try: r = con.execute("select * from items where id=?", (rid,)).fetchone()
     finally: con.close()
-    if not r or r["person"] not in allowed_persons(): abort(404)
+    if not r or (r["person"] not in allowed_persons() and not (r["kind"] == "photo" and r["account"] not in PERSONAL_ALBUMS)): abort(404)
     d = dict(r); d["x"] = json.loads(d.get("extra") or "{}"); return d
 def _local_ok(p):
     p = os.path.realpath(p)
@@ -1067,8 +1099,7 @@ def geo_loop():
         except Exception as e: print(f"geo: {e}", flush=True); time.sleep(300)
 @app.route("/api/photo_geo")
 def api_photo_geo():
-    a = request.args; persons = allowed_persons(); person = a.get("person", ""); sel = [person] if person in persons else persons
-    where, args = [f"kind='photo' and lat is not null and person in ({','.join('?' * len(sel))})"], list(sel)
+    a = request.args; _p, _s, _w, where, args = _photo_scope(a); where = where + ["lat is not null"]
     if a.get("album"): where.append("account=?"); args.append(a["album"])
     if a.get("year", "").isdigit():
         y = int(a["year"]); where.append("date >= ? and date < ?"); args += [datetime.datetime(y, 1, 1).timestamp(), datetime.datetime(y + 1, 1, 1).timestamp()]
@@ -1078,13 +1109,19 @@ def api_photo_geo():
         todo = con.execute("select count(*) n from items where kind='photo' and geo is null").fetchone()["n"]
     finally: con.close()
     return {"points": pts, "pending": todo}
+def _photo_scope(a):
+    """«Tutti», una libreria condivisa (es. Famiglia, visibile a tutti) o una persona (le sue foto personali)."""
+    persons = allowed_persons(); shared = shared_albums(); who = a.get("person", "")
+    if who in shared: return persons, shared, who, ["kind='photo' and account=?"], [who]
+    if who in persons: return persons, shared, who, [f"kind='photo' and person=? and account not in ({','.join('?' * len(shared)) or 'null'})"], [who] + shared
+    sh = ",".join("?" * len(shared)) or "null"
+    return persons, shared, "", [f"kind='photo' and ((person in ({','.join('?' * len(persons))}) and account not in ({sh})) or account in ({sh}))"], persons + shared + shared
 @app.route("/photos")
 def photos():
-    a = request.args; persons = allowed_persons(); person = a.get("person", ""); sel = [person] if person in persons else persons
+    a = request.args; persons, shared, person, where, args = _photo_scope(a)
     album = a.get("album", ""); what = a.get("what", "")
     try: page = max(0, int(a.get("page", "0")))
     except ValueError: page = 0
-    where, args = [f"kind='photo' and person in ({','.join('?' * len(sel))})"], list(sel)
     if album: where.append("account=?"); args.append(album)
     if what == "photo": where.append(f"ext in ({','.join('?' * len(IMG_EXT))})"); args += sorted(IMG_EXT)
     elif what == "video": where.append(f"ext in ({','.join('?' * len(VID_EXT))})"); args += sorted(VID_EXT)
@@ -1094,12 +1131,13 @@ def photos():
     con = SI.connect()
     try:
         rows = [{**dict(r), "x": json.loads(r["extra"] or "{}")} for r in con.execute(f"select * from items where {' and '.join(where)} order by date desc limit ? offset ?", args + [per + 1, page * per])]
-        albums = con.execute(f"select person, account, count(*) n from items where kind='photo' and person in ({','.join('?' * len(sel))}) group by person, account order by person, account", sel).fetchall()
-        years = [r["y"] for r in con.execute(f"select distinct strftime('%Y', date, 'unixepoch') y from items where kind='photo' and person in ({','.join('?' * len(sel))}) order by y desc", sel) if r["y"]]
+        scope_w, scope_a = _photo_scope(a)[3], _photo_scope(a)[4]   # album e anni disponibili nell'ambito scelto
+        albums = con.execute(f"select person, account, count(*) n from items where {' and '.join(scope_w)} group by person, account order by person, account", scope_a).fetchall()
+        years = [r["y"] for r in con.execute(f"select distinct strftime('%Y', date, 'unixepoch') y from items where {' and '.join(scope_w)} order by y desc", scope_a) if r["y"]]
     finally: con.close()
     more = len(rows) > per; rows = rows[:per]
     for r in rows: r["media"] = "video" if r["ext"] in VID_EXT else ("audio" if r["ext"] in AUD_EXT else "image")
-    return render_template("photos.html", rows=rows, albums=albums, years=years, persons=persons, person=person, album=album, what=what, year=a.get("year", ""), page=page, more=more, fmt_date=_fmt_date, fmt_size=_fmt_size)
+    return render_template("photos.html", rows=rows, albums=albums, years=years, persons=persons, shared=shared, person=person, album=album, what=what, year=a.get("year", ""), page=page, more=more, fmt_date=_fmt_date, fmt_size=_fmt_size)
 @app.route("/notes")
 def notes():
     persons = allowed_persons(); person = request.args.get("person", ""); sel = [person] if person in persons else persons

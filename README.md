@@ -108,6 +108,18 @@ Gli avvisi automatici del dispatcher si impostano dalle variabili del template U
 `TELEGRAM_TOKEN` e `ALLOWED_CHATS` (le chat da cui il bot accetta comandi) restano come prima. Le risposte ai comandi del bot e
 della GUI non passano dalle ore silenziose: arrivano sempre subito alla chat che le ha chieste.
 
+### Elementi condivisi in blu e filtro delle foto (dalla 3.11)
+
+- **Condivisi in blu**: note, liste di promemoria (e i loro promemoria) ed elementi di iCloud Drive che la persona condivide con
+  altri hanno il titolo in blu nelle schede Note, Promemoria, Cerca e nella scheda dell'elemento («condiviso»). L'elenco lo scrive
+  il modulo PIM di iclouddr ≥ 0.2.6 in `pim-status.json` (`condivisi`) a ogni giro; il contenuto di una cartella del Drive
+  condivisa è condiviso con lei. Per il Drive valgono anche le cartelle che altri condividono con la persona (es. Passwords
+  di Simone vista da Daniela); per note e liste Apple espone solo quelle della persona stessa.
+- **Foto**: il filtro è «Tutti, Famiglia, Simone, Daniela, Sofia, Maria»: le librerie condivise (ogni album diverso da Personale,
+  es. Famiglia) sono una voce a sé, visibile a tutti; una persona mostra solo le sue foto personali. Le persone nuove compaiono da
+  sole in tutte le schede appena il loro container è configurato.
+- Le nuove persone create da qui usano `ghcr.io/sidimam/iclouddr:0.2.6` (`ICLOUDDR_IMAGE`).
+
 ### Foto, mappa, miniature e metadati (dalla 3.9)
 
 - L'indice comprende le **foto e i video** che iclouddr scarica in `media/photos/<Persona>/<album>` (Personale, Famiglia):

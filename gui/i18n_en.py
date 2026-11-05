@@ -1,5 +1,9 @@
 """Traduzioni inglesi della GUI: chiave = testo italiano usato nel codice e nei template (vedi ui.py)."""
 EN = {
+    "Condivisa": "Shared",
+    "Condiviso": "Shared",
+    "Lista condivisa": "Shared list",
+    "condiviso": "shared",
     "prima copia in corso da {a0}": "first copy running for {a0}",
     "fa": "ago",
     "{a0} messaggi finora": "{a0} messages so far",
