@@ -1,8 +1,7 @@
 {% extends "base.html" %}{% block body %}
-<div class="card" style="max-width:360px;margin:3rem auto"><h2>Verifica in due passaggi</h2>
-<p class="mut">Profilo <code>{{ user }}</code>: inserisci il codice a 6 cifre dell'app di autenticazione, oppure uno dei codici di recupero (tipo <code>k7m2-x9qp</code>).</p>
+<div class="narrow"><h1 class="title">{{ _('Verifica in due passaggi') }}</h1>
+<p class="note">{{ _("Profilo {a0}: inserisci il codice a 6 cifre dell'app di autenticazione, oppure uno dei codici di recupero (tipo k7m2-x9qp).", a0=user) }}</p>
 <form method="post" action="/login/2fa"><input type="hidden" name="next" value="{{next}}">
-<label for="code">Codice</label><input id="code" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="12" autofocus required>
-<div class="row"><button>Verifica</button> <a href="/login">Annulla</a></div></form>
-<p class="mut" style="margin-top:1rem"><a href="/recover">Telefono perso?</a></p></div>
-{% endblock %}
+<div class="list"><div class="li col"><label class="f" for="code">{{ _('Codice') }}</label><input id="code" name="code" autocomplete="one-time-code" maxlength="12" autofocus required></div></div>
+<div class="row" style="margin-top:1rem"><button>{{ _('Verifica') }}</button><a href="/login">{{ _('Annulla') }}</a></div></form>
+<p class="note"><a href="/recover">{{ _('Telefono perso?') }}</a></p></div>{% endblock %}

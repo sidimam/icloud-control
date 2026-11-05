@@ -1,29 +1,41 @@
 {% extends "base.html" %}{% block body %}
-<p class="mut">Un utente = un container iCloud: 📷 foto (icloudpd) o 📁 iCloud Drive (mandarons/icloud-drive). I comandi Telegram usano il prefisso <code>#nome</code>; il codice Apple arriva sui dispositivi dell'account e si inserisce qui o in chat.</p>
-{% for title, group in sections %}<h2 class="section">{{title}}</h2><div class="grid">{% for u in group %}<div class="card">
-<h2>{% if u.type == "iclouddrive" %}📁{% else %}📷{% endif %} {{u.label}} <span class="mut">#{{u.name}}</span></h2><div class="mut">{{u.container}}</div>
-{% if not u.exists %}<p class="bad">Container non trovato.</p>{% else %}
-<div class="row">{% if u.running %}<span class="pill ok">in esecuzione{% if u.health %} · {{u.health}}{% endif %}</span>{% else %}<span class="pill bad">fermo</span>{% endif %}
-{% if u.days %}<span class="pill {% if u.days|int <= 3 %}warn{% else %}ok{% endif %}">sessione: {{u.days}} giorni</span>{% endif %}{% if u.auth %}<span class="pill warn">autenticazione in corso</span>{% endif %}</div>
-{% include "actions.html" %}
-{% if u.type == "iclouddrive" %}<dl><dt>Apple ID</dt><dd>{{u.apple_id}}</dd><dt>Scarica</dt><dd>iCloud Drive, ogni {{u.sync_interval or '?'}} s{% if u.remove_obsolete == 'true' %} · rimuove i file cancellati{% endif %}</dd><dt>Cartella</dt><dd>{{u.drive_host}}</dd><dt>Telegram</dt><dd>chat {{u.chat_id or '—'}}</dd><dt>Ultimo evento</dt><dd>{{u.last or '—'}}</dd>
-{% for g in u.cycles or [] %}<dt>Giro {{g.kind}}</dt><dd>{% if g.running_min is not none %}<span class="{% if g.stalled %}bad{% else %}ok{% endif %}">in corso dalle {{g.since}} ({{g.running_min}} min){% if g.stalled %} — sembra bloccato: «Riavvia»{% endif %}</span>{% if g.last_min is not none %} · <span class="mut">l'ultimo è durato {{g.last_min}} min</span>{% endif %}{% else %}completato {{g.last_end}}{% if g.last_min is not none %} in {{g.last_min}} min{% endif %}{% endif %}</dd>{% endfor %}
-<dt>Ultima riga di log</dt><dd>{{u.activity or '—'}}</dd>
-<dt>Riavvio automatico</dt><dd>{% if not u.autoheal_on %}<span class="mut">spento (AUTOHEAL=0)</span>{% elif u.autoheal and u.autoheal.last %}{% set e = u.autoheal.last %}<span class="{% if e.action == 'gave_up' %}bad{% else %}mut{% endif %}">{% if e.action == 'gave_up' %}⚠️ sospeso il {{e.when}}: troppi blocchi{% else %}🔁 ultimo il {{e.when}}{% endif %} — {{e.reason}}</span>{% if u.autoheal.n24 %} · {{u.autoheal.n24}} nelle ultime 24 h{% endif %}{% else %}<span class="mut">attivo, nessun intervento</span>{% endif %}</dd></dl>
-{% else %}<dl><dt>Apple ID</dt><dd>{{u.apple_id}}</dd><dt>Scarica</dt><dd>{{u.photo_library}}{% if u.photo_album %} · album: {{u.photo_album}}{% endif %}</dd><dt>Cartella</dt><dd>{{u.photos_host}}</dd><dt>Telegram</dt><dd>chat {{u.tg_chat or '—'}}</dd><dt>Ultimo evento</dt><dd>{{u.last or '—'}}</dd><dt>Ultima riga di log</dt><dd>{{u.activity or '—'}}</dd></dl>{% endif %}
-<div class="row"><form class="inline" method="post" action="/u/{{u.name}}/auth" onsubmit="return confirm('Invalida il cookie attuale e chiede un nuovo codice Apple. Continuare?')"><button>Riautentica</button></form>
-<form class="inline" method="post" action="/u/{{u.name}}/code"><input name="code" placeholder="codice a 6 cifre" style="width:11em;display:inline" inputmode="numeric" pattern="[0-9]{6}"> <button class="sec">Invia codice</button></form></div>
-<details><summary>Impostazioni</summary><form method="post" action="/u/{{u.name}}/settings">
-<label>Etichetta</label><input name="label" value="{{u.label}}">
-{% if u.type == "iclouddrive" %}<label>Apple ID</label><input name="apple_id" value="{{u.apple_id}}">
-<label>Controlla iCloud Drive ogni (secondi)</label><input name="sync_interval" value="{{u.sync_interval}}">
-<label><input type="checkbox" name="remove_obsolete" {% if u.remove_obsolete == 'true' %}checked{% endif %} style="width:auto"> Rimuovi in locale i file cancellati su iCloud</label>
-<label>Chat Telegram (id) per avvisi</label><input name="telegram_chat_id" value="{{u.chat_id}}">
-{% else %}<label>Libreria (PrimarySync = personale, oppure l'id SharedSync-…)</label><input name="photo_library" value="{{u.photo_library}}">
-<label>Solo album (vuoto = tutto)</label><input name="photo_album" value="{{u.photo_album}}">
-<label>Struttura cartelle</label><input name="folder_structure" value="{{u.folder_structure}}">
-<label>Chat Telegram (id) per avvisi e comandi</label><input name="telegram_chat_id" value="{{u.tg_chat}}">
-<label>Promemoria da N giorni prima</label><input name="notification_days" value="{{u.notification_days}}">{% endif %}
-<div class="row"><button>Salva e riavvia</button></div></form>
-<form method="post" action="/u/{{u.name}}/delete" onsubmit="return confirm('Toglie l\'utente dalla GUI e dal bot; il container resta. Continuare?')"><div class="row"><button class="danger">Rimuovi dalla GUI</button></div></form></details>
-{% endif %}</div>{% endfor %}</div>{% endfor %}{% endblock %}
+<h1 class="title">{{ _('Utenti iCloud') }}</h1>
+<p class="note">{{ _("Un utente = un container iCloud. I comandi Telegram usano il prefisso #nome; il codice Apple arriva sui dispositivi dell'account e si inserisce qui o in chat.") }}</p>
+{% for title, group in sections %}<details class="grp" data-k="sec-{{ loop.index }}" open><summary>{{ icon('cloud', 15) }}{{ _(title) }}{{ icon('chevron', 15, 'ic chev') }}</summary><div class="grid">{% for u in group %}
+<div class="list">
+<div class="uhead"><span class="badge {{ 'b-blue' if u.type == 'iclouddrive' else 'b-orange' }}">{{ icon('folder' if u.type == 'iclouddrive' else 'photo', 17) }}</span><div><h2>{{u.label}}</h2><span class="mut">#{{u.name}} · {{u.container}}</span></div></div>
+{% if not u.exists %}<div class="li"><span class="bad">{{ _('Container non trovato.') }}</span></div>{% else %}
+<div class="li"><span class="row">{% if u.running %}<span class="tag ok">{{ _('in esecuzione') }}{% if u.health %} · {{u.health}}{% endif %}</span>{% else %}<span class="tag bad">{{ _('fermo') }}</span>{% endif %}
+{% if u.days %}<span class="tag {% if u.days|int <= 3 %}warn{% else %}ok{% endif %}">{{ _('sessione: {a0} giorni', a0=u.days) }}</span>{% endif %}{% if u.auth %}<span class="tag warn">{{ _('autenticazione in corso') }}</span>{% endif %}</span></div>
+<div class="li">{% include "actions.html" %}</div>
+{% if u.type == "iclouddrive" %}
+<div class="li"><span class="k">Apple ID</span><span class="v">{{u.apple_id}}</span></div>
+<div class="li"><span class="k">{{ _('Scarica') }}</span><span class="v">{{ _('iCloud Drive, ogni {a0} s', a0=(u.sync_interval or '?')) }}{% if u.remove_obsolete == 'true' %} · {{ _('rimuove i file cancellati') }}{% endif %}</span></div>
+<div class="li"><span class="k">{{ _('Cartella') }}</span><span class="v">{{u.drive_host}}</span></div>
+{% for g in u.cycles or [] %}<div class="li"><span class="k">{{ _('Giro {a0}', a0=g.kind) }}</span><span class="v">{% if g.running_min is not none %}<span class="{% if g.stalled %}bad{% else %}ok{% endif %}">{{ _('in corso dalle {a0} ({a1} min)', a0=g.since, a1=g.running_min) }}</span>{% if g.last_min is not none %}<br><span class="mut">{{ _("l'ultimo è durato {a0} min", a0=g.last_min) }}</span>{% endif %}{% else %}{{ _('completato {a0}', a0=g.last_end) }}{% if g.last_min is not none %} · {{ g.last_min }} min{% endif %}{% endif %}</span></div>{% endfor %}
+<div class="li"><span class="k">{{ _('Ultima riga di log') }}</span><span class="v">{{u.activity or '—'}}</span></div>
+<div class="li"><span class="k">{{ _('Riavvio automatico') }}</span><span class="v">{% if not u.autoheal_on %}{{ _('spento (AUTOHEAL=0)') }}{% elif u.autoheal and u.autoheal.last %}{% set e = u.autoheal.last %}<span class="{% if e.action == 'gave_up' %}bad{% endif %}">{% if e.action == 'gave_up' %}{{ _('sospeso il {a0}: troppi blocchi', a0=e.when) }}{% else %}{{ _('ultimo il {a0}', a0=e.when) }}{% endif %}</span><br><span class="mut">{{e.reason}}</span>{% if u.autoheal.n24 %}<br><span class="mut">{{ _('{a0} nelle ultime 24 h', a0=u.autoheal.n24) }}</span>{% endif %}{% else %}{{ _('attivo, nessun intervento') }}{% endif %}</span></div>
+{% else %}
+<div class="li"><span class="k">Apple ID</span><span class="v">{{u.apple_id}}</span></div>
+<div class="li"><span class="k">{{ _('Scarica') }}</span><span class="v">{{u.photo_library}}{% if u.photo_album %} · {{u.photo_album}}{% endif %}</span></div>
+<div class="li"><span class="k">{{ _('Cartella') }}</span><span class="v">{{u.photos_host}}</span></div>
+<div class="li"><span class="k">{{ _('Ultima riga di log') }}</span><span class="v">{{u.activity or '—'}}</span></div>{% endif %}
+<div class="li"><span class="k">{{ _('Ultimo evento') }}</span><span class="v">{{u.last or '—'}}</span></div>
+<details class="li col" style="display:block"><summary style="list-style:none;display:flex;align-items:center;gap:.6rem;cursor:pointer"><span class="badge b-indigo">{{ icon('key', 17) }}</span><span class="k">{{ _('Sessione Apple (2FA)') }}</span><span class="v">{{ icon('chevron', 15, 'ic chev') }}</span></summary>
+<div style="padding:.6rem 0;display:grid;gap:.6rem"><form class="inline" method="post" action="/u/{{u.name}}/auth" onsubmit="return confirm('{{ _('Invalida la sessione attuale e chiede un nuovo codice Apple. Continuare?') }}')"><button class="small">{{ _('Riautentica') }}</button></form>
+<form method="post" action="/u/{{u.name}}/code" class="row"><input name="code" placeholder="{{ _('codice a 6 cifre') }}" style="width:11em" inputmode="numeric" pattern="[0-9]{6}"><button class="tint small">{{ _('Invia codice') }}</button></form></div></details>
+<details class="li col" style="display:block"><summary style="list-style:none;display:flex;align-items:center;gap:.6rem;cursor:pointer"><span class="badge b-gray">{{ icon('gear', 17) }}</span><span class="k">{{ _('Impostazioni') }}</span><span class="v">{{ icon('chevron', 15, 'ic chev') }}</span></summary>
+<form method="post" action="/u/{{u.name}}/settings" style="padding:.6rem 0;display:grid;gap:.45rem">
+<label class="f">{{ _('Etichetta') }}</label><input name="label" value="{{u.label}}">
+{% if u.type == "iclouddrive" %}<label class="f">Apple ID</label><input name="apple_id" value="{{u.apple_id}}">
+<label class="f">{{ _('Controlla iCloud Drive ogni (secondi)') }}</label><input name="sync_interval" value="{{u.sync_interval}}">
+<label class="row" style="justify-content:space-between">{{ _('Rimuovi in locale i file cancellati su iCloud') }}<input class="sw" type="checkbox" name="remove_obsolete" {% if u.remove_obsolete == 'true' %}checked{% endif %}></label>
+<label class="f">{{ _('Chat Telegram (id) per avvisi') }}</label><input name="telegram_chat_id" value="{{u.chat_id}}">
+{% else %}<label class="f">{{ _("Libreria (PrimarySync = personale, oppure l'id SharedSync-…)") }}</label><input name="photo_library" value="{{u.photo_library}}">
+<label class="f">{{ _('Solo album (vuoto = tutto)') }}</label><input name="photo_album" value="{{u.photo_album}}">
+<label class="f">{{ _('Struttura cartelle') }}</label><input name="folder_structure" value="{{u.folder_structure}}">
+<label class="f">{{ _('Chat Telegram (id) per avvisi e comandi') }}</label><input name="telegram_chat_id" value="{{u.tg_chat}}">
+<label class="f">{{ _('Promemoria da N giorni prima') }}</label><input name="notification_days" value="{{u.notification_days}}">{% endif %}
+<div class="row"><button class="small">{{ _('Salva e riavvia') }}</button></div></form>
+<form method="post" action="/u/{{u.name}}/delete" onsubmit="return confirm('{{ _("Toglie l'utente dalla GUI e dal bot; il container resta. Continuare?") }}')" style="padding-bottom:.4rem"><button class="red small">{{ icon('trash', 15) }}{{ _('Rimuovi dalla GUI') }}</button></form></details>
+{% endif %}</div>{% endfor %}</div></details>{% endfor %}{% endblock %}

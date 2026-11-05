@@ -1,18 +1,18 @@
 {% extends "base.html" %}{% block head %}{% if refresh %}<meta http-equiv="refresh" content="{{refresh}}">{% endif %}{% endblock %}{% block body %}
-<p><a href="/">← Utenti</a></p>
-<h2>{% if u.type == "iclouddrive" %}📁{% else %}📷{% endif %} {{u.label}} <span class="mut">#{{u.name}} · {{u.container}}</span></h2>
-<div class="row">{% if u.running %}<span class="pill ok">in esecuzione{% if u.health %} · {{u.health}}{% endif %}</span>{% else %}<span class="pill bad">fermo</span>{% endif %}
-{% for g in u.cycles or [] %}<span class="pill {% if g.stalled %}bad{% elif g.running_min is not none %}warn{% else %}ok{% endif %}">{{g.kind}}: {% if g.running_min is not none %}in corso da {{g.running_min}} min{% if g.last_min is not none %} (l'ultimo {{g.last_min}} min){% endif %}{% else %}completato {{g.last_end}}{% endif %}</span>{% endfor %}
-{% if u.activity %}<span class="pill">ultima riga: {{u.activity}}</span>{% endif %}</div>
+<p><a href="/">← {{ _('Utenti iCloud') }}</a></p>
+<h1 class="title">{{u.label}} <span class="mut" style="font-size:15px;font-weight:400">#{{u.name}} · {{u.container}}</span></h1>
+<div class="row" style="margin-bottom:.8rem">{% if u.running %}<span class="tag ok">{{ _('in esecuzione') }}{% if u.health %} · {{u.health}}{% endif %}</span>{% else %}<span class="tag bad">{{ _('fermo') }}</span>{% endif %}
+{% for g in u.cycles or [] %}<span class="tag {% if g.stalled %}bad{% elif g.running_min is not none %}warn{% else %}ok{% endif %}">{{g.kind}}: {% if g.running_min is not none %}{{ _('in corso da {a0} min', a0=g.running_min) }}{% else %}{{ _('completato {a0}', a0=g.last_end) }}{% endif %}</span>{% endfor %}
+{% if u.activity %}<span class="tag">{{ _('ultima riga: {a0}', a0=u.activity) }}</span>{% endif %}</div>
 {% set back = request.full_path %}{% include "actions.html" %}
-<form method="get" class="row" style="margin-top:1rem">
-<label style="margin:0">Righe</label><select name="n" style="width:auto">{% for x in (100, 300, 1000, 5000) %}<option {% if x == n %}selected{% endif %}>{{x}}</option>{% endfor %}</select>
-<input name="q" value="{{q}}" placeholder="cerca…" style="width:14em">
-<label style="margin:0"><input type="checkbox" name="err" value="1" {% if only_err %}checked{% endif %} style="width:auto"> solo errori</label>
-<label style="margin:0"><input type="checkbox" name="all" value="1" {% if show_noise %}checked{% endif %} style="width:auto"> mostra errori ripetuti</label>
-<label style="margin:0"><input type="checkbox" name="refresh" value="15" {% if refresh %}checked{% endif %} style="width:auto"> aggiorna ogni 15 s</label>
-<button>Mostra</button> <a href="/u/{{u.name}}/logs.txt">scarica il log (5000 righe)</a></form>
-<p class="mut">{{rows|length}} righe{% if hidden %} · {{hidden}} nascoste (file che iCloud elenca ma non lascia scaricare, foto senza versione alternativa){% endif %} · ora del server {{ now }}</p>
+<form method="get" style="margin:1rem 0"><div class="list">
+<div class="li"><label class="k" for="n">{{ _('Righe') }}</label><span class="v"><select id="n" name="n" style="width:auto">{% for x in (100, 300, 1000, 5000) %}<option {% if x == n %}selected{% endif %}>{{x}}</option>{% endfor %}</select></span></div>
+<div class="li col"><label class="f" for="q">{{ _('Cerca') }}</label><input id="q" name="q" value="{{q}}" placeholder="{{ _('cerca…') }}"></div>
+<div class="li"><label class="k" for="e1">{{ _('Solo errori') }}</label><span class="v"><input id="e1" class="sw" type="checkbox" name="err" value="1" {% if only_err %}checked{% endif %}></span></div>
+<div class="li"><label class="k" for="e2">{{ _('Mostra errori ripetuti') }}</label><span class="v"><input id="e2" class="sw" type="checkbox" name="all" value="1" {% if show_noise %}checked{% endif %}></span></div>
+<div class="li"><label class="k" for="e3">{{ _('Aggiorna ogni 15 s') }}</label><span class="v"><input id="e3" class="sw" type="checkbox" name="refresh" value="15" {% if refresh %}checked{% endif %}></span></div>
+<div class="li"><button class="small">{{ icon('search', 15) }}{{ _('Mostra') }}</button><a class="v" href="/u/{{u.name}}/logs.txt">{{ _('scarica il log (5000 righe)') }}</a></div></div></form>
+<p class="note">{{ _('{a0} righe', a0=rows|length) }}{% if hidden %} · {{ _('{a0} nascoste (file che iCloud elenca ma non lascia scaricare, foto senza versione alternativa)', a0=hidden) }}{% endif %} · {{ _('ora del server {a0}', a0=now) }}</p>
 <pre class="log">{% for lvl, l in rows %}<span class="{{lvl}}">{{l}}</span>
 {% endfor %}</pre>
 <script>window.scrollTo(0, document.body.scrollHeight)</script>

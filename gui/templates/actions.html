@@ -1,6 +1,6 @@
-{# Azioni rapide sul container (card della pagina Utenti e pagina Log). `back` = pagina a cui tornare dopo l'azione. #}
-<div class="row">{% if u.stalled %}<span class="pill bad">⚠️ sembra bloccato</span>{% endif %}
-{% if u.running %}<form class="inline" method="post" action="/u/{{u.name}}/restart"><input type="hidden" name="back" value="{{back or request.path}}"><button class="sec" title="Riavvia il container: il giro di sincronizzazione riparte subito">↻ Riavvia</button></form>
-<form class="inline" method="post" action="/u/{{u.name}}/stop" onsubmit="return confirm('Ferma {{u.container}}: la sincronizzazione si interrompe finché non lo riavvii. Continuare?')"><input type="hidden" name="back" value="{{back or request.path}}"><button class="danger">■ Ferma</button></form>
-{% else %}<form class="inline" method="post" action="/u/{{u.name}}/start"><input type="hidden" name="back" value="{{back or request.path}}"><button>▶ Avvia</button></form>{% endif %}
-{% if request.endpoint != "u_logs" %}<a href="/u/{{u.name}}/logs"><button type="button" class="sec">📜 Log</button></a>{% endif %}</div>
+{# Azioni rapide sul container (scheda della pagina Utenti e pagina Log). `back` = pagina a cui tornare dopo l'azione. #}
+<div class="row">{% if u.stalled %}<span class="tag bad">{{ icon('warn', 14) }}{{ _('sembra bloccato') }}</span>{% endif %}
+{% if u.running %}<form class="inline" method="post" action="/u/{{u.name}}/restart"><input type="hidden" name="back" value="{{back or request.path}}"><button class="tint small" title="{{ _('Riavvia il container: il giro di sincronizzazione riparte subito') }}">{{ icon('restart', 15) }}{{ _('Riavvia') }}</button></form>
+<form class="inline" method="post" action="/u/{{u.name}}/stop" onsubmit="return confirm('{{ _('Fermare {a0}? La sincronizzazione si interrompe finché non lo riavvii.', a0=u.container) }}')"><input type="hidden" name="back" value="{{back or request.path}}"><button class="red small">{{ icon('stop', 15) }}{{ _('Ferma') }}</button></form>
+{% else %}<form class="inline" method="post" action="/u/{{u.name}}/start"><input type="hidden" name="back" value="{{back or request.path}}"><button class="small">{{ icon('play', 15) }}{{ _('Avvia') }}</button></form>{% endif %}
+{% if request.endpoint != "u_logs" %}<a class="btn tint" style="font-size:13px;padding:.32rem .65rem;border-radius:8px" href="/u/{{u.name}}/logs">{{ icon('doc', 15) }}{{ _('Log') }}</a>{% endif %}</div>

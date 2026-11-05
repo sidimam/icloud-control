@@ -1,0 +1,6 @@
+{# Tema e lingua: salvano appena cambiano (profilo + cookie). #}
+<form class="autosave" method="post" action="/prefs"><input type="hidden" name="back" value="{{ request.full_path }}">
+<div class="li"><span class="badge b-indigo">{{ icon('theme', 17) }}</span><span class="k">{{ _('Aspetto') }}</span><span class="v"><span class="seg" role="radiogroup" aria-label="{{ _('Aspetto') }}">
+{% for v, l in (('system', _('Sistema')), ('light', _('Chiaro')), ('dark', _('Scuro'))) %}<label><input type="radio" name="theme" value="{{ v }}" {% if cur_theme() == v %}checked{% endif %}><span>{{ l }}</span></label>{% endfor %}</span></span></div>
+<div class="li"><span class="badge b-blue">{{ icon('globe', 17) }}</span><label class="k" for="lang">{{ _('Lingua') }}</label><span class="v"><select id="lang" name="lang" style="width:auto">{% for k, l in LANGS.items() %}<option value="{{ k }}" {% if cur_lang() == k %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></span></div>
+<noscript><div class="li"><button class="small">{{ _('Salva') }}</button></div></noscript></form>

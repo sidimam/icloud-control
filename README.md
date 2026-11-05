@@ -108,6 +108,15 @@ Gli avvisi automatici del dispatcher si impostano dalle variabili del template U
 `TELEGRAM_TOKEN` e `ALLOWED_CHATS` (le chat da cui il bot accetta comandi) restano come prima. Le risposte ai comandi del bot e
 della GUI non passano dalle ore silenziose: arrivano sempre subito alla chat che le ha chieste.
 
+### Aspetto, lingua e messaggi (dalla 3.2)
+
+- Grafica nello stile delle Impostazioni di iOS/macOS: liste raggruppate, colori di sistema Apple, icone SVG proprie nello stile dei
+  simboli Apple, interruttori e controlli segmentati; ogni sezione si apre e si chiude e il browser ricorda quali sono aperte.
+- **Tema** sistema/chiaro/scuro e **lingua** italiano/inglese da «Il mio profilo» (o dalla pagina di accesso): salvati nel profilo e
+  in un cookie. I testi sono in italiano nel codice; le traduzioni stanno in `gui/i18n_en.py` (chiave = testo italiano).
+- Ogni messaggio Telegram del bot e della GUI inizia con **`ICLOUD:`** (variabile `TELEGRAM_PREFIX`), così in chat si capisce chi
+  scrive: gli altri sistemi di casa usano `HOME ASSISTANT:`, `UNRAID:`, `PROXMOX:`, `UPTIME KUMA:`, `WELLNESS:`.
+
 ### Accesso con profili e 2FA (dalla 3.0)
 
 La GUI ha un profilo **admin** e un profilo per persona (`sdimambro`, `dmanieri`, `sofdimambro`, `mdimambro`), tutti amministratori.

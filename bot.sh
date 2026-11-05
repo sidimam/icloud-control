@@ -23,7 +23,7 @@ load_cfg(){ C=(); T=(); A=(); U=()
 load_cfg
 log(){ echo "$(date '+%F %T') $*"; }
 NOISE="ObjectNotFoundException|Could not find document|File not found in iCloud Drive|not found on server\. Skipping"   # errori innocui ripetuti a ogni giro (come NOISE nella GUI)
-say(){ curl -s -X POST "$API/sendMessage" -d chat_id="$1" --data-urlencode text="$2" >/dev/null; }
+say(){ curl -s -X POST "$API/sendMessage" -d chat_id="$1" --data-urlencode text="${TELEGRAM_PREFIX:-ICLOUD:} $2" >/dev/null; }   # ogni risposta inizia con il mittente
 allowed(){ case ",${ALLOWED_CHATS}," in *",$1,"*) return 0;; *) return 1;; esac; }
 icon(){ [ "${T[$1]}" = iclouddrive ] && echo "📁" || echo "📷"; }
 # ---- icloudpd (foto)

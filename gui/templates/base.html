@@ -1,19 +1,107 @@
-<!doctype html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>iCloud Dashboard</title><link rel="icon" href="/static/icon.png">{% block head %}{% endblock %}
+<!doctype html><html lang="{{ cur_lang() }}" data-theme="{{ cur_theme() }}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>iCloud Dashboard</title><link rel="icon" href="/static/icon.png">{% block head %}{% endblock %}
 <style>
-:root{--bg:#f6f7f9;--card:#fff;--fg:#1d1d1f;--mut:#6e6e73;--acc:#0a84ff;--ok:#30a14e;--warn:#d97706;--bad:#d1242f;--bd:#e5e5ea}
-@media(prefers-color-scheme:dark){:root{--bg:#111;--card:#1c1c1e;--fg:#f2f2f7;--mut:#98989d;--bd:#3a3a3c}}
-body{margin:0;font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;background:var(--bg);color:var(--fg)}
-header{display:flex;justify-content:space-between;align-items:center;padding:1rem 1.25rem;border-bottom:1px solid var(--bd)}
-header h1{font-size:1.15rem;margin:0}a{color:var(--acc);text-decoration:none}main{padding:1rem 1.25rem;max-width:1200px;margin:auto}
-.flash{background:#fff7d6;color:#3b2f00;border:1px solid #f1d27a;border-radius:8px;padding:.6rem .9rem;margin-bottom:1rem}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:1rem}
-h2.section{font-size:1rem;color:var(--mut);text-transform:uppercase;letter-spacing:.04em;margin:1.4rem 0 .6rem;padding-bottom:.3rem;border-bottom:1px solid var(--bd)}
-.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:1rem}
-.card h2{margin:0 0 .25rem;font-size:1.05rem}.mut{color:var(--mut);font-size:.9rem}dl{display:grid;grid-template-columns:auto 1fr;gap:.2rem .8rem;margin:.75rem 0;font-size:.92rem}dt{color:var(--mut)}dd{margin:0;word-break:break-all}
-.pill{display:inline-block;padding:.1rem .55rem;border-radius:999px;font-size:.8rem;border:1px solid var(--bd)}.ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}
-form.inline{display:inline}button,input,select{font:inherit}button{background:var(--acc);color:#fff;border:0;border-radius:8px;padding:.4rem .75rem;cursor:pointer}button.sec{background:transparent;color:var(--acc);border:1px solid var(--acc)}button.danger{background:transparent;color:var(--bad);border:1px solid var(--bad)}
-input,select{width:100%;box-sizing:border-box;padding:.4rem .5rem;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--fg)}label{display:block;font-size:.85rem;color:var(--mut);margin:.5rem 0 .15rem}
-pre.log{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:.8rem;font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;word-break:break-all;overflow-x:auto}
-details{margin-top:.6rem}summary{cursor:pointer;color:var(--acc)}.row{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin-top:.6rem}
-</style></head><body><header><h1><a href="/" style="color:inherit;display:inline-flex;align-items:center;gap:.5rem"><img src="/static/icon.png" alt="" width="26" height="26">iCloud Dashboard</a></h1><nav>{% if me or request.endpoint not in ("login", "login_2fa") %}<a href="/">Utenti iCloud</a> · <a href="/new">Nuovo utente</a> · <a href="/account">Il mio profilo</a>{% if me_admin %} · <a href="/admin">Amministrazione</a>{% endif %}{% if me %} · <span class="mut">{{ me }}</span> <form class="inline" method="post" action="/logout"><button class="sec" style="padding:.15rem .6rem">Esci</button></form>{% endif %}{% endif %}</nav></header><main>
-{% if reset_set and request.endpoint != "login" %}<div class="flash">⚠️ La variabile <code>GUI_RESET_PASSWORD</code> del container è compilata: a ogni riavvio rimette quella password dell'admin e gli spegne il 2FA. Svuotala nel template di Unraid e riavvia.</div>{% endif %}{% with m=get_flashed_messages() %}{% for x in m %}<div class="flash">{{x}}</div>{% endfor %}{% endwith %}{% block body %}{% endblock %}</main></body></html>
+/* Stile delle impostazioni di iOS/macOS: sfondo raggruppato, liste inserite arrotondate, colori di sistema Apple, font di sistema. */
+:root{--bg:#f2f2f7;--card:#fff;--fill:rgba(118,118,128,.12);--fg:#000;--mut:rgba(60,60,67,.6);--sep:rgba(60,60,67,.18);--acc:#007aff;--acc-t:rgba(0,122,255,.12);--ok:#34c759;--warn:#ff9500;--bad:#ff3b30;--bar:rgba(242,242,247,.82);color-scheme:light}
+@media (prefers-color-scheme:dark){:root[data-theme="system"]{--bg:#000;--card:#1c1c1e;--fill:rgba(118,118,128,.24);--fg:#fff;--mut:rgba(235,235,245,.6);--sep:rgba(84,84,88,.6);--acc:#0a84ff;--acc-t:rgba(10,132,255,.2);--ok:#30d158;--warn:#ff9f0a;--bad:#ff453a;--bar:rgba(18,18,20,.8);color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#000;--card:#1c1c1e;--fill:rgba(118,118,128,.24);--fg:#fff;--mut:rgba(235,235,245,.6);--sep:rgba(84,84,88,.6);--acc:#0a84ff;--acc-t:rgba(10,132,255,.2);--ok:#30d158;--warn:#ff9f0a;--bad:#ff453a;--bar:rgba(18,18,20,.8);color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",system-ui,sans-serif;background:var(--bg);color:var(--fg);-webkit-font-smoothing:antialiased}
+a{color:var(--acc);text-decoration:none}
+.ic{flex:none;vertical-align:-3px}
+header.bar{position:sticky;top:0;z-index:5;background:var(--bar);backdrop-filter:saturate(180%) blur(20px);-webkit-backdrop-filter:saturate(180%) blur(20px);border-bottom:.5px solid var(--sep)}
+.bar-in{max-width:1180px;margin:auto;display:flex;flex-wrap:wrap;gap:.5rem 1rem;align-items:center;justify-content:space-between;padding:.6rem max(16px,env(safe-area-inset-left))}
+.brand{display:flex;align-items:center;gap:.55rem;font-weight:600;font-size:17px;color:var(--fg)}
+.brand img{width:28px;height:28px;border-radius:7px}
+nav.tabs{display:flex;flex-wrap:wrap;gap:.25rem;align-items:center}
+nav.tabs a,nav.tabs button{display:inline-flex;align-items:center;gap:.35rem;padding:.38rem .7rem;border-radius:9px;color:var(--fg);font-size:14px;background:none;border:0;cursor:pointer;font:inherit;font-size:14px}
+nav.tabs a:hover,nav.tabs button:hover{background:var(--fill)}
+nav.tabs a.on{background:var(--acc-t);color:var(--acc);font-weight:600}
+nav.tabs .who{color:var(--mut);font-size:13px;padding:0 .3rem}
+main{max-width:1180px;margin:auto;padding:1rem max(16px,env(safe-area-inset-left)) 3rem}
+h1.title{font-size:28px;font-weight:700;margin:.6rem 0 1rem;letter-spacing:-.01em}
+.mut{color:var(--mut);font-size:13px}
+.note{color:var(--mut);font-size:13px;margin:.4rem 16px 1rem}
+.flash{display:flex;gap:.6rem;align-items:flex-start;background:var(--card);border-radius:12px;padding:.75rem 1rem;margin-bottom:1rem;box-shadow:0 0 0 .5px var(--sep)}
+.flash .ic{color:var(--acc)}
+.flash.warn .ic{color:var(--warn)}
+/* sezioni ripiegabili */
+details.grp{margin:0 0 1.4rem}
+details.grp>summary{list-style:none;display:flex;align-items:center;gap:.5rem;cursor:pointer;padding:.2rem 16px .45rem;color:var(--mut);font-size:13px;text-transform:uppercase;letter-spacing:.02em;user-select:none}
+details.grp>summary::-webkit-details-marker{display:none}
+details.grp>summary .chev{margin-left:auto;transition:transform .2s;color:var(--mut)}
+details.grp[open]>summary .chev{transform:rotate(90deg)}
+.li.col>summary .v{margin-left:auto}
+details>summary .chev{transition:transform .2s}
+details[open]>summary .chev{transform:rotate(90deg)}
+details.li>summary::-webkit-details-marker{display:none}
+details.grp>summary:focus-visible{outline:2px solid var(--acc);border-radius:8px}
+/* liste inserite */
+.list{background:var(--card);border-radius:12px;overflow:hidden}
+.li{display:flex;align-items:center;gap:.75rem;padding:11px 16px;min-height:44px;position:relative}
+.li+.li::before{content:"";position:absolute;top:0;left:16px;right:0;border-top:.5px solid var(--sep)}
+.li .k{flex:none;color:var(--fg)}
+.li .v{margin-left:auto;color:var(--mut);text-align:right;min-width:0;word-break:break-word}
+.li.col{flex-direction:column;align-items:stretch;gap:.45rem}
+.li.col .v{margin-left:0;text-align:left}
+.badge{width:29px;height:29px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;color:#fff;flex:none}
+.b-blue{background:#007aff}.b-green{background:#34c759}.b-orange{background:#ff9500}.b-red{background:#ff3b30}.b-gray{background:#8e8e93}.b-indigo{background:#5856d6}.b-teal{background:#30b0c7}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,360px),1fr));gap:1rem}
+.uhead{display:flex;align-items:center;gap:.7rem;padding:14px 16px}
+.uhead h2{margin:0;font-size:17px;font-weight:600}
+.tag{display:inline-flex;align-items:center;gap:.3rem;padding:.12rem .55rem;border-radius:99px;font-size:12px;font-weight:500;background:var(--fill);color:var(--mut)}
+.tag.ok{background:color-mix(in srgb,var(--ok) 16%,transparent);color:var(--ok)}
+.tag.warn{background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn)}
+.tag.bad{background:color-mix(in srgb,var(--bad) 16%,transparent);color:var(--bad)}
+.ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}
+.row{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
+form.inline{display:inline}
+button,.btn{font:inherit;font-size:15px;font-weight:500;display:inline-flex;align-items:center;gap:.35rem;border:0;border-radius:10px;padding:.5rem .95rem;cursor:pointer;background:var(--acc);color:#fff}
+button.tint,.btn.tint{background:var(--acc-t);color:var(--acc)}
+button.red{background:color-mix(in srgb,var(--bad) 14%,transparent);color:var(--bad)}
+button.small{font-size:13px;padding:.32rem .65rem;border-radius:8px}
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+label.f{display:block;font-size:13px;color:var(--mut);margin:.2rem 0 .3rem}
+input:not([type=checkbox]):not([type=radio]),select{width:100%;font:inherit;padding:.6rem .75rem;border:0;border-radius:10px;background:var(--fill);color:var(--fg)}
+input.sw{appearance:none;-webkit-appearance:none;width:51px;height:31px;border-radius:99px;background:var(--fill);position:relative;cursor:pointer;flex:none;transition:background .2s;margin:0}
+input.sw::after{content:"";position:absolute;top:2px;left:2px;width:27px;height:27px;border-radius:50%;background:#fff;box-shadow:0 3px 8px rgba(0,0,0,.15),0 1px 1px rgba(0,0,0,.16);transition:transform .2s}
+input.sw:checked{background:var(--ok)}
+input.sw:checked::after{transform:translateX(20px)}
+.seg{display:inline-flex;background:var(--fill);border-radius:9px;padding:2px;gap:2px}
+.seg label{position:relative}
+.seg input{position:absolute;opacity:0;inset:0;cursor:pointer}
+.seg span{display:inline-block;padding:.3rem .8rem;border-radius:7px;font-size:13px}
+.seg input:checked+span{background:var(--card);box-shadow:0 1px 3px rgba(0,0,0,.12);font-weight:600}
+.seg input:focus-visible+span{outline:2px solid var(--acc)}
+pre.log{background:var(--card);border-radius:12px;padding:.8rem 1rem;font:12px/1.5 ui-monospace,"SF Mono",Menlo,monospace;white-space:pre-wrap;word-break:break-all;overflow-x:auto}
+code{font:12.5px ui-monospace,"SF Mono",Menlo,monospace;background:var(--fill);padding:.05rem .35rem;border-radius:5px}
+table.t{width:100%;border-collapse:collapse;font-size:14px}
+table.t th{text-align:left;font-weight:500;color:var(--mut);font-size:12px;padding:.55rem 16px;border-bottom:.5px solid var(--sep)}
+table.t td{padding:.6rem 16px;border-bottom:.5px solid var(--sep);vertical-align:top}
+table.t tr:last-child td{border-bottom:0}
+.narrow{max-width:420px;margin:2.5rem auto}
+.wide-scroll{overflow-x:auto}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style></head><body>
+<header class="bar"><div class="bar-in">
+<a class="brand" href="/"><img src="/static/icon.png" alt="">iCloud Dashboard</a>
+<nav class="tabs" aria-label="{{ _('Menu') }}">{% if me or request.endpoint not in ("login", "login_2fa", "recover") %}
+<a href="/" class="{{ 'on' if request.endpoint in ('index','u_logs') }}">{{ icon('users') }}{{ _('Utenti iCloud') }}</a>
+<a href="/new" class="{{ 'on' if request.endpoint == 'new' }}">{{ icon('plus') }}{{ _('Nuovo utente') }}</a>
+<a href="/account" class="{{ 'on' if request.endpoint == 'account' }}">{{ icon('person') }}{{ _('Il mio profilo') }}</a>
+{% if me_admin %}<a href="/admin" class="{{ 'on' if request.endpoint == 'admin' }}">{{ icon('gear') }}{{ _('Amministrazione') }}</a>{% endif %}
+{% if me %}<span class="who">{{ me }}</span><form class="inline" method="post" action="/logout"><button type="submit" title="{{ _('Esci') }}">{{ icon('logout') }}{{ _('Esci') }}</button></form>{% endif %}
+{% endif %}</nav></div></header>
+<main>
+{% if reset_set and request.endpoint not in ("login", "login_2fa", "recover") %}<div class="flash warn">{{ icon('warn') }}<div>{{ _("La variabile GUI_RESET_PASSWORD del container è compilata: a ogni riavvio reimposta la password dell'admin e gli spegne il 2FA. Svuotala nel template di Unraid e riavvia.") }}</div></div>{% endif %}
+{% with m=get_flashed_messages() %}{% for x in m %}<div class="flash">{{ icon('check') }}<div>{{x}}</div></div>{% endfor %}{% endwith %}
+{% block body %}{% endblock %}</main>
+<script>
+// Ricorda quali sezioni ripiegabili sono aperte (per questo browser). Senza localStorage la pagina funziona lo stesso.
+document.querySelectorAll("details.grp[data-k]").forEach(function(d){
+  try{var v=localStorage.getItem("grp:"+d.dataset.k); if(v!==null) d.open=(v==="1");}catch(e){}
+  d.addEventListener("toggle",function(){try{localStorage.setItem("grp:"+d.dataset.k,d.open?"1":"0");}catch(e){}});
+});
+// I selettori di tema e lingua salvano appena cambiano.
+document.querySelectorAll("form.autosave").forEach(function(f){f.addEventListener("change",function(){f.submit();});});
+</script>
+</body></html>

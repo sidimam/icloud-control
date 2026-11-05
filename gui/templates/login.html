@@ -1,9 +1,11 @@
 {% extends "base.html" %}{% block body %}
-<div class="card" style="max-width:360px;margin:3rem auto"><h2>Accesso</h2>
+<div class="narrow">
+<div style="text-align:center;margin-bottom:1.2rem"><img src="/static/icon.png" alt="" width="64" height="64" style="border-radius:14px"><h1 class="title" style="margin:.6rem 0 0">{{ _('Accesso') }}</h1></div>
 <form method="post" action="/login"><input type="hidden" name="next" value="{{next}}">
-<label>Utente</label><input name="user" autocomplete="username" autocapitalize="none" autofocus required>
-<label>Password</label><input name="password" type="password" autocomplete="current-password" required>
-<label><input type="checkbox" name="remember" checked style="width:auto"> Ricordami per 30 giorni</label>
-<div class="row"><button>Entra</button></div></form>
-<p class="mut" style="margin-top:1rem"><a href="/recover">Password dimenticata o telefono perso?</a></p></div>
-{% endblock %}
+<div class="list"><div class="li col"><label class="f" for="u">{{ _('Profilo') }}</label><input id="u" name="user" autocomplete="username" autocapitalize="none" autofocus required></div>
+<div class="li col"><label class="f" for="p">{{ _('Password') }}</label><input id="p" name="password" type="password" autocomplete="current-password" required></div>
+<div class="li"><label class="k" for="rem">{{ _('Ricordami per 30 giorni') }}</label><span class="v"><input id="rem" class="sw" type="checkbox" name="remember" checked></span></div></div>
+<div class="row" style="margin-top:1rem"><button style="width:100%;justify-content:center">{{ _('Entra') }}</button></div></form>
+<p style="text-align:center;margin-top:1rem"><a href="/recover">{{ _('Password dimenticata o telefono perso?') }}</a></p>
+<details class="grp" data-k="login-prefs" style="margin-top:2rem"><summary>{{ icon('theme', 15) }}{{ _('Aspetto e lingua') }}{{ icon('chevron', 15, 'ic chev') }}</summary><div class="list">{% include "prefs.html" %}</div></details>
+</div>{% endblock %}

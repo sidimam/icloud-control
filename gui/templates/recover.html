@@ -1,17 +1,16 @@
 {% extends "base.html" %}{% block body %}
-<div class="card" style="max-width:400px;margin:3rem auto"><h2>Recupero dell'accesso</h2>
+<div class="narrow"><h1 class="title">{{ _("Recupero dell'accesso") }}</h1>
 {% if step == "finish" %}
-<p class="mut">Scrivi il codice a 6 cifre arrivato su Telegram, poi scegli cosa fare.</p>
+<p class="note">{{ _('Scrivi il codice a 6 cifre arrivato su Telegram, poi scegli cosa fare.') }}</p>
 <form method="post" action="/recover"><input type="hidden" name="step" value="finish"><input type="hidden" name="user" value="{{ user }}">
-<label for="code">Codice da Telegram</label><input id="code" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" autofocus required>
-<label for="new">Nuova password (lascia vuoto per tenere quella di prima)</label><input id="new" name="new" type="password" autocomplete="new-password" minlength="8">
-<label for="conf">Ripeti la nuova password</label><input id="conf" name="confirm" type="password" autocomplete="new-password" minlength="8">
-<label style="display:flex;gap:.5rem;align-items:center;color:var(--fg)"><input type="checkbox" name="totp_off" style="width:auto"> Disattiva la verifica in due passaggi (telefono perso)</label>
-<div class="row"><button>Conferma</button> <a href="/login">Annulla</a></div></form>
+<div class="list"><div class="li col"><label class="f" for="code">{{ _('Codice da Telegram') }}</label><input id="code" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" autofocus required></div>
+<div class="li col"><label class="f" for="new">{{ _('Nuova password (lascia vuoto per tenere quella di prima)') }}</label><input id="new" name="new" type="password" autocomplete="new-password" minlength="8"></div>
+<div class="li col"><label class="f" for="conf">{{ _('Ripeti la nuova password') }}</label><input id="conf" name="confirm" type="password" autocomplete="new-password" minlength="8"></div>
+<div class="li"><label class="k" for="tf">{{ _('Disattiva la verifica in due passaggi (telefono perso)') }}</label><span class="v"><input id="tf" class="sw" type="checkbox" name="totp_off"></span></div></div>
+<div class="row" style="margin-top:1rem"><button>{{ _('Conferma') }}</button><a href="/login">{{ _('Annulla') }}</a></div></form>
 {% else %}
-<p class="mut">Il bot di casa manda un codice alla chat Telegram privata collegata al profilo. Se il tuo profilo non ne ha una, chiedi a un amministratore di reimpostarti la password o il 2FA dalla scheda Amministrazione.</p>
+<p class="note">{{ _('Il bot di casa manda un codice alla chat Telegram privata collegata al profilo. Se il tuo profilo non ne ha una, chiedi a un amministratore di reimpostarti la password o il 2FA dalla scheda Amministrazione.') }}</p>
 <form method="post" action="/recover"><input type="hidden" name="step" value="start">
-<label for="u">Profilo</label><input id="u" name="user" autocomplete="username" autocapitalize="none" autofocus required>
-<div class="row"><button>Mandami il codice</button> <a href="/login">Annulla</a></div></form>
-{% endif %}</div>
-{% endblock %}
+<div class="list"><div class="li col"><label class="f" for="u">{{ _('Profilo') }}</label><input id="u" name="user" autocomplete="username" autocapitalize="none" autofocus required></div></div>
+<div class="row" style="margin-top:1rem"><button>{{ icon('send') }}{{ _('Mandami il codice') }}</button><a href="/login">{{ _('Annulla') }}</a></div></form>
+{% endif %}</div>{% endblock %}

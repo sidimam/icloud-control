@@ -1,16 +1,17 @@
-{% extends "base.html" %}{% block body %}<div class="card" style="max-width:640px">
-<h2>Nuovo utente iCloud</h2><p class="mut">Crea un container 📁 <b>iclouddr</b> (mandarons/icloud-drive) che scarica iCloud Drive e, se vuoi, le foto personali: cartelle, <code>config.yaml</code>, template Unraid e container. Poi serve il primo login Apple con il codice 2FA dal terminale di Unraid (il comando compare dopo la creazione).</p>
-<form method="post">
-<label>Persona (etichetta e nome delle cartelle, es. Luca)</label><input name="label" required oninput="hint(this.value)">
-<label>Nome breve del container (es. ldimambro → iclouddr-ldimambro)</label><input name="short" required pattern="[A-Za-z0-9]+">
-<label>Prefisso Telegram (es. luca-drive → #luca-drive)</label><input name="name" required pattern="[a-z0-9-]+">
-<label>Apple ID (e-mail)</label><input name="apple_id" type="email" required>
-<label>Chat Telegram (id) per gli avvisi (facoltativa)</label><input name="chat_id">
-<label>Cartella iCloud Drive su Unraid (sotto /mnt/user/documents)</label><input name="drive_dest" id="drive_dest" placeholder="/mnt/user/documents/Nome/iCloud Drive">
-<label>Cartelle di iCloud Drive da saltare (separate da virgola)</label><input name="ignore" value="Home">
-<label><input type="checkbox" name="photos" checked style="width:auto" onchange="document.getElementById('ph').style.display=this.checked?'':'none'"> Scarica anche le foto personali (libreria PrimarySync)</label>
-<div id="ph"><label>Cartella foto su Unraid (sotto /mnt/user/media/photos)</label><input name="photos_dest" id="photos_dest" placeholder="/mnt/user/media/photos/Nome/Personale"></div>
-<div class="row"><button>Crea</button> <a href="/">Annulla</a></div></form>
-<p class="mut">La libreria condivisa di famiglia la scarica solo il container di chi la gestisce: per aggiungerla a mano servono <code>filters.libraries</code> e <code>library_destinations</code> nel suo <code>config.yaml</code> (vedi README).</p></div>
+{% extends "base.html" %}{% block body %}
+<h1 class="title">{{ _('Nuovo utente iCloud') }}</h1>
+<p class="note">{{ _("Crea un container iclouddr (mandarons/icloud-drive) che scarica iCloud Drive e, se vuoi, le foto personali: cartelle, config.yaml, template Unraid e container. Poi serve il primo login Apple con il codice 2FA dal terminale di Unraid (il comando compare dopo la creazione).") }}</p>
+<form method="post" style="max-width:640px"><div class="list">
+<div class="li col"><label class="f" for="l">{{ _('Persona (etichetta e nome delle cartelle, es. Luca)') }}</label><input id="l" name="label" required oninput="hint(this.value)"></div>
+<div class="li col"><label class="f" for="s">{{ _('Nome breve del container (es. ldimambro → iclouddr-ldimambro)') }}</label><input id="s" name="short" required pattern="[A-Za-z0-9]+"></div>
+<div class="li col"><label class="f" for="n">{{ _('Prefisso Telegram (es. luca-drive → #luca-drive)') }}</label><input id="n" name="name" required pattern="[a-z0-9-]+"></div>
+<div class="li col"><label class="f" for="a">{{ _('Apple ID (e-mail)') }}</label><input id="a" name="apple_id" type="email" required></div>
+<div class="li col"><label class="f" for="c">{{ _('Chat Telegram (id) per gli avvisi (facoltativa)') }}</label><input id="c" name="chat_id"></div>
+<div class="li col"><label class="f" for="drive_dest">{{ _('Cartella iCloud Drive su Unraid (sotto /mnt/user/documents)') }}</label><input name="drive_dest" id="drive_dest" placeholder="/mnt/user/documents/Nome/iCloud Drive"></div>
+<div class="li col"><label class="f" for="ig">{{ _('Cartelle di iCloud Drive da saltare (separate da virgola)') }}</label><input id="ig" name="ignore" value="Home"></div>
+<div class="li"><label class="k" for="ph1">{{ _('Scarica anche le foto personali (libreria PrimarySync)') }}</label><span class="v"><input id="ph1" class="sw" type="checkbox" name="photos" checked onchange="document.getElementById('ph').hidden=!this.checked"></span></div>
+<div class="li col" id="ph"><label class="f" for="photos_dest">{{ _('Cartella foto su Unraid (sotto /mnt/user/media/photos)') }}</label><input name="photos_dest" id="photos_dest" placeholder="/mnt/user/media/photos/Nome/Personale"></div>
+<div class="li"><button>{{ icon('plus', 16) }}{{ _('Crea') }}</button><a class="v" href="/">{{ _('Annulla') }}</a></div></div></form>
+<p class="note">{{ _('La libreria condivisa di famiglia la scarica solo il container di chi la gestisce: per aggiungerla a mano servono filters.libraries e library_destinations nel suo config.yaml (vedi README).') }}</p>
 <script>function hint(n){n=n.trim()||'Nome';document.getElementById('drive_dest').placeholder='/mnt/user/documents/'+n+'/iCloud Drive';document.getElementById('photos_dest').placeholder='/mnt/user/media/photos/'+n+'/Personale'}</script>
 {% endblock %}
