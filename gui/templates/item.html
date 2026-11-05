@@ -4,7 +4,7 @@
 <div class="list" style="margin-bottom:1rem">
 {% if d.kind == 'file' %}
 <div class="li"><span class="k">{{ _('Cartella') }}</span><span class="v">{{ d.x.rel }}</span></div><div class="li"><span class="k">{{ _('Dimensione') }}</span><span class="v">{{ fmt_size(d.size) }}</span></div><div class="li"><span class="k">{{ _('Modificato') }}</span><span class="v">{{ fmt_date(d.mtime) }}</span></div>
-<div class="li"><a class="btn" href="/item/{{ d.id }}/raw">{{ _('Apri') }}</a><a class="btn tint" href="/item/{{ d.id }}/raw?dl=1">{{ _('Scarica') }}</a></div>
+<div class="li"><a class="btn" href="/item/{{ d.id }}/raw" target="_blank" rel="noopener">{{ _('Apri') }}</a><a class="btn tint" href="/item/{{ d.id }}/raw?dl=1">{{ _('Scarica') }}</a></div>
 {% elif d.kind == 'note' %}
 <div class="li"><span class="k">{{ _('Cartella') }}</span><span class="v">{{ d.x.folder }}</span></div><div class="li"><span class="k">{{ _('Modificata') }}</span><span class="v">{{ fmt_date(d.mtime) }}</span></div>
 {% elif d.kind == 'reminder' %}
@@ -24,6 +24,11 @@
 {% if d.x.org %}<div class="li"><span class="k">{{ _('Organizzazione') }}</span><span class="v">{{ d.x.org }}</span></div>{% endif %}{% for ad in d.x.adr or [] %}<div class="li"><span class="k">{{ _('Indirizzo') }}</span><span class="v">{{ ad }}</span></div>{% endfor %}
 <div class="li"><a class="btn tint" href="/item/{{ d.id }}/raw?dl=1">vCard</a></div>
 {% endif %}</div>
+{% if d.preview == 'image' %}<div class="list" style="padding:.6rem;text-align:center"><img src="/item/{{ d.id }}/raw" alt="{{ d.title }}" style="max-width:100%;max-height:75vh;border-radius:8px"></div>
+{% elif d.preview == 'pdf' %}<iframe src="/item/{{ d.id }}/raw" style="width:100%;height:80vh;border:0;border-radius:12px;background:#fff" title="{{ d.title }}"></iframe>
+{% elif d.preview == 'video' %}<video src="/item/{{ d.id }}/raw" controls preload="metadata" style="width:100%;max-height:75vh;border-radius:12px;background:#000"></video>
+{% elif d.preview == 'audio' %}<div class="list" style="padding:1rem"><audio src="/item/{{ d.id }}/raw" controls preload="metadata" style="width:100%"></audio></div>
+{% elif d.preview == 'text' %}<pre class="log">{{ body }}</pre>{% endif %}
 {% if d.kind == 'note' or (d.kind == 'mail' and d.html_mail) %}<iframe src="/item/{{ d.id }}/raw{{ '?html=1' if d.kind == 'mail' }}" sandbox style="width:100%;height:70vh;border:0;border-radius:12px;background:#fff" title="{{ d.title }}"></iframe>
 {% elif d.kind == 'mail' %}<pre class="log" style="font-family:inherit;font-size:14px">{{ body }}</pre>{% endif %}
 {% endblock %}

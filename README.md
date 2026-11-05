@@ -108,6 +108,20 @@ Gli avvisi automatici del dispatcher si impostano dalle variabili del template U
 `TELEGRAM_TOKEN` e `ALLOWED_CHATS` (le chat da cui il bot accetta comandi) restano come prima. Le risposte ai comandi del bot e
 della GUI non passano dalle ore silenziose: arrivano sempre subito alla chat che le ha chieste.
 
+### Calendario, Posta, Contatti e anteprime (dalla 3.7)
+
+- **Calendario**: viste anno, mese, settimana, giorno e agenda (FullCalendar 6.1.15, dentro l'immagine), tutti o una persona,
+  calendari da mostrare o nascondere e colore scelto per ognuno (salvato in `settings.json`), eventi ripetuti espansi
+  (`icalendar` + `recurring-ical-events` sul file .ics originale), clic → scheda dell'evento. **Mappa** (Leaflet 1.9.4, tessere
+  OpenStreetMap) con i luoghi che hanno coordinate (GEO o luogo scelto da Mappe); in Amministrazione si può attivare la ricerca
+  delle coordinate degli altri indirizzi con Nominatim (spenta per default; al massimo 15 per vista, una al secondo, in cache).
+- **Posta**: cartelle per persona e account, messaggi in ordine di data, scheda con testo (HTML in pagina isolata, immagini remote
+  bloccate), allegati da scaricare e .eml; la ricerca con tutti i filtri è nella scheda Cerca.
+- **Contatti**: rubrica unica o per persona; la stessa persona salvata da più di voi (e-mail o ultime 9 cifre del telefono uguali)
+  compare una volta sola, con «presente in» e le schede originali.
+- **Anteprima dei file** nella scheda: immagini, PDF, video, audio e testi (fino a 200 KB); i file serviti dalla GUI hanno
+  `Content-Security-Policy: sandbox` (un HTML o un SVG non può eseguire script). «Esci» anche in fondo a «Il mio profilo».
+
 ### Cerca, Note, Promemoria (dalla 3.6)
 
 - **Indice «iclouddb»**: un file SQLite con ricerca full-text (FTS5, senza distinzione di accenti) in `/app/state/iclouddb.db`,

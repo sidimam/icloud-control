@@ -37,4 +37,5 @@
 {% elif tg_pending %}<form method="post"><input type="hidden" name="action" value="tg_confirm"><div class="li col"><label class="f" for="tgc">{{ _('Codice arrivato su Telegram') }}</label><input id="tgc" name="code" inputmode="numeric" maxlength="6" required><div><button>{{ _('Collega') }}</button></div></div></form>
 {% else %}<form method="post"><input type="hidden" name="action" value="tg_send"><div class="li col"><label class="f" for="tg">{{ _('ID della chat privata con il bot di casa (un numero, non il gruppo)') }}</label><input id="tg" name="chat" inputmode="numeric" required><div><button>{{ icon('send') }}{{ _('Mandami un codice di verifica') }}</button></div></div></form>{% endif %}
 </div></details>
+<form method="post" action="/logout" style="margin-top:1rem"><button class="red">{{ icon('logout') }}{{ _('Esci') }}</button></form>
 {% endblock %}

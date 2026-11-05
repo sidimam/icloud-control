@@ -89,6 +89,9 @@ table.t tr:last-child td{border-bottom:0}
 <nav class="tabs" aria-label="{{ _('Menu') }}">{% if me or request.endpoint not in ("login", "login_2fa", "recover") %}
 <a href="/" class="{{ 'on' if request.endpoint in ('index','u_logs') }}">{{ icon('users') }}{{ _('Utenti iCloud') }}</a>
 <a href="/search" class="{{ 'on' if request.endpoint in ('search','item') }}">{{ icon('search') }}{{ _('Cerca') }}</a>
+<a href="/calendar" class="{{ 'on' if request.endpoint == 'calendar' }}">{{ icon('doc') }}{{ _('Calendario') }}</a>
+<a href="/mail" class="{{ 'on' if request.endpoint == 'mail' }}">{{ icon('send') }}{{ _('Posta') }}</a>
+<a href="/contacts" class="{{ 'on' if request.endpoint == 'contacts' }}">{{ icon('person') }}{{ _('Contatti') }}</a>
 <a href="/notes" class="{{ 'on' if request.endpoint == 'notes' }}">{{ icon('doc') }}{{ _('Note') }}</a>
 <a href="/reminders" class="{{ 'on' if request.endpoint == 'reminders' }}">{{ icon('check') }}{{ _('Promemoria') }}</a>
 {% if me_admin or not me %}<a href="/new" class="{{ 'on' if request.endpoint == 'new' }}">{{ icon('plus') }}{{ _('Nuovo utente') }}</a>{% endif %}

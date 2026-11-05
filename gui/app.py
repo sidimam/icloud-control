@@ -36,7 +36,7 @@ def require_login():
     if not me(): return redirect(url_for("login", next=request.full_path if request.method == "GET" else "/"))
     # Ruoli (3.4): l'amministratore vede tutto; l'utente solo il proprio container iCloud e il proprio profilo.
     if accounts.is_admin(me()): return None
-    if request.endpoint in ("new", "admin", "admin_profile", "admin_profile_new", "admin_notify", "admin_notify_test", "admin_reindex"): abort(403)
+    if request.endpoint in ("new", "admin", "admin_profile", "admin_profile_new", "admin_notify", "admin_notify_test", "admin_reindex", "admin_geocode"): abort(403)
     name = (request.view_args or {}).get("name")
     if request.endpoint and request.endpoint.startswith("u_") and name != _own_icloud(): abort(403)
     return None
@@ -746,7 +746,7 @@ def admin():
     except Exception: idx_by, idx_runs = {}, {}
     idx = sorted(((k[1], KIND_NAMES.get(k[0], k[0]), v) for k, v in idx_by.items()))
     last = max((r["finished"] for r in idx_runs.values()), default=0); errs = [f"{k}: {r['error']}" for k, r in idx_runs.items() if r.get("error")]
-    return render_template("admin.html", rows=rows, n=nset(), default_chat=cfg().get("default_chat_id", ""), roles=accounts.ROLES,
+    return render_template("admin.html", rows=rows, n=nset(), default_chat=cfg().get("default_chat_id", ""), roles=accounts.ROLES, geocode=_settings().get("geocode", False),
                            idx=idx, idx_last=ago(datetime.datetime.fromtimestamp(last)) if last else "", idx_errs=errs, idx_db=os.path.getsize(SI.DB) if os.path.exists(SI.DB) else 0, fmt_size=_fmt_size)
 @app.post("/admin/profile/<name>/<action>")
 def admin_profile(name, action):
@@ -888,6 +888,16 @@ def item(rid):
             part = msg.get_body(preferencelist=("plain", "html")); body = part.get_content() if part else ""
             if part and part.get_content_type() == "text/html": d["html_mail"] = True
         except Exception as e: body = f"({e})"
+    if d["kind"] == "file":   # anteprima nella pagina
+        ext = (d.get("ext") or "").lower()
+        d["preview"] = ("image" if ext in ("jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "bmp", "svg", "tif", "tiff") else
+                        "pdf" if ext == "pdf" else
+                        "video" if ext in ("mp4", "mov", "m4v", "webm") else
+                        "audio" if ext in ("mp3", "m4a", "aac", "wav", "ogg", "flac") else
+                        "text" if ext in ("txt", "md", "csv", "json", "log", "xml", "yaml", "yml", "ini", "conf", "py", "sh", "js", "css", "html", "swift", "go", "ics", "vcf") else "")
+        if d["preview"] == "text" and _local_ok(d["x"].get("local", "")):
+            try: body = open(d["x"]["local"], "rb").read(200 * 1024).decode("utf-8", "replace")
+            except OSError: d["preview"] = ""
     return render_template("item.html", d=d, body=body, kind_names=KIND_NAMES, kind_icons=KIND_ICONS, fmt_date=_fmt_date, fmt_size=_fmt_size)
 @app.route("/item/<int:rid>/raw")
 def item_raw(rid):
@@ -904,7 +914,10 @@ def item_raw(rid):
         # pagina isolata: niente script, niente immagini da Internet (solo quelle allegate alla nota)
         r.headers["Content-Security-Policy"] = "sandbox; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'"
         return r
-    return send_file(p, as_attachment=request.args.get("dl") == "1", download_name=os.path.basename(p) if d["kind"] != "mail" else (d["title"] or "messaggio")[:60] + ".eml")
+    r = send_file(p, as_attachment=request.args.get("dl") == "1", download_name=os.path.basename(p) if d["kind"] != "mail" else (d["title"] or "messaggio")[:60] + ".eml", conditional=True)
+    r.headers["Content-Security-Policy"] = "sandbox; default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline'; object-src 'self'"
+    r.headers["X-Content-Type-Options"] = "nosniff"
+    return r
 @app.route("/item/<int:rid>/asset/<path:sub>")
 def item_asset(rid, sub):
     """Immagini e allegati delle note (cartella _allegati accanto all'HTML)."""
@@ -948,6 +961,140 @@ def reminders():
     now = time.time()
     rows.sort(key=lambda r: (r["x"].get("completed", False), r["date"] is None, r["date"] or 0, (r["title"] or "").lower()))
     return render_template("reminders.html", rows=rows, lists=sorted(lists.items()), persons=persons, person=person, lst=lst, show=show, now=now, fmt_date=_fmt_date)
+# ---- Calendario, Posta, Contatti (3.7)
+PALETTE = ["#007aff", "#34c759", "#ff9500", "#ff3b30", "#af52de", "#5ac8fa", "#ff2d55", "#a2845e", "#5856d6", "#30b0c7"]
+def _settings():
+    try: return json.load(open(SETTINGS_FILE))
+    except (FileNotFoundError, ValueError): return {}
+def _save_settings(d):
+    os.makedirs(os.path.dirname(SETTINGS_FILE), exist_ok=True); json.dump(d, open(SETTINGS_FILE, "w"), indent=1, ensure_ascii=False)
+def cal_list(persons):
+    con = SI.connect()
+    try:
+        rows = con.execute(f"select json_extract(extra,'$.cal_id') cid, json_extract(extra,'$.calendar') name, person, account, count(*) n from items where kind='event' and person in ({','.join('?' * len(persons))}) group by cid order by person, name", persons).fetchall()
+    finally: con.close()
+    colors = _settings().get("calendar_colors", {})
+    return [{"id": r["cid"], "name": r["name"], "person": r["person"], "account": r["account"], "n": r["n"], "color": colors.get(r["cid"]) or PALETTE[i % len(PALETTE)]} for i, r in enumerate(rows)]
+@app.route("/calendar")
+def calendar():
+    persons = allowed_persons(); person = request.args.get("person", "")
+    sel = [person] if person in persons else persons
+    return render_template("calendar.html", cals=cal_list(sel), persons=persons, person=person, geocode=_settings().get("geocode", False))
+@app.post("/calendar/color")
+def calendar_color():
+    cid = request.form.get("id", ""); col = request.form.get("color", "")
+    if not re.fullmatch(r"#[0-9a-fA-F]{6}", col) or not any(c["id"] == cid for c in cal_list(allowed_persons())): abort(400)
+    st = _settings(); st.setdefault("calendar_colors", {})[cid] = col; _save_settings(st); return ("", 204)
+def _expand(r, start, end):
+    """Occorrenze di un evento ricorrente fra start ed end (dal file .ics originale)."""
+    import icalendar, recurring_ical_events
+    x = json.loads(r["extra"] or "{}"); p = x.get("local", "")
+    if not _local_ok(p): return []
+    try:
+        cal = icalendar.Calendar.from_ical(open(p, "rb").read())
+        uid = r["path"].split("#")[1] if "#" in r["path"] else None
+        out = []
+        for ev in recurring_ical_events.of(cal).between(datetime.datetime.fromtimestamp(start), datetime.datetime.fromtimestamp(end)):
+            if uid and str(ev.get("UID")) != uid: continue
+            ds, de = ev.get("DTSTART").dt, (ev.get("DTEND").dt if ev.get("DTEND") else None)
+            out.append((ds, de))
+        return out
+    except Exception: return []
+def _iso(v):
+    if isinstance(v, datetime.datetime): return v.isoformat()
+    if isinstance(v, datetime.date): return v.isoformat()
+    return None
+@app.route("/api/events")
+def api_events():
+    persons = allowed_persons(); person = request.args.get("person", ""); sel = [person] if person in persons else persons
+    def ts(v):
+        try: return datetime.datetime.fromisoformat(v.replace("Z", "+00:00")).timestamp()
+        except Exception: return time.time()
+    start, end = ts(request.args.get("start", "")), ts(request.args.get("end", ""))
+    cals = {c["id"]: c for c in cal_list(sel)}
+    con = SI.connect()
+    try:
+        rows = con.execute(f"""select * from items where kind='event' and person in ({','.join('?' * len(sel))}) and
+            ((date < ? and coalesce(date_end, date) >= ?) or coalesce(json_extract(extra,'$.rrule'),'') != '')""", sel + [end, start]).fetchall()
+    finally: con.close()
+    out = []
+    for r in rows:
+        x = json.loads(r["extra"] or "{}"); c = cals.get(x.get("cal_id"), {}); color = c.get("color", PALETTE[0])
+        base = {"id": r["id"], "title": r["title"] or "—", "color": color, "url": f"/item/{r['id']}",
+                "extendedProps": {"person": r["person"], "calendar": x.get("calendar"), "location": x.get("location"), "geo": x.get("geo"), "cal_id": x.get("cal_id")}}
+        if x.get("rrule"):
+            for ds, de in _expand(r, start, end):
+                out.append({**base, "start": _iso(ds), "end": _iso(de), "allDay": not isinstance(ds, datetime.datetime)})
+        elif r["date"]:
+            allday = bool(x.get("allday"))
+            fmt = (lambda t: datetime.date.fromtimestamp(t).isoformat()) if allday else (lambda t: datetime.datetime.fromtimestamp(t).isoformat())
+            out.append({**base, "start": fmt(r["date"]), "end": fmt(r["date_end"]) if r["date_end"] else None, "allDay": allday})
+    return {"events": out[:5000]}
+@app.route("/api/geocode")
+def api_geocode():
+    """Coordinate di un luogo via OpenStreetMap (Nominatim), solo se attivato in Amministrazione; risultati in cache nell'indice."""
+    if not _settings().get("geocode"): return {"geo": None, "off": True}
+    q = request.args.get("q", "").strip()[:200]
+    if not q: return {"geo": None}
+    con = SI.connect()
+    try:
+        con.execute("create table if not exists geocache(q text primary key, lat real, lon real, ts real)")
+        hit = con.execute("select lat, lon from geocache where q=?", (q,)).fetchone()
+        if hit: return {"geo": [hit["lat"], hit["lon"]] if hit["lat"] is not None else None}
+        import urllib.request, urllib.parse
+        time.sleep(1)   # regole d'uso di Nominatim: al massimo una richiesta al secondo
+        req = urllib.request.Request("https://nominatim.openstreetmap.org/search?format=json&limit=1&q=" + urllib.parse.quote(q), headers={"User-Agent": "iCloud-Dashboard/3.7 (uso domestico)"})
+        try: res = json.load(urllib.request.urlopen(req, timeout=15))
+        except Exception: res = []
+        lat, lon = (float(res[0]["lat"]), float(res[0]["lon"])) if res else (None, None)
+        con.execute("insert or replace into geocache values(?,?,?,?)", (q, lat, lon, time.time())); con.commit()
+        return {"geo": [lat, lon] if lat is not None else None}
+    finally: con.close()
+@app.post("/admin/geocode")
+def admin_geocode():
+    _admin_only(); st = _settings(); st["geocode"] = request.form.get("geocode") == "on"; _save_settings(st)
+    flash(_("Ricerca delle coordinate con OpenStreetMap: {a0}", a0=_("attiva") if st["geocode"] else _("spenta"))); return redirect(url_for("admin"))
+@app.route("/mail")
+def mail():
+    persons = allowed_persons(); person = request.args.get("person", ""); sel = [person] if person in persons else persons
+    acct = request.args.get("account", ""); folder = request.args.get("folder", "")
+    con = SI.connect()
+    try:
+        tree = con.execute(f"select person, account, json_extract(extra,'$.folder') folder, count(*) n from items where kind='mail' and person in ({','.join('?' * len(sel))}) group by person, account, folder order by person, account, folder", sel).fetchall()
+        where, args = [f"kind='mail' and person in ({','.join('?' * len(sel))})"], list(sel)
+        if acct: where.append("account=?"); args.append(acct)
+        if folder: where.append("json_extract(extra,'$.folder')=?"); args.append(folder)
+        rows = [{**dict(r), "x": json.loads(r["extra"] or "{}")} for r in con.execute(f"select * from items where {' and '.join(where)} order by date desc limit 300", args)]
+    finally: con.close()
+    return render_template("mail.html", tree=tree, rows=rows, persons=persons, person=person, acct=acct, folder=folder, fmt_date=_fmt_date, fmt_size=_fmt_size)
+@app.route("/contacts")
+def contacts():
+    persons = allowed_persons(); person = request.args.get("person", ""); sel = [person] if person in persons else persons; q = request.args.get("q", "").strip().lower()
+    con = SI.connect()
+    try: rows = [{**dict(r), "x": json.loads(r["extra"] or "{}")} for r in con.execute(f"select * from items where kind='contact' and person in ({','.join('?' * len(sel))})", sel)]
+    finally: con.close()
+    # stessa persona salvata da più di voi: unite per e-mail o telefono uguali (ultime 9 cifre)
+    parent = list(range(len(rows))); key_of = {}
+    def find(i):
+        while parent[i] != i: parent[i] = parent[parent[i]]; i = parent[i]
+        return i
+    for i, r in enumerate(rows):
+        for k in [("e", e) for e in r["x"].get("emails", [])] + [("t", t[-9:]) for t in r["x"].get("tels", []) if len(t) >= 6]:
+            if k in key_of: parent[find(i)] = find(key_of[k])
+            else: key_of[k] = i
+    groups = {}
+    for i, r in enumerate(rows): groups.setdefault(find(i), []).append(r)
+    people = []
+    for g in groups.values():
+        names = sorted({r["title"] for r in g if r["title"]}, key=len, reverse=True)
+        item = {"name": names[0] if names else "—", "ids": [r["id"] for r in g], "who": sorted({r["person"] for r in g}),
+                "emails": sorted({e for r in g for e in r["x"].get("emails", [])}), "tels": sorted({t for r in g for t in r["x"].get("tels", [])}),
+                "org": next((r["x"].get("org") for r in g if r["x"].get("org")), "")}
+        if q and q not in (item["name"] + " " + " ".join(item["emails"] + item["tels"]) + " " + item["org"]).lower(): continue
+        people.append(item)
+    people.sort(key=lambda p: p["name"].lower())
+    return render_template("contacts.html", people=people, persons=persons, person=person, q=q, total=len(rows))
+
 @app.post("/admin/reindex")
 def admin_reindex():
     _admin_only(); threading.Thread(target=lambda: SI.run(idx_sources(), log=lambda x: print(x, flush=True)), daemon=True).start()

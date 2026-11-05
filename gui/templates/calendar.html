@@ -1,0 +1,49 @@
+{% extends "base.html" %}{% block head %}<link rel="stylesheet" href="/static/vendor/leaflet.css">{% endblock %}{% block body %}
+<h1 class="title">{{ _('Calendario') }}</h1>
+<form method="get" action="/calendar">{% include "_personfilter.html" %}</form>
+<div class="split">
+<div style="display:grid;gap:1rem">
+<details class="grp" data-k="cal-list" open style="margin:0"><summary>{{ icon('doc', 15) }}{{ _('Calendari') }}{{ icon('chevron', 15, 'ic chev') }}</summary><div class="list">
+{% for c in cals %}<div class="li"><label class="row" style="gap:.5rem;flex:1;min-width:0"><input type="checkbox" class="calvis" value="{{ c.id }}" checked style="width:auto"><span class="k" style="min-width:0">{{ c.name }}<br><span class="mut">{{ c.person }} · {{ c.account }} · {{ c.n }}</span></span></label>
+<input type="color" class="calcol" data-id="{{ c.id }}" value="{{ c.color }}" title="{{ _('Colore') }}" style="width:34px;height:28px;padding:0;border:0;background:none"></div>{% else %}<div class="li"><span class="mut">{{ _('Nessun calendario ancora: collega un account (iCloud con password per app, oppure link ICS) dalla scheda dell\'utente.') }}</span></div>{% endfor %}
+</div></details>
+<details class="grp" data-k="cal-map" open style="margin:0"><summary>{{ icon('globe', 15) }}{{ _('Mappa degli appuntamenti') }}{{ icon('chevron', 15, 'ic chev') }}</summary>
+<div class="list"><div id="map" style="height:300px"></div></div>
+<p class="note">{% if geocode %}{{ _('I luoghi senza coordinate vengono cercati con OpenStreetMap.') }}{% else %}{{ _('Sulla mappa solo i luoghi con coordinate (scelti da Mappe). La ricerca degli altri indirizzi con OpenStreetMap si attiva in Amministrazione.') }}{% endif %}</p></details>
+</div>
+<div class="list" style="padding:.8rem"><div id="cal"></div></div>
+</div>
+<style>.fc{--fc-border-color:var(--sep);--fc-page-bg-color:var(--card);--fc-neutral-bg-color:var(--fill);--fc-today-bg-color:var(--acc-t);--fc-button-bg-color:var(--fill);--fc-button-border-color:transparent;--fc-button-text-color:var(--fg);--fc-button-hover-bg-color:var(--acc-t);--fc-button-hover-border-color:transparent;--fc-button-active-bg-color:var(--acc);--fc-button-active-border-color:transparent;font-size:14px}.fc .fc-button{border-radius:8px;text-transform:capitalize;font-weight:500}.fc .fc-toolbar-title{font-size:20px;font-weight:600}.fc a{color:inherit}.leaflet-container{background:var(--fill)}</style>
+<script src="/static/vendor/fullcalendar.js"></script><script src="/static/vendor/fullcalendar-it.js"></script><script src="/static/vendor/leaflet.js"></script>
+<script>
+(function(){
+  var person = {{ person|tojson }}, lang = {{ cur_lang()|tojson }}, geocodeOn = {{ geocode|tojson }};
+  var hidden = new Set(); try { hidden = new Set(JSON.parse(localStorage.getItem("cal:hidden") || "[]")); } catch(e) {}
+  document.querySelectorAll(".calvis").forEach(function(cb){ cb.checked = !hidden.has(cb.value); cb.addEventListener("change", function(){ if (cb.checked) hidden.delete(cb.value); else hidden.add(cb.value); try{localStorage.setItem("cal:hidden", JSON.stringify([...hidden]));}catch(e){} cal.refetchEvents(); }); });
+  var view = "dayGridMonth"; try { view = localStorage.getItem("cal:view") || view; } catch(e) {}
+  var map = L.map("map").setView([41.9, 12.5], 5); L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {maxZoom: 19, attribution: "© OpenStreetMap"}).addTo(map);
+  var markers = L.layerGroup().addTo(map), geoCache = {};
+  function placeMarkers(events){
+    markers.clearLayers(); var pts = [], pending = [];
+    events.forEach(function(ev){ var p = ev.extendedProps; if (!p.location && !p.geo) return;
+      var add = function(g){ if (!g) return; var m = L.circleMarker(g, {radius: 7, color: ev.backgroundColor || ev.color, fillOpacity: .8}).bindPopup("<b>" + ev.title.replace(/</g,"&lt;") + "</b><br>" + (p.location||"").replace(/</g,"&lt;") + '<br><a href="' + ev.url + '">{{ _("Dettagli") }}</a>'); markers.addLayer(m); pts.push(g); };
+      if (p.geo) add(p.geo); else if (geocodeOn && p.location) pending.push([p.location, add]); });
+    (function next(i){ if (i >= Math.min(pending.length, 15)) { if (pts.length) map.fitBounds(pts, {maxZoom: 13, padding: [20, 20]}); return; }
+      var q = pending[i][0], cb = pending[i][1];
+      if (q in geoCache) { cb(geoCache[q]); return next(i + 1); }
+      fetch("/api/geocode?q=" + encodeURIComponent(q)).then(function(r){return r.json();}).then(function(d){ geoCache[q] = d.geo; cb(d.geo); next(i + 1); }).catch(function(){ next(i + 1); }); })(0);
+  }
+  var cal = new FullCalendar.Calendar(document.getElementById("cal"), {
+    locale: lang, initialView: view, firstDay: 1, height: "auto", nowIndicator: true, navLinks: true, dayMaxEvents: true,
+    headerToolbar: {left: "prev,next today", center: "title", right: "multiMonthYear,dayGridMonth,timeGridWeek,timeGridDay,listMonth"},
+    views: {multiMonthYear: {multiMonthMaxColumns: 3}},
+    events: function(info, ok, ko){ fetch("/api/events?start=" + encodeURIComponent(info.startStr) + "&end=" + encodeURIComponent(info.endStr) + "&person=" + encodeURIComponent(person)).then(function(r){return r.json();}).then(function(d){ ok(d.events.filter(function(e){ return !hidden.has(e.extendedProps.cal_id); })); }).catch(ko); },
+    eventsSet: placeMarkers,
+    datesSet: function(i){ try { localStorage.setItem("cal:view", i.view.type); } catch(e) {} },
+    eventClick: function(i){ i.jsEvent.preventDefault(); location.href = i.event.url; }
+  });
+  cal.render();
+  document.querySelectorAll(".calcol").forEach(function(inp){ inp.addEventListener("change", function(){ var f = new FormData(); f.append("id", inp.dataset.id); f.append("color", inp.value); fetch("/calendar/color", {method: "POST", body: f}).then(function(){ cal.refetchEvents(); }); }); });
+})();
+</script>
+{% endblock %}

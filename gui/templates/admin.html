@@ -26,6 +26,9 @@
 <div class="li"><button>{{ _('Salva') }}</button></div></div></form>
 <form method="post" action="/admin/notify/test" style="margin-top:.6rem"><button class="tint">{{ icon('send') }}{{ _('Invia un messaggio di prova') }}</button></form>
 <p class="note">{{ _('I valori iniziali vengono dalle variabili del template Unraid; quelli salvati qui hanno la precedenza. Ogni messaggio inizia con «ICLOUD:». Le risposte ai comandi del bot arrivano sempre alla chat che li ha inviati.') }}</p></details>
+<details class="grp" data-k="adm-geo"><summary>{{ icon('globe', 15) }}{{ _('Mappa del calendario') }}{{ icon('chevron', 15, 'ic chev') }}</summary>
+<form class="autosave" method="post" action="/admin/geocode"><div class="list"><div class="li"><label class="k" for="geo">{{ _('Cerca le coordinate dei luoghi con OpenStreetMap') }}</label><span class="v"><input id="geo" class="sw" type="checkbox" name="geocode" {% if geocode %}checked{% endif %}></span></div></div></form>
+<p class="note">{{ _('Manda a nominatim.openstreetmap.org solo il testo del luogo degli appuntamenti che non hanno coordinate (al massimo 15 per vista, uno al secondo); i risultati restano in cache. Spento: sulla mappa solo i luoghi scelti da Mappe.') }}</p></details>
 <details class="grp" data-k="adm-index"><summary>{{ icon('search', 15) }}{{ _('Indice di ricerca (iclouddb)') }}{{ icon('chevron', 15, 'ic chev') }}</summary><div class="list">
 {% for person, kind, n in idx %}<div class="li"><span class="k">{{ person }} · {{ _(kind) }}</span><span class="v">{{ n }}</span></div>{% else %}<div class="li"><span class="mut">{{ _('Indice ancora vuoto: il primo giro parte un minuto dopo l\'avvio.') }}</span></div>{% endfor %}
 <div class="li"><span class="k">{{ _('Ultimo aggiornamento') }}</span><span class="v">{{ idx_last or '—' }} · {{ fmt_size(idx_db) }}</span></div>

@@ -2,7 +2,13 @@
 FROM docker:cli
 LABEL org.opencontainers.image.source="https://github.com/sidimam/icloud-dashboard"
 RUN apk add --no-cache bash curl jq python3 py3-flask py3-pip tzdata \
- && pip install --no-cache-dir --break-system-packages pyotp==2.9.0 qrcode==7.4.2
+ && pip install --no-cache-dir --break-system-packages pyotp==2.9.0 qrcode==7.4.2 icalendar==6.1.0 recurring-ical-events==3.3.3
+# Calendario (FullCalendar, MIT) e mappa (Leaflet, BSD) dentro l'immagine: la GUI non carica script da Internet.
+RUN mkdir -p /opt/dispatcher/gui/static/vendor \
+ && curl -fsSL -o /opt/dispatcher/gui/static/vendor/fullcalendar.js https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js \
+ && curl -fsSL -o /opt/dispatcher/gui/static/vendor/fullcalendar-it.js https://cdn.jsdelivr.net/npm/@fullcalendar/core@6.1.15/locales/it.global.min.js \
+ && curl -fsSL -o /opt/dispatcher/gui/static/vendor/leaflet.js https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js \
+ && curl -fsSL -o /opt/dispatcher/gui/static/vendor/leaflet.css https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css
 COPY bot.sh /opt/dispatcher/bot.sh
 COPY gui/ /opt/dispatcher/gui/
 COPY entrypoint.sh /opt/dispatcher/entrypoint.sh
