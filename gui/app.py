@@ -355,6 +355,13 @@ def drive_view(name, u):
         quiet = t and (datetime.datetime.now() - t).total_seconds() > 2 * int(v["sync_interval"] or 1800) + 600
         v["stalled"] = any(x["stalled"] for x in v["cycles"]) or bool(quiet and not any(x["running_min"] is not None for x in v["cycles"]))
     v["autoheal"] = ah_view(c); v["autoheal_on"] = AH_ON
+    try:   # modulo PIM dell'immagine sidimam/iclouddr: stato dell'ultimo giro (note, promemoria)
+        ps = json.load(open(os.path.join(local, "pim-status.json")))
+        v["pim"] = {"ok": ps.get("ok"), "when": ago(datetime.datetime.fromtimestamp(ps.get("finished") or ps.get("started"))),
+                    "seconds": ps.get("seconds"), "note": (ps.get("note") or {}).get("note"), "protette": (ps.get("note") or {}).get("protette"),
+                    "promemoria": (ps.get("promemoria") or {}).get("promemoria"), "liste": (ps.get("promemoria") or {}).get("liste"),
+                    "error": ps.get("error"), "dest": m.get("/icloud/pim", "")}
+    except (FileNotFoundError, ValueError, TypeError): v["pim"] = None
     return v
 def photos_view(name, u):
     c = u["container"]; info = inspect(c); v = {"name": name, "type": "icloudpd", "label": u.get("label", name), "container": c, "chat_id": u.get("chat_id", ""), "exists": info is not None}

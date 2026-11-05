@@ -1,5 +1,9 @@
 """Traduzioni inglesi della GUI: chiave = testo italiano usato nel codice e nei template (vedi ui.py)."""
 EN = {
+    "Note e promemoria": "Notes and reminders",
+    "{a0} note, {a1} promemoria in {a2} liste": "{a0} notes, {a1} reminders in {a2} lists",
+    "errore": "error",
+    "ultimo giro {a0} ({a1} s)": "last run {a0} ({a1} s)",
     "adesso": "just now",
     "{a0} min fa": "{a0} min ago",
     "{a0} h {a1} min fa": "{a0} h {a1} min ago",
