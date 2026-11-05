@@ -3,7 +3,7 @@
 import json, os, re, secrets, subprocess, shutil, datetime, html, time, threading
 from werkzeug.security import check_password_hash, generate_password_hash
 from concurrent.futures import ThreadPoolExecutor
-from flask import Flask, request, redirect, url_for, render_template, flash, abort, session
+from flask import Flask, request, redirect, url_for, render_template, flash, abort, session, copy_current_request_context
 
 APP_DIR = os.environ.get("APP_DIR", "/app"); CFG = os.path.join(APP_DIR, "config.json")
 TOKEN = os.environ.get("TELEGRAM_TOKEN", ""); PORT = int(os.environ.get("GUI_PORT", "8787"))
@@ -256,6 +256,21 @@ def host_to_local(path):
     for host, local in (("/mnt/user/appdata", p["appdata"]), ("/mnt/user/media/photos", p["photos"]), ("/mnt/user/documents", p.get("documents", "/documents"))):
         if path.startswith(host): return path.replace(host, local, 1)
     return path
+def yaml_section_get(path, section, key, default=""):
+    """Valore di `key` dentro la sezione di primo livello `section` di config.yaml (es. photos → sync_interval)."""
+    cur = None
+    try:
+        for line in open(path):
+            top = re.match(r"^([A-Za-z_]+):\s*$", line)
+            if top: cur = top.group(1); continue
+            m = re.match(r"\s+%s:\s*(.*?)\s*$" % re.escape(key), line)
+            if m and cur == section: return m.group(1).strip().strip('"')
+    except FileNotFoundError: pass
+    return default
+def every(sec):
+    try: s = int(sec)
+    except (TypeError, ValueError): return ""
+    return _("ogni {a0} min", a0=s // 60) if s < 3600 else _("ogni {a0} h", a0=round(s / 3600, 1)).replace(".0 ", " ")
 def yaml_get(path, key, default=""):
     try:
         for line in open(path):
@@ -362,6 +377,33 @@ def drive_view(name, u):
                     "promemoria": (ps.get("promemoria") or {}).get("promemoria"), "liste": (ps.get("promemoria") or {}).get("liste"),
                     "error": ps.get("error"), "dest": m.get("/icloud/pim", "")}
     except (FileNotFoundError, ValueError, TypeError): v["pim"] = None
+    # «Cosa scarica»: una riga per servizio iCloud, attivo o no, con cartella, frequenza e ultimo giro.
+    cyc = {x["kind"]: x for x in v.get("cycles") or []}
+    def cyc_txt(kind):
+        g = cyc.get(kind)
+        if not g: return ""
+        if g["running_min"] is not None: return _("in corso da {a0} min", a0=g["running_min"])
+        return _("ultimo giro {a0}", a0=g["last_end"])
+    photo_paths = [src for dst, src in sorted(m.items()) if dst.startswith("/icloud/photos")]
+    pim = v["pim"]; pim_on = "/icloud/pim" in m
+    svc = [{"name": "iCloud Drive", "icon": "folder", "badge": "b-blue", "on": True, "paths": [m.get("/icloud/drive", "")],
+            "freq": every(v.get("sync_interval")), "last": cyc_txt("Drive"),
+            "info": _("tutto il Drive: Scrivania, Documenti, Download e cartelle delle app")},
+           {"name": _("Foto"), "icon": "photo", "badge": "b-orange", "on": bool(photo_paths), "paths": photo_paths,
+            "freq": every(yaml_section_get(y, "photos", "sync_interval")) if photo_paths else "", "last": cyc_txt("Foto"),
+            "info": "" if photo_paths else _("non attivo")}]
+    note_dir = (m.get("/icloud/pim", "") + "/Note") if pim_on else ""
+    svc += [{"name": _("Note"), "icon": "doc", "badge": "b-orange", "on": bool(pim_on and pim), "paths": [note_dir] if pim_on else [],
+             "freq": every(env_of(info).get("PIM_INTERVAL", "21600")) if pim_on else "", "last": _("ultimo giro {a0}", a0=pim["when"]) if pim else "",
+             "info": (_("{a0} note", a0=pim["note"]) if pim and pim.get("ok") else (pim or {}).get("error") or "") if pim_on else _("non attivo: serve l'immagine sidimam/iclouddr"),
+             "err": bool(pim and not pim.get("ok"))},
+            {"name": _("Promemoria"), "icon": "check", "badge": "b-red", "on": bool(pim_on and pim), "paths": [m.get("/icloud/pim", "") + "/Promemoria"] if pim_on else [],
+             "freq": every(env_of(info).get("PIM_INTERVAL", "21600")) if pim_on else "", "last": _("ultimo giro {a0}", a0=pim["when"]) if pim else "",
+             "info": (_("{a0} promemoria in {a1} liste", a0=pim["promemoria"], a1=pim["liste"]) if pim and pim.get("ok") else "") if pim_on else _("non attivo: serve l'immagine sidimam/iclouddr"),
+             "err": bool(pim and not pim.get("ok"))}]
+    for name, icon_, badge in ((_("Posta"), "send", "b-blue"), (_("Calendario"), "doc", "b-red"), (_("Contatti"), "users", "b-gray")):
+        svc.append({"name": name, "icon": icon_, "badge": badge, "on": False, "paths": [], "freq": "", "last": "", "info": _("non ancora attivo: serve una password per app")})
+    v["services"] = svc
     return v
 def photos_view(name, u):
     c = u["container"]; info = inspect(c); v = {"name": name, "type": "icloudpd", "label": u.get("label", name), "container": c, "chat_id": u.get("chat_id", ""), "exists": info is not None}
@@ -379,7 +421,9 @@ def photos_view(name, u):
 @app.route("/")
 def index():
     c = cfg()
-    with ThreadPoolExecutor(max_workers=8) as ex: users = list(ex.map(lambda nu: user_view(*nu), c["users"].items()))
+    # i thread ricevono una copia della richiesta, così lingua e profilo valgono anche per i testi calcolati lì
+    jobs = [copy_current_request_context(lambda nu=nu: user_view(*nu)) for nu in c["users"].items()]   # una copia per utente
+    with ThreadPoolExecutor(max_workers=8) as ex: users = list(ex.map(lambda f: f(), jobs))
     # Due sezioni per tipo: prima le foto (icloudpd), poi iCloud Drive; dentro ogni sezione l'ordine di config.json.
     sections = [("Foto iCloud (icloudpd)", [v for v in users if v["type"] == "icloudpd"]), ("iCloud Drive (mandarons/icloud-drive)", [v for v in users if v["type"] == "iclouddrive"])]
     sections = [sct for sct in sections if sct[1]]
