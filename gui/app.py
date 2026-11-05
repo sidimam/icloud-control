@@ -609,7 +609,7 @@ def new_drive(c, f, name, short):
     p = c["paths"]; d = c["defaults"]; cont = f"iclouddr-{short.lower()}"; host_appdata = f"/mnt/user/appdata/{cont}"
     # Dalla 3.8 i container nuovi usano l'immagine con il modulo PIM, come quelli di famiglia: note e promemoria in
     # <persona>/iCloud, account collegati nella cartella della persona (la cartella che contiene «iCloud Drive»).
-    image = os.environ.get("ICLOUDDR_IMAGE", "ghcr.io/sidimam/iclouddr:0.2.0")
+    image = os.environ.get("ICLOUDDR_IMAGE", "ghcr.io/sidimam/iclouddr:0.2.1")
     person_host = os.path.dirname(dest_host); pim_host = person_host + "/iCloud"
     appdata = host_to_local(host_appdata); dest = host_to_local(dest_host)
     if dest == dest_host: flash(_("La destinazione deve stare sotto /mnt/user/documents (montato in iCloud Dashboard come /documents)")); return redirect(url_for("new"))
