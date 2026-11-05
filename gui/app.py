@@ -1,24 +1,17 @@
 #!/usr/bin/env python3
-"""icloud-dispatcher GUI: utenti = container iCloud (foto: boredazfcuk/icloudpd; iCloud Drive: mandarons/icloud-drive), chat Telegram, cosa scaricare, rinnovo 2FA."""
+"""iCloud Dashboard (ex icloud-dispatcher) GUI: utenti = container iCloud (foto: boredazfcuk/icloudpd; iCloud Drive: mandarons/icloud-drive), chat Telegram, cosa scaricare, rinnovo 2FA."""
 import json, os, re, subprocess, shutil, datetime, html, time, threading
 from concurrent.futures import ThreadPoolExecutor
 from flask import Flask, request, redirect, url_for, render_template, flash, abort, session
-from werkzeug.security import check_password_hash, generate_password_hash
 
 APP_DIR = os.environ.get("APP_DIR", "/app"); CFG = os.path.join(APP_DIR, "config.json")
 TOKEN = os.environ.get("TELEGRAM_TOKEN", ""); PORT = int(os.environ.get("GUI_PORT", "8787"))
 app = Flask(__name__, template_folder=os.path.join(os.path.dirname(__file__), "templates"))
-# ---- accesso: GUI_USER + password. L'hash valido è quello salvato in /app/state/gui_password (cambio dalla pagina «Password»),
-# altrimenti GUI_PASSWORD_HASH (hash werkzeug). GUI_RESET_PASSWORD, se compilata, all'avvio reimposta la password a quel valore
-# (password dimenticata): poi va svuotata, se no a ogni riavvio rimette quella. Senza nessuna password la GUI resta aperta come prima.
-GUI_USER = os.environ.get("GUI_USER", "admin"); GUI_HASH = os.environ.get("GUI_PASSWORD_HASH", ""); GUI_RESET = os.environ.get("GUI_RESET_PASSWORD", "")
-PW_FILE = os.path.join(APP_DIR, "state", "gui_password")
-def save_password(pw):
-    os.makedirs(os.path.dirname(PW_FILE), exist_ok=True); open(PW_FILE, "w").write(generate_password_hash(pw)); os.chmod(PW_FILE, 0o600)
-def password_hash():
-    try: return open(PW_FILE).read().strip()
-    except FileNotFoundError: return GUI_HASH
-if GUI_RESET: save_password(GUI_RESET); print("GUI: password reimpostata da GUI_RESET_PASSWORD (svuota la variabile e riavvia)", flush=True)
+# ---- accesso (3.0): profili in /app/state/profiles.json (vedi accounts.py), password + 2FA TOTP facoltativo per profilo.
+# GUI_RESET_PASSWORD, se compilata, all'avvio reimposta la password dell'admin e gli spegne il 2FA: poi va svuotata.
+import accounts
+GUI_USER = accounts.ADMIN; GUI_RESET = os.environ.get("GUI_RESET_PASSWORD", "")
+accounts.bootstrap(GUI_RESET)
 def _secret():   # chiave di sessione persistente in /app/state: un riavvio non disconnette
     f = os.path.join(APP_DIR, "state", "gui_secret")
     try: return open(f, "rb").read()
@@ -27,34 +20,75 @@ def _secret():   # chiave di sessione persistente in /app/state: un riavvio non 
 app.secret_key = _secret()
 app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax", PERMANENT_SESSION_LIFETIME=datetime.timedelta(days=30))
 FAILS = {}   # ip -> [orari dei tentativi falliti]: oltre 10 in 10 minuti l'ip aspetta
+def me(): return session.get("user") if session.get("user") and accounts.get(session["user"]) else None
+def _ip(): return request.headers.get("CF-Connecting-IP") or request.remote_addr
+def _throttled():
+    now = time.time(); r = FAILS[_ip()] = [t for t in FAILS.get(_ip(), []) if now - t < 600]; return len(r) >= 10
+def _fail(): FAILS.setdefault(_ip(), []).append(time.time()); time.sleep(1)
+def _safe_next(n): return n if n and n.startswith("/") and not n.startswith("//") else "/"
 @app.before_request
 def require_login():
-    if not password_hash() or request.endpoint in ("login", "healthz", "static") or session.get("user") == GUI_USER: return None
+    if request.endpoint in ("login", "login_2fa", "healthz", "static") or not accounts.any_password() or me(): return None
     return redirect(url_for("login", next=request.full_path if request.method == "GET" else "/"))
+def _complete_login(name, remember):
+    session.clear(); session["user"] = name; session.permanent = remember; FAILS.pop(_ip(), None); accounts.update(name, last_login=time.time())
 @app.route("/login", methods=["GET", "POST"])
 def login():
-    nxt = request.values.get("next", "/"); nxt = nxt if nxt.startswith("/") and not nxt.startswith("//") else "/"
+    nxt = _safe_next(request.values.get("next", "/"))
     if request.method == "POST":
-        ip = request.headers.get("CF-Connecting-IP") or request.remote_addr; now = time.time()
-        recent = FAILS[ip] = [t for t in FAILS.get(ip, []) if now - t < 600]
-        if len(recent) >= 10: flash("Troppi tentativi: riprova fra qualche minuto"); return render_template("login.html", next=nxt), 429
-        if request.form.get("user", "") == GUI_USER and check_password_hash(password_hash(), request.form.get("password", "")):
-            session.clear(); session["user"] = GUI_USER; session.permanent = request.form.get("remember") == "on"; FAILS.pop(ip, None); return redirect(nxt)
-        recent.append(now); time.sleep(1); flash("Utente o password errati")
+        if _throttled(): flash("Troppi tentativi: riprova fra qualche minuto"); return render_template("login.html", next=nxt), 429
+        name = request.form.get("user", "").strip().lower(); remember = request.form.get("remember") == "on"
+        if accounts.check_password(name, request.form.get("password", "")):
+            p = accounts.get(name)
+            if p.get("totp_on"):
+                session.clear(); session["pending"] = name; session["pending_remember"] = remember; session["pending_ts"] = time.time()
+                return redirect(url_for("login_2fa", next=nxt))
+            _complete_login(name, remember); return redirect(nxt)
+        _fail(); flash("Utente o password errati")
     return render_template("login.html", next=nxt)
+@app.route("/login/2fa", methods=["GET", "POST"])
+def login_2fa():
+    nxt = _safe_next(request.values.get("next", "/")); name = session.get("pending")
+    if not name or time.time() - session.get("pending_ts", 0) > 300: session.clear(); flash("Accedi di nuovo"); return redirect(url_for("login", next=nxt))
+    if request.method == "POST":
+        if _throttled(): flash("Troppi tentativi: riprova fra qualche minuto"); return render_template("login_2fa.html", next=nxt), 429
+        if accounts.verify_totp(accounts.get(name).get("totp", ""), request.form.get("code", "")):
+            _complete_login(name, session.get("pending_remember", False)); return redirect(nxt)
+        _fail(); flash("Codice non valido")
+    return render_template("login_2fa.html", next=nxt, user=name)
 @app.post("/logout")
 def logout(): session.clear(); return redirect(url_for("login"))
-@app.route("/password", methods=["GET", "POST"])
-def password():
+@app.route("/password")
+def password(): return redirect(url_for("account"))
+@app.route("/account", methods=["GET", "POST"])
+def account():
+    name = me() or accounts.ADMIN; p = accounts.get(name) or {}
     if request.method == "POST":
-        f = request.form; cur = password_hash()
-        if cur and not check_password_hash(cur, f.get("current", "")): time.sleep(1); flash("La password attuale non è corretta")
-        elif len(f.get("new", "")) < 8: flash("La nuova password deve avere almeno 8 caratteri")
-        elif f.get("new") != f.get("confirm"): flash("Le due password nuove non coincidono")
-        else: save_password(f["new"]); session.clear(); session["user"] = GUI_USER; flash("Password cambiata"); return redirect(url_for("index"))
-    return render_template("password.html", has_password=bool(password_hash()), config_user=GUI_USER)
+        f = request.form; act = f.get("action")
+        if act == "password":
+            if p.get("pw") and not accounts.check_password(name, f.get("current", "")): _fail(); flash("La password attuale non è corretta")
+            elif len(f.get("new", "")) < 8: flash("La nuova password deve avere almeno 8 caratteri")
+            elif f.get("new") != f.get("confirm"): flash("Le due password nuove non coincidono")
+            else: accounts.set_password(name, f["new"]); flash("Password cambiata")
+        elif act == "totp_start":
+            session["totp_new"] = accounts.new_secret()
+        elif act == "totp_confirm":
+            sec = session.get("totp_new", "")
+            if accounts.verify_totp(sec, f.get("code", "")): accounts.update(name, totp=sec, totp_on=True); session.pop("totp_new", None); flash("Verifica in due passaggi attivata")
+            else: flash("Codice non valido: controlla l'ora del telefono e riprova")
+        elif act == "totp_off":
+            if accounts.check_password(name, f.get("current", "")): accounts.update(name, totp="", totp_on=False); flash("Verifica in due passaggi disattivata")
+            else: _fail(); flash("Password non corretta")
+        elif act == "totp_cancel": session.pop("totp_new", None)
+        return redirect(url_for("account"))
+    sec = session.get("totp_new"); qr = accounts.totp_qr_svg(accounts.totp_uri(name, sec)) if sec else ""
+    return render_template("account.html", name=name, p=accounts.get(name) or {}, totp_new=sec, qr=qr, icloud=_icloud_of(name))
+def _icloud_of(profile):
+    try: return next((n for n, u in cfg()["users"].items() if u.get("container") == f"iclouddr-{profile}"), "")
+    except Exception: return ""
 @app.context_processor
-def reset_warning(): return {"reset_set": bool(GUI_RESET)}
+def page_ctx():
+    n = me(); return {"reset_set": bool(GUI_RESET), "me": n, "me_admin": bool(n and accounts.is_admin(n)), "fmt_ts": lambda t: datetime.datetime.fromtimestamp(t).strftime("%d/%m/%Y %H:%M") if t else "mai"}
 
 def cfg(): return json.load(open(CFG))
 def save(c): json.dump(c, open(CFG, "w"), indent=2, ensure_ascii=False)
@@ -103,9 +137,20 @@ def telegram(chat, text):
 NOTIFY_CHAT = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
 NOTIFY_RESTART = os.environ.get("NOTIFY_AUTOHEAL_RESTART", "1") != "0"; NOTIFY_GAVE_UP = os.environ.get("NOTIFY_AUTOHEAL_GAVE_UP", "1") != "0"
 QUIET = os.environ.get("NOTIFY_QUIET_HOURS", "23:00-07:30").strip(); NQ_FILE = os.path.join(APP_DIR, "state", "notify_queue.json")
-def notify_chat(c): return NOTIFY_CHAT or c.get("default_chat_id", "")
+# Dalla 3.0 le stesse impostazioni si cambiano anche dalla scheda Amministrazione (/app/state/settings.json): quelle salvate lì
+# hanno la precedenza, le variabili del template restano i valori iniziali.
+SETTINGS_FILE = os.path.join(APP_DIR, "state", "settings.json")
+def nset():
+    try: s = json.load(open(SETTINGS_FILE)).get("notify", {})
+    except (FileNotFoundError, ValueError): s = {}
+    return {"chat": s.get("chat", NOTIFY_CHAT), "restart": s.get("restart", NOTIFY_RESTART), "gave_up": s.get("gave_up", NOTIFY_GAVE_UP), "quiet": s.get("quiet", QUIET)}
+def save_nset(v):
+    try: d = json.load(open(SETTINGS_FILE))
+    except (FileNotFoundError, ValueError): d = {}
+    d["notify"] = v; os.makedirs(os.path.dirname(SETTINGS_FILE), exist_ok=True); json.dump(d, open(SETTINGS_FILE, "w"), indent=1, ensure_ascii=False)
+def notify_chat(c): return nset()["chat"] or c.get("default_chat_id", "")
 def in_quiet(now=None):
-    m = re.fullmatch(r"(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})", QUIET)
+    m = re.fullmatch(r"(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})", nset()["quiet"].strip())
     if not m: return False
     a, b = int(m[1]) * 60 + int(m[2]), int(m[3]) * 60 + int(m[4]); now = now or datetime.datetime.now(); t = now.hour * 60 + now.minute
     return a <= t < b if a <= b else (t >= a or t < b)
@@ -122,7 +167,7 @@ def notify_flush(c):
     q = _nq()
     if not q or in_quiet() or not notify_chat(c): return
     body = "\n\n".join(f"{datetime.datetime.fromtimestamp(x['ts']).strftime('%H:%M')} {x['text']}" for x in q)
-    telegram(notify_chat(c), ("🌙 Avvisi della notte (icloud-dispatcher):\n\n" + body)[:4000]); os.remove(NQ_FILE)
+    telegram(notify_chat(c), ("🌙 Avvisi della notte (iCloud Dashboard):\n\n" + body)[:4000]); os.remove(NQ_FILE)
 def cookie_name(c): return dexec(c, 'ls /config | grep -E "^[a-z0-9]+(com|it)$" | head -1')[1]
 def auth_running(c): return dexec(c, "pgrep -f authenticate.exp >/dev/null")[0] == 0
 def start_auth(c):
@@ -342,9 +387,9 @@ def new_drive(c, f, name, short):
     if not name or not apple or name in c["users"]: flash("Dati mancanti o nome già usato"); return redirect(url_for("new"))
     p = c["paths"]; d = c["defaults"]; cont = f"iclouddr-{short.lower()}"; host_appdata = f"/mnt/user/appdata/{cont}"
     appdata = host_to_local(host_appdata); dest = host_to_local(dest_host)
-    if dest == dest_host: flash("La destinazione deve stare sotto /mnt/user/documents (montato nel dispatcher come /documents)"); return redirect(url_for("new"))
+    if dest == dest_host: flash("La destinazione deve stare sotto /mnt/user/documents (montato in iCloud Dashboard come /documents)"); return redirect(url_for("new"))
     photos_local = host_to_local(photos_host) if photos else None
-    if photos and photos_local == photos_host: flash("La cartella foto deve stare sotto /mnt/user/media/photos (montato nel dispatcher come /photos)"); return redirect(url_for("new"))
+    if photos and photos_local == photos_host: flash("La cartella foto deve stare sotto /mnt/user/media/photos (montato in iCloud Dashboard come /photos)"); return redirect(url_for("new"))
     for path in [appdata, dest] + ([photos_local] if photos else []):
         os.makedirs(path, exist_ok=True); shutil.chown(path, int(d["user_id"]), int(d["group_id"]))
     open(os.path.join(appdata, "config.yaml"), "w").write(f"""# {cont} — iCloud Drive di {label} → {dest_host}{photos_note} (solo download, {d.get('drive_image', 'mandarons/icloud-drive')})
@@ -377,7 +422,7 @@ drive:
       - "live_video_original"
       - "original_alt"
 """ if photos else "")); shutil.chown(os.path.join(appdata, "config.yaml"), int(d["user_id"]), int(d["group_id"]))
-    icon = "https://raw.githubusercontent.com/sidimam/icloud-dispatcher/main/assets/icloud-drive.png"   # quadrata 256x256 (l'icona dashboard-icons è 797x512 e Unraid la deforma)
+    icon = "https://raw.githubusercontent.com/sidimam/icloud-dashboard/main/assets/icloud-drive.png"   # quadrata 256x256 (l'icona dashboard-icons è 797x512 e Unraid la deforma)
     open(tpl_path(cont), "w").write(f"""<?xml version="1.0"?>
 <Container version="2">
   <Name>{cont}</Name>
@@ -447,12 +492,12 @@ def ah_check(name, u, c):
     if len(recent) >= AH_MAXR:
         if not any(e.get("container") == ct and e.get("action") == "gave_up" and now - e.get("ts", 0) < 6 * 3600 for e in ah_events()):
             ah_log({"ts": now, "container": ct, "action": "gave_up", "reason": reason})
-            if NOTIFY_GAVE_UP: notify(c, f"⚠️ {name}: {ct} si blocca di continuo ({len(recent)} riavvii automatici in 6 ore, ultimo motivo: {reason}). Per 6 ore non lo riavvio più in automatico: guarda la GUI del dispatcher (📜 Log).")
+            if nset()["gave_up"]: notify(c, f"⚠️ {name}: {ct} si blocca di continuo ({len(recent)} riavvii automatici in 6 ore, ultimo motivo: {reason}). Per 6 ore non lo riavvio più in automatico: guarda iCloud Dashboard (📜 Log).")
         return
     rc, _, err = sh(f"docker restart {ct}", 120); _ah_samples.pop(ct, None); _log_cache.pop(ct, None)
     ah_log({"ts": now, "container": ct, "action": "restart", "reason": reason, "ok": rc == 0})
     print(f"autoheal: {ct} riavviato ({reason})" if rc == 0 else f"autoheal: {ct} riavvio fallito: {err[-200:]}", flush=True)
-    if NOTIFY_RESTART: notify(c, f"🔁 {name}: {ct} riavviato in automatico ({reason})." if rc == 0 else f"❌ {name}: riavvio automatico di {ct} non riuscito.")
+    if nset()["restart"]: notify(c, f"🔁 {name}: {ct} riavviato in automatico ({reason})." if rc == 0 else f"❌ {name}: riavvio automatico di {ct} non riuscito.")
 def ah_loop():
     while True:
         try:
@@ -467,6 +512,49 @@ def ah_view(ct):
     evs = [e for e in ah_events() if e.get("container") == ct]
     for e in evs: e["when"] = datetime.datetime.fromtimestamp(e["ts"]).strftime("%d/%m %H:%M")
     return {"last": evs[-1] if evs else None, "n24": sum(1 for e in evs if e["action"] == "restart" and time.time() - e["ts"] < 86400)}
+
+# ---- scheda Amministrazione (3.0): profili, password, 2FA, notifiche. Riservata ai profili con ruolo admin.
+def _admin_only():
+    if not (me() and accounts.is_admin(me())) and accounts.any_password(): abort(403)
+@app.route("/admin")
+def admin():
+    _admin_only()
+    ps = accounts.profiles()
+    rows = [{"name": n, "p": p, "icloud": _icloud_of(n), "role": accounts.ROLES.get(p.get("role"), p.get("role"))} for n, p in sorted(ps.items(), key=lambda x: (x[0] != accounts.ADMIN, x[0]))]
+    return render_template("admin.html", rows=rows, n=nset(), default_chat=cfg().get("default_chat_id", ""))
+@app.post("/admin/profile/<name>/<action>")
+def admin_profile(name, action):
+    _admin_only(); f = request.form
+    if not accounts.get(name): abort(404)
+    if action == "password":
+        if len(f.get("new", "")) < 8: flash("La password deve avere almeno 8 caratteri")
+        else: accounts.set_password(name, f["new"]); flash(f"Password di {name} impostata")
+    elif action == "totp_off": accounts.update(name, totp="", totp_on=False); flash(f"Verifica in due passaggi di {name} disattivata")
+    elif action == "delete":
+        if name == me() or name == accounts.ADMIN: flash("Non puoi eliminare questo profilo")
+        else: accounts.remove(name); flash(f"Profilo {name} eliminato")
+    else: abort(404)
+    return redirect(url_for("admin"))
+@app.post("/admin/profile/new")
+def admin_profile_new():
+    _admin_only(); f = request.form; name = f.get("name", "").strip().lower()
+    if not re.fullmatch(r"[a-z0-9][a-z0-9._-]{1,31}", name): flash("Nome profilo non valido (lettere minuscole, numeri, . _ -)")
+    elif f.get("new") and len(f["new"]) < 8: flash("La password deve avere almeno 8 caratteri")
+    elif not accounts.add(name, "admin", f.get("new", "")): flash(f"Il profilo {name} esiste già")
+    else: flash(f"Profilo {name} creato" + ("" if f.get("new") else ": impostagli una password per farlo entrare"))
+    return redirect(url_for("admin"))
+@app.post("/admin/notify")
+def admin_notify():
+    _admin_only(); f = request.form; q = f.get("quiet", "").strip()
+    if q and not re.fullmatch(r"\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}", q): flash("Ore silenziose: usa il formato 23:00-07:30, oppure lascia vuoto"); return redirect(url_for("admin"))
+    save_nset({"chat": f.get("chat", "").strip(), "restart": f.get("restart") == "on", "gave_up": f.get("gave_up") == "on", "quiet": q}); flash("Notifiche salvate")
+    return redirect(url_for("admin"))
+@app.post("/admin/notify/test")
+def admin_notify_test():
+    _admin_only(); chat = notify_chat(cfg())
+    if not TOKEN or not chat: flash("Manca il token del bot o la chat"); return redirect(url_for("admin"))
+    telegram(chat, f"🧪 Prova di iCloud Dashboard da {me() or 'admin'}: le notifiche arrivano qui."); flash("Messaggio di prova inviato")
+    return redirect(url_for("admin"))
 
 @app.route("/healthz")
 def healthz(): return "ok"

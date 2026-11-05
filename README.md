@@ -1,4 +1,6 @@
-# icloud-dispatcher
+# iCloud Dashboard
+
+<img src="assets/icloud-dashboard.png" width="72" alt="">
 
 Rinnovo della sessione 2FA Apple dei container iCloud di Unraid **con un solo bot Telegram**, condiviso fra più container e con il
 resto della casa. Gestisce due famiglie di container:
@@ -6,8 +8,10 @@ resto della casa. Gestisce due famiglie di container:
 - **📷 foto** — [boredazfcuk/icloudpd](https://github.com/boredazfcuk/docker-icloudpd) (uno per Apple ID, libreria personale o condivisa);
 - **📁 iCloud Drive** — [mandarons/icloud-drive](https://github.com/mandarons/icloud-docker) (uno per Apple ID, solo download).
 
-> Fino al 22 ottobre 2026 il progetto si chiamava *iCloudpd-dispatcher* e gestiva solo le foto. GitHub reindirizza il vecchio nome;
-> l'immagine è ora `ghcr.io/sidimam/icloud-dispatcher`, il container `icloud-dispatcher`, l'appdata `/mnt/user/appdata/icloud-dispatcher`.
+> Nomi precedenti: *iCloudpd-dispatcher* (fino al 22/10/2026, solo foto) e *icloud-dispatcher* (fino al 5/11/2026). GitHub reindirizza i
+> vecchi nomi; dalla 3.0 l'immagine è `ghcr.io/sidimam/icloud-dashboard`, il container `icloud-dashboard`, l'appdata
+> `/mnt/user/appdata/icloud-dashboard`. Il progetto per posta, calendario, contatti, note e ricerca globale è in RepoCasa
+> (`docs/progetti/icloud-completo.html`).
 
 ## Il problema
 
@@ -17,7 +21,7 @@ Il cookie di autenticazione Apple dura circa 30 giorni. L'immagine icloudpd sa g
 
 ## La soluzione
 
-Un piccolo container, `icloud-dispatcher`, è l'unico a leggere il bot. Riconosce il prefisso `#nome` e consegna il comando
+Un piccolo container, `icloud-dashboard`, è l'unico a leggere il bot. Riconosce il prefisso `#nome` e consegna il comando
 al container giusto tramite il socket Docker:
 
 | Messaggio in chat        | Effetto                                                                                  |
@@ -104,23 +108,23 @@ Gli avvisi automatici del dispatcher si impostano dalle variabili del template U
 `TELEGRAM_TOKEN` e `ALLOWED_CHATS` (le chat da cui il bot accetta comandi) restano come prima. Le risposte ai comandi del bot e
 della GUI non passano dalle ore silenziose: arrivano sempre subito alla chat che le ha chieste.
 
-### Accesso (dalla 2.2)
+### Accesso con profili e 2FA (dalla 3.0)
 
-La GUI chiede utente e password se il container ha `GUI_PASSWORD_HASH` (hash werkzeug/scrypt, mai la password in chiaro; `GUI_USER`,
-default `admin`). Senza hash resta aperta come prima. Sessione firmata con una chiave persistente in `/app/state/gui_secret` (un riavvio non
-disconnette), «Ricordami» per 30 giorni, cookie `HttpOnly` e `SameSite=Lax` (le azioni POST non partono da altri siti), 10 tentativi falliti
-in 10 minuti per IP poi attesa. `/healthz` resta libero per i monitor. Per generare l'hash:
+La GUI ha un profilo **admin** e un profilo per persona (`sdimambro`, `dmanieri`, `sofdimambro`, `mdimambro`), tutti amministratori.
+Stanno in `/app/state/profiles.json` (permessi 600): hash scrypt della password, segreto TOTP, ultimo accesso.
 
-```bash
-docker exec -i icloud-dispatcher python3 -c "import sys; from werkzeug.security import generate_password_hash as g; print(g(sys.stdin.read().strip()))"
-```
-
-(scrivi la password, Invio, Ctrl-D) e incolla il risultato nella variabile del template.
-
-Dalla 2.3 la password si cambia anche dalla pagina **Password** della GUI (attuale + nuova, almeno 8 caratteri): l'hash nuovo va in
-`/app/state/gui_password` e ha la precedenza su `GUI_PASSWORD_HASH`. **Password dimenticata**: compila `GUI_RESET_PASSWORD` nel template
-Unraid con la nuova password e applica; all'avvio il container la salva (come hash) e la GUI mostra un avviso finché la variabile resta
-compilata. Entra, poi svuota la variabile e applica di nuovo, altrimenti a ogni riavvio rimette quella.
+- **Primo avvio della 3.0**: l'admin conserva la password della 2.x (`/app/state/gui_password` o `GUI_PASSWORD_HASH`); i profili
+  personali nascono senza password e non entrano finché un amministratore non gliela imposta dalla scheda **Amministrazione**.
+- **Il mio profilo**: cambio password e verifica in due passaggi TOTP (QR da inquadrare con l'app Password dell'iPhone, Google
+  Authenticator, Bitwarden o 1Password, oppure chiave da inserire a mano; per spegnerla serve la password).
+- **Amministrazione** (solo amministratori): elenco dei profili con stato di password e 2FA, impostazione o reimpostazione della
+  password, spegnimento del 2FA di un profilo, nuovi profili, eliminazione (non di sé stessi né dell'admin); notifiche Telegram
+  (chat, avvisi di riavvio e di blocco, ore silenziose) salvate in `/app/state/settings.json` con precedenza sulle variabili del
+  template, e un messaggio di prova.
+- **Password dell'admin dimenticata o telefono perso**: compila `GUI_RESET_PASSWORD` nel template e applica: all'avvio reimposta la
+  password dell'admin e gli spegne il 2FA. Poi svuota la variabile, altrimenti lo rifà a ogni riavvio (la GUI lo segnala).
+- Sessione firmata con chiave persistente (`/app/state/gui_secret`), «Ricordami» 30 giorni, cookie `HttpOnly` e `SameSite=Lax`,
+  10 tentativi falliti in 10 minuti per IP (password e codice 2FA insieme), `/healthz` libero per i monitor.
 
 ## Installazione (Unraid)
 
@@ -136,7 +140,7 @@ compilata. Entra, poi svuota la variabile e applica di nuovo, altrimenti a ogni 
 
 ## Sicurezza
 
-- Il socket Docker dà al dispatcher il controllo dell'host: il container esegue solo `docker exec` sui nomi mappati, ma va trattato come root.
+- Il socket Docker dà a iCloud Dashboard il controllo dell'host: il container esegue solo `docker exec` sui nomi mappati, ma va trattato come root.
 - I comandi sono accettati solo dalle chat in `ALLOWED_CHATS`; nessuno stato persistente oltre all'offset Telegram (`state/offset`).
 - Il codice 2FA transita in chiaro nella chat Telegram: è monouso e vale pochi minuti.
 

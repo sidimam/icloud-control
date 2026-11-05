@@ -1,0 +1,28 @@
+{% extends "base.html" %}{% block body %}
+<h2 class="section">Il mio profilo · {{ name }}</h2>
+<div class="grid">
+<div class="card"><h2>Password</h2>
+<form method="post"><input type="hidden" name="action" value="password">
+{% if p.pw %}<label for="cur">Password attuale</label><input id="cur" name="current" type="password" autocomplete="current-password" required>{% endif %}
+<label for="new">Nuova password (almeno 8 caratteri)</label><input id="new" name="new" type="password" autocomplete="new-password" minlength="8" required>
+<label for="conf">Ripeti la nuova password</label><input id="conf" name="confirm" type="password" autocomplete="new-password" minlength="8" required>
+<div class="row"><button>Cambia password</button></div></form></div>
+<div class="card"><h2>Verifica in due passaggi (TOTP)</h2>
+{% if p.totp_on %}
+<p><span class="pill ok">attiva</span> All'accesso, dopo la password, serve il codice a 6 cifre dell'app di autenticazione.</p>
+<form method="post"><input type="hidden" name="action" value="totp_off"><label for="cur2">Password, per disattivarla</label><input id="cur2" name="current" type="password" autocomplete="current-password" required>
+<div class="row"><button class="danger">Disattiva</button></div></form>
+{% elif totp_new %}
+<p class="mut">1. Inquadra il codice con l'app Password dell'iPhone (o Google Authenticator, Bitwarden, 1Password). 2. Scrivi qui il codice a 6 cifre che mostra.</p>
+<div style="background:#fff;padding:.5rem;border-radius:8px;width:max-content;max-width:100%">{{ qr|safe }}</div>
+<p class="mut">Se non puoi inquadrarlo, inserisci a mano questa chiave: <code style="word-break:break-all">{{ totp_new }}</code></p>
+<form method="post"><input type="hidden" name="action" value="totp_confirm"><label for="code">Codice dall'app</label><input id="code" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" required>
+<div class="row"><button>Attiva</button></div></form>
+<form method="post"><input type="hidden" name="action" value="totp_cancel"><button class="sec">Annulla</button></form>
+{% else %}
+<p><span class="pill">spenta</span> Aggiunge un codice a 6 cifre dall'app di autenticazione a ogni accesso.</p>
+<form method="post"><input type="hidden" name="action" value="totp_start"><div class="row"><button>Attiva la verifica in due passaggi</button></div></form>
+{% endif %}</div>
+<div class="card"><h2>Collegamenti</h2><dl><dt>Ruolo</dt><dd>Amministratore</dd><dt>Utente iCloud</dt><dd>{{ icloud or "—" }}</dd><dt>Ultimo accesso</dt><dd>{{ fmt_ts(p.last_login) }}</dd></dl></div>
+</div>
+{% endblock %}

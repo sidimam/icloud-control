@@ -1,19 +1,19 @@
 <?xml version="1.0"?>
 <Container version="2">
-  <Name>icloud-dispatcher</Name>
-  <Repository>ghcr.io/sidimam/icloud-dispatcher:latest</Repository>
-  <Registry>https://github.com/sidimam/icloud-dispatcher/pkgs/container/icloud-dispatcher</Registry>
+  <Name>icloud-dashboard</Name>
+  <Repository>ghcr.io/sidimam/icloud-dashboard:latest</Repository>
+  <Registry>https://github.com/sidimam/icloud-dashboard/pkgs/container/icloud-dashboard</Registry>
   <Network>bridge</Network>
   <MyIP/>
   <Shell>sh</Shell>
   <Privileged>false</Privileged>
-  <Support>https://github.com/sidimam/icloud-dispatcher</Support>
-  <Project>https://github.com/sidimam/icloud-dispatcher</Project>
-  <Overview>Un solo bot Telegram per il rinnovo 2FA Apple dei container iCloud (foto: boredazfcuk/icloudpd; iCloud Drive: mandarons/icloud-drive): legge "#nome auth" e "#nome 123456" dalla chat di casa e li consegna al container giusto. GUI web per utenti, impostazioni e nuovi container.</Overview>
+  <Support>https://github.com/sidimam/icloud-dashboard</Support>
+  <Project>https://github.com/sidimam/icloud-dashboard</Project>
+  <Overview>iCloud Dashboard (ex icloud-dispatcher). Un solo bot Telegram per il rinnovo 2FA Apple dei container iCloud (foto: boredazfcuk/icloudpd; iCloud Drive: mandarons/icloud-drive): legge "#nome auth" e "#nome 123456" dalla chat di casa e li consegna al container giusto. GUI web per utenti, impostazioni e nuovi container.</Overview>
   <Category>Tools: Backup:</Category>
   <WebUI>http://[IP]:[PORT:8787]/</WebUI>
   <TemplateURL/>
-  <Icon>https://cdn-icons-png.magnific.com/512/7990/7990923.png</Icon>
+  <Icon>https://raw.githubusercontent.com/sidimam/icloud-dashboard/main/assets/icloud-dashboard.png</Icon>
   <ExtraParams>--restart=unless-stopped</ExtraParams>
   <PostArgs></PostArgs>
   <CPUset/>
@@ -22,18 +22,18 @@
   <DonateLink/>
   <Requires/>
   <Config Name="TZ" Target="TZ" Default="Europe/Rome" Mode="" Description="" Type="Variable" Display="advanced" Required="false" Mask="false">Europe/Rome</Config>
-  <Config Name="Token del bot Telegram" Target="TELEGRAM_TOKEN" Default="" Mode="" Description="lo stesso bot di casa; il dispatcher e' l'unico a fare polling" Type="Variable" Display="always" Required="true" Mask="true"></Config>
+  <Config Name="Token del bot Telegram" Target="TELEGRAM_TOKEN" Default="" Mode="" Description="lo stesso bot di casa; iCloud Dashboard e' l'unico a fare polling" Type="Variable" Display="always" Required="true" Mask="true"></Config>
   <Config Name="Chat ammesse" Target="ALLOWED_CHATS" Default="" Mode="" Description="chat id separate da virgola: privata dell'amministratore e gruppo famiglia" Type="Variable" Display="always" Required="true" Mask="false"></Config>
-  <Config Name="GUI" Target="8787" Default="8787" Mode="tcp" Description="interfaccia web (accesso con GUI_USER e la password di GUI_PASSWORD_HASH)" Type="Port" Display="always" Required="true" Mask="false">8787</Config>
+  <Config Name="GUI" Target="8787" Default="8787" Mode="tcp" Description="interfaccia web: accesso con i profili (admin, sdimambro, dmanieri, sofdimambro, mdimambro), password e 2FA facoltativo" Type="Port" Display="always" Required="true" Mask="false">8787</Config>
   <Config Name="Template Unraid" Target="/templates" Default="/boot/config/plugins/dockerMan/templates-user" Mode="rw" Description="template dei container (per creare/modificare utenti)" Type="Path" Display="advanced" Required="true" Mask="false">/boot/config/plugins/dockerMan/templates-user</Config>
   <Config Name="appdata" Target="/appdata" Default="/mnt/user/appdata" Mode="rw" Description="config dei container iCloud" Type="Path" Display="advanced" Required="true" Mask="false">/mnt/user/appdata</Config>
   <Config Name="photos" Target="/photos" Default="/mnt/user/media/photos" Mode="rw" Description="cartelle foto (nuovi utenti icloudpd)" Type="Path" Display="advanced" Required="true" Mask="false">/mnt/user/media/photos</Config>
   <Config Name="documents" Target="/documents" Default="/mnt/user/documents" Mode="rw" Description="destinazioni iCloud Drive (nuovi utenti iclouddrive)" Type="Path" Display="advanced" Required="true" Mask="false">/mnt/user/documents</Config>
   <Config Name="Socket Docker" Target="/var/run/docker.sock" Default="/var/run/docker.sock" Mode="rw" Description="per docker exec nei container iCloud" Type="Path" Display="always" Required="true" Mask="false">/var/run/docker.sock</Config>
-  <Config Name="App (config.json + stato)" Target="/app" Default="/mnt/user/appdata/icloud-dispatcher" Mode="rw" Description="" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/icloud-dispatcher</Config>
-  <Config Name="Utente GUI" Target="GUI_USER" Default="admin" Mode="" Description="utente della pagina di accesso" Type="Variable" Display="always" Required="false" Mask="false">admin</Config>
-  <Config Name="Hash password GUI" Target="GUI_PASSWORD_HASH" Default="" Mode="" Description="hash werkzeug della password (vuoto = GUI senza accesso). Genera con: docker exec -i icloud-dispatcher python3 -c &quot;import sys; from werkzeug.security import generate_password_hash as g; print(g(sys.stdin.read().strip()))&quot;" Type="Variable" Display="always" Required="false" Mask="true"></Config>
-  <Config Name="Reimposta password GUI" Target="GUI_RESET_PASSWORD" Default="" Mode="" Description="password dimenticata: scrivi qui la nuova, applica, entra nella GUI e poi SVUOTA il campo (finché è compilato a ogni riavvio rimette questa)" Type="Variable" Display="always" Required="false" Mask="true"></Config>
+  <Config Name="App (config.json + stato)" Target="/app" Default="/mnt/user/appdata/icloud-dashboard" Mode="rw" Description="" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/icloud-dashboard</Config>
+  <Config Name="Utente GUI" Target="GUI_USER" Default="admin" Mode="" Description="nome del profilo amministratore principale (gli altri profili si gestiscono dalla scheda Amministrazione)" Type="Variable" Display="always" Required="false" Mask="false">admin</Config>
+  <Config Name="Hash password GUI" Target="GUI_PASSWORD_HASH" Default="" Mode="" Description="solo al primo avvio della 3.0: password iniziale del profilo admin se non ce n&apos;era una salvata. Poi le password stanno in /app/state/profiles.json" Type="Variable" Display="always" Required="false" Mask="true"></Config>
+  <Config Name="Reimposta password GUI" Target="GUI_RESET_PASSWORD" Default="" Mode="" Description="password dell admin dimenticata o 2FA perso: scrivi qui la nuova password, applica, entra e poi SVUOTA il campo (finché è compilato, a ogni riavvio reimposta la password dell admin e gli spegne il 2FA)" Type="Variable" Display="always" Required="false" Mask="true"></Config>
   <Config Name="Chat per le notifiche" Target="TELEGRAM_CHAT_ID" Default="" Mode="" Description="Dove arrivano gli avvisi automatici (riavvii, blocchi ripetuti). Vuoto = default_chat_id di config.json. Le risposte ai comandi vanno sempre alla chat che li ha inviati." Type="Variable" Display="always" Required="false" Mask="false"></Config>
   <Config Name="Avviso a ogni riavvio automatico" Target="NOTIFY_AUTOHEAL_RESTART" Default="1" Mode="" Description="1 = un messaggio ogni volta che un iclouddr bloccato viene riavviato da solo; 0 = nessuno" Type="Variable" Display="always" Required="false" Mask="false">1</Config>
   <Config Name="Avviso per blocchi ripetuti" Target="NOTIFY_AUTOHEAL_GAVE_UP" Default="1" Mode="" Description="1 = avvisa quando un container si è bloccato 3 volte in 6 ore e il riavvio automatico si sospende; 0 = nessuno" Type="Variable" Display="always" Required="false" Mask="false">1</Config>

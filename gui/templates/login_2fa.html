@@ -1,0 +1,7 @@
+{% extends "base.html" %}{% block body %}
+<div class="card" style="max-width:360px;margin:3rem auto"><h2>Verifica in due passaggi</h2>
+<p class="mut">Profilo <code>{{ user }}</code>: inserisci il codice a 6 cifre dell'app di autenticazione.</p>
+<form method="post" action="/login/2fa"><input type="hidden" name="next" value="{{next}}">
+<label for="code">Codice</label><input id="code" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]{6,7}" maxlength="7" autofocus required>
+<div class="row"><button>Verifica</button> <a href="/login">Annulla</a></div></form></div>
+{% endblock %}

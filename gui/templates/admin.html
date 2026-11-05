@@ -1,0 +1,30 @@
+{% extends "base.html" %}{% block body %}
+<h2 class="section">Profili</h2>
+<div class="card" style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.92rem">
+<thead><tr style="text-align:left;color:var(--mut)"><th>Profilo</th><th>Ruolo</th><th>Utente iCloud</th><th>Password</th><th>2FA</th><th>Ultimo accesso</th><th>Azioni</th></tr></thead><tbody>
+{% for r in rows %}<tr style="border-top:1px solid var(--bd);vertical-align:top">
+<td style="padding:.5rem .4rem"><b>{{ r.name }}</b>{% if r.name == me %} <span class="mut">(tu)</span>{% endif %}</td><td style="padding:.5rem .4rem">{{ r.role }}</td><td style="padding:.5rem .4rem">{{ r.icloud or "—" }}</td>
+<td style="padding:.5rem .4rem">{% if r.p.pw %}<span class="pill ok">impostata</span>{% else %}<span class="pill warn">da impostare</span>{% endif %}</td>
+<td style="padding:.5rem .4rem">{% if r.p.totp_on %}<span class="pill ok">attiva</span>{% else %}<span class="pill">spenta</span>{% endif %}</td>
+<td style="padding:.5rem .4rem" class="mut">{{ fmt_ts(r.p.last_login) }}</td>
+<td style="padding:.5rem .4rem"><details><summary>Gestisci</summary>
+<form method="post" action="/admin/profile/{{ r.name }}/password"><label for="pw-{{ r.name }}">{% if r.p.pw %}Reimposta la password{% else %}Imposta la password{% endif %}</label><input id="pw-{{ r.name }}" name="new" type="password" autocomplete="new-password" minlength="8" required><div class="row"><button>Salva</button></div></form>
+{% if r.p.totp_on %}<form method="post" action="/admin/profile/{{ r.name }}/totp_off"><div class="row"><button class="sec">Disattiva il 2FA</button></div></form>{% endif %}
+{% if r.name != me and r.name != "admin" %}<form method="post" action="/admin/profile/{{ r.name }}/delete" onsubmit="return this.querySelector('input').checked"><label style="display:flex;gap:.4rem;align-items:center"><input type="checkbox" style="width:auto"> confermo</label><div class="row"><button class="danger">Elimina profilo</button></div></form>{% endif %}
+</details></td></tr>{% endfor %}
+</tbody></table>
+<details><summary>Nuovo profilo</summary><form method="post" action="/admin/profile/new" style="max-width:420px">
+<label for="np">Nome (es. il nome breve del container iclouddr)</label><input id="np" name="name" autocapitalize="none" required>
+<label for="npw">Password (facoltativa, almeno 8 caratteri)</label><input id="npw" name="new" type="password" autocomplete="new-password" minlength="8">
+<div class="row"><button>Crea</button></div></form></details></div>
+
+<h2 class="section">Notifiche Telegram</h2>
+<div class="card" style="max-width:560px"><form method="post" action="/admin/notify">
+<label for="chat">Chat per gli avvisi automatici</label><input id="chat" name="chat" value="{{ n.chat }}" placeholder="vuota = {{ default_chat }} (config.json)">
+<label style="display:flex;gap:.5rem;align-items:center;color:var(--fg)"><input type="checkbox" name="restart" style="width:auto" {% if n.restart %}checked{% endif %}> Avviso a ogni riavvio automatico di un iclouddr bloccato</label>
+<label style="display:flex;gap:.5rem;align-items:center;color:var(--fg)"><input type="checkbox" name="gave_up" style="width:auto" {% if n.gave_up %}checked{% endif %}> Avviso quando un container si blocca 3 volte in 6 ore</label>
+<label for="quiet">Ore silenziose (gli avvisi arrivano insieme alla fine; vuoto = sempre subito)</label><input id="quiet" name="quiet" value="{{ n.quiet }}" placeholder="23:00-07:30">
+<div class="row"><button>Salva</button></div></form>
+<form method="post" action="/admin/notify/test"><div class="row"><button class="sec">Invia un messaggio di prova</button></div></form>
+<p class="mut">I valori iniziali vengono dalle variabili del template Unraid; quelli salvati qui hanno la precedenza. Le risposte ai comandi del bot arrivano sempre alla chat che li ha inviati.</p></div>
+{% endblock %}
