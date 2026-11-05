@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """iCloud Dashboard (ex icloud-dispatcher) GUI: utenti = container iCloud (foto: boredazfcuk/icloudpd; iCloud Drive: mandarons/icloud-drive), chat Telegram, cosa scaricare, rinnovo 2FA."""
-import json, os, re, secrets, subprocess, shutil, datetime, html, time, threading
+import json, os, re, secrets, subprocess, shutil, datetime, html, time, threading, sqlite3, email, email.policy
+from markupsafe import Markup
 from werkzeug.security import check_password_hash, generate_password_hash
 from concurrent.futures import ThreadPoolExecutor
 from flask import Flask, request, redirect, url_for, render_template, flash, abort, session, copy_current_request_context
@@ -35,7 +36,7 @@ def require_login():
     if not me(): return redirect(url_for("login", next=request.full_path if request.method == "GET" else "/"))
     # Ruoli (3.4): l'amministratore vede tutto; l'utente solo il proprio container iCloud e il proprio profilo.
     if accounts.is_admin(me()): return None
-    if request.endpoint in ("new", "admin", "admin_profile", "admin_profile_new", "admin_notify", "admin_notify_test"): abort(403)
+    if request.endpoint in ("new", "admin", "admin_profile", "admin_profile_new", "admin_notify", "admin_notify_test", "admin_reindex"): abort(403)
     name = (request.view_args or {}).get("name")
     if request.endpoint and request.endpoint.startswith("u_") and name != _own_icloud(): abort(403)
     return None
@@ -741,7 +742,12 @@ def admin():
     _admin_only()
     ps = accounts.profiles()
     rows = [{"name": n, "p": p, "icloud": _icloud_of(n), "role": accounts.ROLES.get(p.get("role"), p.get("role"))} for n, p in sorted(ps.items(), key=lambda x: (x[0] != accounts.ADMIN, x[0]))]
-    return render_template("admin.html", rows=rows, n=nset(), default_chat=cfg().get("default_chat_id", ""), roles=accounts.ROLES)
+    try: idx_by, idx_runs = SI.stats()
+    except Exception: idx_by, idx_runs = {}, {}
+    idx = sorted(((k[1], KIND_NAMES.get(k[0], k[0]), v) for k, v in idx_by.items()))
+    last = max((r["finished"] for r in idx_runs.values()), default=0); errs = [f"{k}: {r['error']}" for k, r in idx_runs.items() if r.get("error")]
+    return render_template("admin.html", rows=rows, n=nset(), default_chat=cfg().get("default_chat_id", ""), roles=accounts.ROLES,
+                           idx=idx, idx_last=ago(datetime.datetime.fromtimestamp(last)) if last else "", idx_errs=errs, idx_db=os.path.getsize(SI.DB) if os.path.exists(SI.DB) else 0, fmt_size=_fmt_size)
 @app.post("/admin/profile/<name>/<action>")
 def admin_profile(name, action):
     _admin_only(); f = request.form
@@ -786,8 +792,170 @@ def admin_notify_test():
     telegram(chat, f"🧪 Prova di iCloud Dashboard da {me() or 'admin'}: le notifiche arrivano qui."); flash(_("Messaggio di prova inviato"))
     return redirect(url_for("admin"))
 
+# ---- ricerca e schede dei dati (3.6): database «iclouddb» (SQLite FTS5) in /app/state/iclouddb.db, vedi search_index.py
+import search_index as SI
+from flask import send_file, Response
+IDX_INTERVAL = int(os.environ.get("INDEX_INTERVAL", "900"))
+KIND_NAMES = {"file": "File", "note": "Note", "reminder": "Promemoria", "mail": "Posta", "event": "Calendario", "contact": "Contatti"}
+KIND_ICONS = {"file": ("folder", "b-blue"), "note": ("doc", "b-orange"), "reminder": ("check", "b-red"), "mail": ("send", "b-blue"), "event": ("doc", "b-red"), "contact": ("users", "b-gray")}
+def idx_sources():
+    out = []
+    for n, u in cfg()["users"].items():
+        if utype(u) != "iclouddrive": continue
+        info = inspect(u["container"])
+        if not info: continue
+        m = mounts(info); dh = m.get("/icloud/drive", "")
+        ph = m.get("/icloud/persona") or (os.path.dirname(dh) if dh else "")
+        out.append({"person": u.get("label", n), "user": n, "drive": (host_to_local(dh), dh) if dh else None,
+                    "person_dir": (host_to_local(ph), ph) if ph else None, "accounts": [a.get("label") for a in acc_load(u) if a.get("label")]})
+    return out
+def idx_loop():
+    time.sleep(60)
+    while True:
+        t = time.time()
+        try: SI.run(idx_sources(), log=lambda x: print(x, flush=True)); print(f"indice: giro completato in {time.time() - t:.0f} s", flush=True)
+        except Exception as e: print(f"indice: {e}", flush=True)
+        time.sleep(IDX_INTERVAL)
+def allowed_persons():
+    """Persone visibili: tutte per l'amministratore (o senza password), altrimenti solo quella del proprio container."""
+    c = cfg()["users"]
+    if not accounts.any_password() or accounts.is_admin(me()): return [u.get("label", n) for n, u in c.items()]
+    own = _own_icloud(); return [c[own].get("label", own)] if own in c else []
+def _item(rid):
+    con = SI.connect()
+    try: r = con.execute("select * from items where id=?", (rid,)).fetchone()
+    finally: con.close()
+    if not r or r["person"] not in allowed_persons(): abort(404)
+    d = dict(r); d["x"] = json.loads(d.get("extra") or "{}"); return d
+def _local_ok(p):
+    p = os.path.realpath(p)
+    return any(p.startswith(os.path.realpath(r) + "/") for r in ("/documents",))
+def _mark(snip):
+    return Markup(html.escape(snip or "").replace("\x02", "<mark>").replace("\x03", "</mark>"))
+@app.route("/search")
+def search():
+    a = request.args; persons = allowed_persons()
+    kinds = [k for k in a.getlist("kind") if k in SI.KINDS] or list(SI.KINDS)
+    person = a.get("person", ""); q = a.get("q", "").strip()
+    where, args = [f"i.kind in ({','.join('?' * len(kinds))})"], list(kinds)
+    sel_persons = [person] if person in persons else persons
+    where.append(f"i.person in ({','.join('?' * len(sel_persons))})"); args += sel_persons
+    if a.get("account"): where.append("i.account=?"); args.append(a["account"])
+    if a.get("ext"): where.append("i.ext=?"); args.append(a["ext"].lower().lstrip("."))
+    for fld, op in (("d1", ">="), ("d2", "<=")):
+        if a.get(fld):
+            try: where.append(f"i.date {op} ?"); args.append(datetime.datetime.strptime(a[fld], "%Y-%m-%d").timestamp() + (86399 if fld == "d2" else 0))
+            except ValueError: pass
+    for fld, op in (("min_kb", ">="), ("max_kb", "<=")):
+        if a.get(fld, "").isdigit(): where.append(f"i.size {op} ?"); args.append(int(a[fld]) * 1024)
+    if a.get("frm"): where.append("json_extract(i.extra,'$.from') like ?"); args.append(f"%{a['frm']}%")
+    if a.get("to"): where.append("(json_extract(i.extra,'$.to') like ? or json_extract(i.extra,'$.cc') like ?)"); args += [f"%{a['to']}%"] * 2
+    if a.get("att") == "1": where.append("json_array_length(json_extract(i.extra,'$.atts')) > 0")
+    if a.get("att_name"): where.append("json_extract(i.extra,'$.atts') like ?"); args.append(f"%{a['att_name']}%")
+    order = {"date": "i.date desc", "old": "i.date asc", "size": "i.size desc", "name": "i.title collate nocase"}.get(a.get("sort", ""), "")
+    con = SI.connect(); rows = []; total = 0
+    try:
+        if q:
+            fq = SI.fts_query(q)
+            sql = f"select i.*, snippet(fts, -1, char(2), char(3), '…', 14) snip, bm25(fts) rank from fts join items i on i.id = fts.rowid where fts match ? and {' and '.join(where)} order by {order or 'rank'} limit 300"
+            rows = con.execute(sql, [fq] + args).fetchall()
+        else:
+            rows = con.execute(f"select i.*, '' snip from items i where {' and '.join(where)} order by {order or 'i.date desc'} limit 300", args).fetchall()
+        counts = {r["kind"]: r["n"] for r in con.execute(f"select kind, count(*) n from items where person in ({','.join('?' * len(sel_persons))}) group by kind", sel_persons)}
+        exts = [r["ext"] for r in con.execute("select ext, count(*) n from items where kind='file' and ext!='' group by ext order by n desc limit 25")]
+        accts = [r["account"] for r in con.execute("select distinct account from items where account is not null order by account")]
+    except sqlite3.OperationalError as e:
+        flash(_("Ricerca non valida: {a0}", a0=str(e))); counts, exts, accts = {}, [], []
+    finally: con.close()
+    res = [{**dict(r), "x": json.loads(r["extra"] or "{}"), "snip": _mark(r["snip"])} for r in rows]
+    return render_template("search.html", res=res, q=q, kinds=kinds, all_kinds=SI.KINDS, kind_names=KIND_NAMES, kind_icons=KIND_ICONS, persons=persons, person=person,
+                           counts=counts, exts=exts, accts=accts, a=a, fmt_date=_fmt_date, fmt_size=_fmt_size)
+def _fmt_date(ts, with_time=True):
+    if not ts: return ""
+    d = datetime.datetime.fromtimestamp(ts); return d.strftime("%d/%m/%Y %H:%M" if with_time and (d.hour, d.minute) != (0, 0) else "%d/%m/%Y")
+def _fmt_size(n):
+    if n is None: return ""
+    for u in ("B", "KB", "MB", "GB"):
+        if n < 1024: return f"{n:.0f} {u}" if u == "B" else f"{n:.1f} {u}"
+        n /= 1024
+    return f"{n:.1f} TB"
+@app.route("/item/<int:rid>")
+def item(rid):
+    d = _item(rid); body = ""
+    if d["kind"] == "mail" and _local_ok(d["x"].get("local", "")):
+        try:
+            msg = email.message_from_binary_file(open(d["x"]["local"], "rb"), policy=email.policy.default)
+            part = msg.get_body(preferencelist=("plain", "html")); body = part.get_content() if part else ""
+            if part and part.get_content_type() == "text/html": d["html_mail"] = True
+        except Exception as e: body = f"({e})"
+    return render_template("item.html", d=d, body=body, kind_names=KIND_NAMES, kind_icons=KIND_ICONS, fmt_date=_fmt_date, fmt_size=_fmt_size)
+@app.route("/item/<int:rid>/raw")
+def item_raw(rid):
+    d = _item(rid); p = d["x"].get("local", "")
+    if not _local_ok(p) or not os.path.isfile(p): abort(404)
+    if d["kind"] == "note" or (d["kind"] == "mail" and request.args.get("html")):
+        if d["kind"] == "mail":
+            msg = email.message_from_binary_file(open(p, "rb"), policy=email.policy.default); part = msg.get_body(preferencelist=("html",)); content = part.get_content() if part else ""
+        else:
+            content = open(p, encoding="utf-8", errors="replace").read()
+            # le immagini e gli allegati della nota stanno in _allegati/ accanto all'HTML: li serve /item/<id>/asset/
+            content = re.sub(r'(src|href)="_allegati/', lambda m: f'{m.group(1)}="/item/{rid}/asset/_allegati/', content)
+        r = Response(content, mimetype="text/html")
+        # pagina isolata: niente script, niente immagini da Internet (solo quelle allegate alla nota)
+        r.headers["Content-Security-Policy"] = "sandbox; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'"
+        return r
+    return send_file(p, as_attachment=request.args.get("dl") == "1", download_name=os.path.basename(p) if d["kind"] != "mail" else (d["title"] or "messaggio")[:60] + ".eml")
+@app.route("/item/<int:rid>/asset/<path:sub>")
+def item_asset(rid, sub):
+    """Immagini e allegati delle note (cartella _allegati accanto all'HTML)."""
+    d = _item(rid); base = os.path.dirname(d["x"].get("local", "")); p = os.path.realpath(os.path.join(base, sub))
+    if d["kind"] != "note" or not p.startswith(os.path.realpath(base) + "/") or not os.path.isfile(p): abort(404)
+    return send_file(p)
+@app.route("/item/<int:rid>/att/<int:n>")
+def item_att(rid, n):
+    d = _item(rid); p = d["x"].get("local", "")
+    if d["kind"] != "mail" or not _local_ok(p): abort(404)
+    msg = email.message_from_binary_file(open(p, "rb"), policy=email.policy.default)
+    parts = [x for x in msg.walk() if x.get_filename()]
+    if n >= len(parts): abort(404)
+    part = parts[n]; return Response(part.get_payload(decode=True) or b"", mimetype=part.get_content_type(), headers={"Content-Disposition": f'attachment; filename="{part.get_filename()}"'})
+@app.route("/notes")
+def notes():
+    persons = allowed_persons(); person = request.args.get("person", ""); sel = [person] if person in persons else persons
+    folder = request.args.get("folder", "")
+    con = SI.connect()
+    try:
+        rows = [{**dict(r), "x": json.loads(r["extra"] or "{}")} for r in con.execute(f"select * from items where kind='note' and person in ({','.join('?' * len(sel))}) order by date desc", sel)]
+    finally: con.close()
+    folders = {}
+    for r in rows: folders.setdefault((r["person"], r["x"].get("folder", "")), 0); folders[(r["person"], r["x"].get("folder", ""))] += 1
+    if folder: rows = [r for r in rows if r["x"].get("folder") == folder]
+    return render_template("notes.html", rows=rows, folders=sorted(folders.items()), persons=persons, person=person, folder=folder, fmt_date=_fmt_date)
+@app.route("/reminders")
+def reminders():
+    persons = allowed_persons(); person = request.args.get("person", ""); sel = [person] if person in persons else persons
+    lst = request.args.get("list", ""); show = request.args.get("show", "open")
+    con = SI.connect()
+    try:
+        rows = [{**dict(r), "x": json.loads(r["extra"] or "{}")} for r in con.execute(f"select * from items where kind='reminder' and person in ({','.join('?' * len(sel))})", sel)]
+    finally: con.close()
+    lists = {}
+    for r in rows:
+        k = (r["person"], r["x"].get("list", "")); lists.setdefault(k, [0, 0]); lists[k][0 if not r["x"].get("completed") else 1] += 1
+    if lst: rows = [r for r in rows if r["x"].get("list") == lst]
+    if show == "open": rows = [r for r in rows if not r["x"].get("completed")]
+    elif show == "done": rows = [r for r in rows if r["x"].get("completed")]
+    now = time.time()
+    rows.sort(key=lambda r: (r["x"].get("completed", False), r["date"] is None, r["date"] or 0, (r["title"] or "").lower()))
+    return render_template("reminders.html", rows=rows, lists=sorted(lists.items()), persons=persons, person=person, lst=lst, show=show, now=now, fmt_date=_fmt_date)
+@app.post("/admin/reindex")
+def admin_reindex():
+    _admin_only(); threading.Thread(target=lambda: SI.run(idx_sources(), log=lambda x: print(x, flush=True)), daemon=True).start()
+    flash(_("Indicizzazione avviata: dura qualche minuto")); return redirect(url_for("admin"))
+
 @app.route("/healthz")
 def healthz(): return "ok"
 if __name__ == "__main__":
     threading.Thread(target=ah_loop, daemon=True).start()   # controlli (se AUTOHEAL) e invio degli avvisi accodati di notte
+    threading.Thread(target=idx_loop, daemon=True).start()  # indice di ricerca
     app.run(host="0.0.0.0", port=PORT, debug=False)

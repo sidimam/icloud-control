@@ -79,6 +79,8 @@ table.t th{text-align:left;font-weight:500;color:var(--mut);font-size:12px;paddi
 table.t td{padding:.6rem 16px;border-bottom:.5px solid var(--sep);vertical-align:top}
 table.t tr:last-child td{border-bottom:0}
 .narrow{max-width:420px;margin:2.5rem auto}
+.split{display:grid;grid-template-columns:minmax(200px,280px) minmax(0,1fr);gap:1rem;align-items:start}
+@media (max-width:700px){.split{grid-template-columns:minmax(0,1fr)}}
 .wide-scroll{overflow-x:auto}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style></head><body>
@@ -86,6 +88,9 @@ table.t tr:last-child td{border-bottom:0}
 <a class="brand" href="/"><img src="/static/icon.png" alt="">iCloud Dashboard</a>
 <nav class="tabs" aria-label="{{ _('Menu') }}">{% if me or request.endpoint not in ("login", "login_2fa", "recover") %}
 <a href="/" class="{{ 'on' if request.endpoint in ('index','u_logs') }}">{{ icon('users') }}{{ _('Utenti iCloud') }}</a>
+<a href="/search" class="{{ 'on' if request.endpoint in ('search','item') }}">{{ icon('search') }}{{ _('Cerca') }}</a>
+<a href="/notes" class="{{ 'on' if request.endpoint == 'notes' }}">{{ icon('doc') }}{{ _('Note') }}</a>
+<a href="/reminders" class="{{ 'on' if request.endpoint == 'reminders' }}">{{ icon('check') }}{{ _('Promemoria') }}</a>
 {% if me_admin or not me %}<a href="/new" class="{{ 'on' if request.endpoint == 'new' }}">{{ icon('plus') }}{{ _('Nuovo utente') }}</a>{% endif %}
 <a href="/account" class="{{ 'on' if request.endpoint == 'account' }}">{{ icon('person') }}{{ _('Il mio profilo') }}</a>
 {% if me_admin %}<a href="/admin" class="{{ 'on' if request.endpoint == 'admin' }}">{{ icon('gear') }}{{ _('Amministrazione') }}</a>{% endif %}

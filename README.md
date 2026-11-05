@@ -108,6 +108,20 @@ Gli avvisi automatici del dispatcher si impostano dalle variabili del template U
 `TELEGRAM_TOKEN` e `ALLOWED_CHATS` (le chat da cui il bot accetta comandi) restano come prima. Le risposte ai comandi del bot e
 della GUI non passano dalle ore silenziose: arrivano sempre subito alla chat che le ha chieste.
 
+### Cerca, Note, Promemoria (dalla 3.6)
+
+- **Indice «iclouddb»**: un file SQLite con ricerca full-text (FTS5, senza distinzione di accenti) in `/app/state/iclouddb.db`,
+  dentro questo container (nessun database a parte). Ogni 15 minuti (`INDEX_INTERVAL`) rilegge i file di iCloud Drive di ogni
+  persona (nome, cartella, tipo, dimensione, data), le note e i promemoria del modulo PIM e, quando ci sono, posta, eventi e contatti
+  degli account collegati; rilegge solo ciò che è cambiato. Primo giro su 4 persone: 38.900 file, 69 note, 1.317 promemoria in 24 s,
+  36 MB. Stato e «Reindicizza ora» nella scheda Amministrazione.
+- **Cerca**: tutto o una persona, per tipo (file, note, promemoria, posta, calendario, contatti), con filtri per data, account,
+  mittente, destinatari, nome dell'allegato, tipo di file, dimensione, solo con allegati; ordinamento per pertinenza, data,
+  dimensione o nome. Le parole valgono come prefisso; le frasi tra virgolette restano esatte.
+- **Note**: cartelle per persona e note in ordine di modifica; la nota si apre in una pagina isolata (niente script, immagini solo
+  dagli allegati della nota). **Promemoria**: liste per persona, da fare/fatti/tutti, scadenze passate in rosso.
+- Un utente con ruolo «Utente» vede solo i propri dati anche qui.
+
 ### Account collegati (dalla 3.5)
 
 Nella scheda di ogni utente iclouddr (immagine `ghcr.io/sidimam/iclouddr` ≥ 0.2) la sezione **Account collegati** aggiunge uno o

@@ -1,0 +1,29 @@
+{% extends "base.html" %}{% block body %}
+<p><a href="javascript:history.back()">← {{ _('Indietro') }}</a></p>
+<div class="uhead" style="padding-left:0"><span class="badge {{ kind_icons[d.kind][1] }}">{{ icon(kind_icons[d.kind][0], 17) }}</span><div><h1 class="title" style="margin:0;font-size:24px">{{ d.title or '—' }}</h1><span class="mut">{{ _(kind_names[d.kind]) }} · {{ d.person }}{% if d.account %} · {{ d.account }}{% endif %}</span></div></div>
+<div class="list" style="margin-bottom:1rem">
+{% if d.kind == 'file' %}
+<div class="li"><span class="k">{{ _('Cartella') }}</span><span class="v">{{ d.x.rel }}</span></div><div class="li"><span class="k">{{ _('Dimensione') }}</span><span class="v">{{ fmt_size(d.size) }}</span></div><div class="li"><span class="k">{{ _('Modificato') }}</span><span class="v">{{ fmt_date(d.mtime) }}</span></div>
+<div class="li"><a class="btn" href="/item/{{ d.id }}/raw">{{ _('Apri') }}</a><a class="btn tint" href="/item/{{ d.id }}/raw?dl=1">{{ _('Scarica') }}</a></div>
+{% elif d.kind == 'note' %}
+<div class="li"><span class="k">{{ _('Cartella') }}</span><span class="v">{{ d.x.folder }}</span></div><div class="li"><span class="k">{{ _('Modificata') }}</span><span class="v">{{ fmt_date(d.mtime) }}</span></div>
+{% elif d.kind == 'reminder' %}
+<div class="li"><span class="k">{{ _('Lista') }}</span><span class="v">{{ d.x.list }}</span></div><div class="li"><span class="k">{{ _('Stato') }}</span><span class="v">{{ _('fatto') if d.x.completed else _('da fare') }}</span></div>
+{% if d.date %}<div class="li"><span class="k">{{ _('Scadenza') }}</span><span class="v">{{ fmt_date(d.date) }}</span></div>{% endif %}{% if d.x.desc %}<div class="li col"><span class="k">{{ _('Note') }}</span><span style="white-space:pre-wrap">{{ d.x.desc }}</span></div>{% endif %}
+{% elif d.kind == 'mail' %}
+<div class="li"><span class="k">{{ _('Da') }}</span><span class="v">{{ d.x['from'] }}</span></div><div class="li"><span class="k">{{ _('A') }}</span><span class="v">{{ d.x.to }}</span></div>{% if d.x.cc %}<div class="li"><span class="k">Cc</span><span class="v">{{ d.x.cc }}</span></div>{% endif %}
+<div class="li"><span class="k">{{ _('Data') }}</span><span class="v">{{ fmt_date(d.date) }}</span></div><div class="li"><span class="k">{{ _('Cartella') }}</span><span class="v">{{ d.x.folder }}</span></div>
+{% for at in d.x.atts or [] %}<div class="li"><span class="k">📎 {{ at.name }}</span><span class="v">{{ fmt_size(at.size) }} · <a href="/item/{{ d.id }}/att/{{ loop.index0 }}">{{ _('Scarica') }}</a></span></div>{% endfor %}
+<div class="li"><a class="btn tint" href="/item/{{ d.id }}/raw?dl=1">{{ _('Scarica il messaggio (.eml)') }}</a></div>
+{% elif d.kind == 'event' %}
+<div class="li"><span class="k">{{ _('Calendario') }}</span><span class="v">{{ d.x.calendar }}</span></div><div class="li"><span class="k">{{ _('Inizio') }}</span><span class="v">{{ fmt_date(d.date, not d.x.allday) }}</span></div>{% if d.date_end %}<div class="li"><span class="k">{{ _('Fine') }}</span><span class="v">{{ fmt_date(d.date_end, not d.x.allday) }}</span></div>{% endif %}
+{% if d.x.location %}<div class="li"><span class="k">{{ _('Luogo') }}</span><span class="v">{{ d.x.location }}</span></div>{% endif %}{% if d.x.rrule %}<div class="li"><span class="k">{{ _('Ripetizione') }}</span><span class="v"><code>{{ d.x.rrule }}</code></span></div>{% endif %}
+{% if d.x.desc %}<div class="li col"><span class="k">{{ _('Note') }}</span><span style="white-space:pre-wrap">{{ d.x.desc }}</span></div>{% endif %}
+{% elif d.kind == 'contact' %}
+{% for e in d.x.emails or [] %}<div class="li"><span class="k">E-mail</span><span class="v">{{ e }}</span></div>{% endfor %}{% for t in d.x.tels or [] %}<div class="li"><span class="k">{{ _('Telefono') }}</span><span class="v">{{ t }}</span></div>{% endfor %}
+{% if d.x.org %}<div class="li"><span class="k">{{ _('Organizzazione') }}</span><span class="v">{{ d.x.org }}</span></div>{% endif %}{% for ad in d.x.adr or [] %}<div class="li"><span class="k">{{ _('Indirizzo') }}</span><span class="v">{{ ad }}</span></div>{% endfor %}
+<div class="li"><a class="btn tint" href="/item/{{ d.id }}/raw?dl=1">vCard</a></div>
+{% endif %}</div>
+{% if d.kind == 'note' or (d.kind == 'mail' and d.html_mail) %}<iframe src="/item/{{ d.id }}/raw{{ '?html=1' if d.kind == 'mail' }}" sandbox style="width:100%;height:70vh;border:0;border-radius:12px;background:#fff" title="{{ d.title }}"></iframe>
+{% elif d.kind == 'mail' %}<pre class="log" style="font-family:inherit;font-size:14px">{{ body }}</pre>{% endif %}
+{% endblock %}

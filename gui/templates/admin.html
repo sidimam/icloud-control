@@ -26,4 +26,9 @@
 <div class="li"><button>{{ _('Salva') }}</button></div></div></form>
 <form method="post" action="/admin/notify/test" style="margin-top:.6rem"><button class="tint">{{ icon('send') }}{{ _('Invia un messaggio di prova') }}</button></form>
 <p class="note">{{ _('I valori iniziali vengono dalle variabili del template Unraid; quelli salvati qui hanno la precedenza. Ogni messaggio inizia con «ICLOUD:». Le risposte ai comandi del bot arrivano sempre alla chat che li ha inviati.') }}</p></details>
+<details class="grp" data-k="adm-index"><summary>{{ icon('search', 15) }}{{ _('Indice di ricerca (iclouddb)') }}{{ icon('chevron', 15, 'ic chev') }}</summary><div class="list">
+{% for person, kind, n in idx %}<div class="li"><span class="k">{{ person }} · {{ _(kind) }}</span><span class="v">{{ n }}</span></div>{% else %}<div class="li"><span class="mut">{{ _('Indice ancora vuoto: il primo giro parte un minuto dopo l\'avvio.') }}</span></div>{% endfor %}
+<div class="li"><span class="k">{{ _('Ultimo aggiornamento') }}</span><span class="v">{{ idx_last or '—' }} · {{ fmt_size(idx_db) }}</span></div>
+{% for e in idx_errs %}<div class="li"><span class="bad" style="font-size:13px">{{ e }}</span></div>{% endfor %}
+<form method="post" action="/admin/reindex"><div class="li"><button class="tint small">{{ icon('restart', 14) }}{{ _('Reindicizza ora') }}</button><span class="mut">{{ _('Si aggiorna da solo ogni 15 minuti, rileggendo solo ciò che è cambiato.') }}</span></div></form></div></details>
 {% endblock %}
