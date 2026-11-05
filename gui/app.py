@@ -617,13 +617,13 @@ def new_drive(c, f, name, short):
     dest_host = (f.get("drive_dest", "") or f"/mnt/user/documents/{label}/iCloud/iCloud Drive").strip().rstrip("/")
     photos = f.get("photos") == "on"; photos_host = (f.get("photos_dest", "") or f"/mnt/user/media/photos/{label}/Personale").strip().rstrip("/")
     ignore = [x.strip() for x in f.get("ignore", "").split(",") if x.strip()]
-    photos_note = f" e foto → {photos_host}" if photos else ""; photos_mount = f" -v {json.dumps(photos_host)}:/icloud/photos/all" if photos else ""
+    photos_note = f" e foto → {photos_host}" if photos else ""; photos_mount = f" -v {json.dumps(photos_host)}:/icloud/photos/personale/all" if photos else ""
     photos_overview = f" e le foto personali in {html.escape(photos_host)}" if photos else ""
     if not name or not apple or name in c["users"]: flash(_("Dati mancanti o nome già usato")); return redirect(url_for("new"))
     p = c["paths"]; d = c["defaults"]; cont = f"iclouddr-{short.lower()}"; host_appdata = f"/mnt/user/appdata/{cont}"
     # Dalla 3.8 i container nuovi usano l'immagine con il modulo PIM, come quelli di famiglia: note e promemoria in
     # <persona>/iCloud, account collegati nella cartella della persona (la cartella che contiene «iCloud Drive»).
-    image = os.environ.get("ICLOUDDR_IMAGE", "ghcr.io/sidimam/iclouddr:0.2.4")
+    image = os.environ.get("ICLOUDDR_IMAGE", "ghcr.io/sidimam/iclouddr:0.2.5")
     # struttura (5/11/2026): documents/<Persona>/iCloud/{iCloud Drive, Note, Promemoria, Posta, Calendario, Contatti}
     person_host = f"/mnt/user/documents/{label}"; pim_host = person_host + "/iCloud"
     appdata = host_to_local(host_appdata); dest = host_to_local(dest_host)
@@ -632,36 +632,11 @@ def new_drive(c, f, name, short):
     if photos and photos_local == photos_host: flash(_("La cartella foto deve stare sotto /mnt/user/media/photos (montato in iCloud Dashboard come /photos)")); return redirect(url_for("new"))
     for path in [appdata, dest, host_to_local(pim_host)] + ([photos_local] if photos else []):
         os.makedirs(path, exist_ok=True); shutil.chown(path, int(d["user_id"]), int(d["group_id"]))
-    open(os.path.join(appdata, "config.yaml"), "w").write(f"""# {cont} — iCloud Drive di {label} → {dest_host}{photos_note} (solo download, {image})
-app:
-  logger:
-    level: "info"
-    filename: "/config/icloud.log"
-  credentials:
-    username: "{apple}"
-    retry_login_interval: 600
-  root: "/icloud"
-  region: global
-  max_threads: 4
-drive:
-  destination: "drive"
-  remove_obsolete: false
-  sync_interval: {d.get('drive_sync_interval', 1800)}
-""" + ("  ignore:\n" + "".join(f'    - "{x}"\n' for x in ignore) if ignore else "") + ("""photos:
-  destination: "photos"
-  sync_interval: 3600
-  remove_obsolete: false
-  all_albums: false
-  folder_format: "%Y/%m"
-  filename_format: simple
-  filters:
-    libraries:
-      - PrimarySync
-    file_sizes:
-      - "original"
-      - "live_video_original"
-      - "original_alt"
-""" if photos else "")); shutil.chown(os.path.join(appdata, "config.yaml"), int(d["user_id"]), int(d["group_id"]))
+    # configurazione UNICA di casa (iclouddr_config.py = sidimam/iclouddr unraid/make_config.py): uguale per tutti
+    import iclouddr_config
+    cfg_text = iclouddr_config.make(cont, label, apple, home=("Home" not in ignore))
+    if not photos: cfg_text = cfg_text.split("photos:\n")[0]
+    open(os.path.join(appdata, "config.yaml"), "w").write(cfg_text); shutil.chown(os.path.join(appdata, "config.yaml"), int(d["user_id"]), int(d["group_id"]))
     icon = "https://raw.githubusercontent.com/sidimam/icloud-dashboard/main/assets/icloud-drive.png"   # quadrata 256x256 (l'icona dashboard-icons è 797x512 e Unraid la deforma)
     open(tpl_path(cont), "w").write(f"""<?xml version="1.0"?>
 <Container version="2">
@@ -688,7 +663,7 @@ drive:
   <Config Name="Cartella della persona (account collegati)" Target="/icloud/persona" Default="{html.escape(person_host)}" Mode="rw" Description="Posta, calendari e contatti degli account collegati: una sottocartella per account" Type="Path" Display="always" Required="false" Mask="false">{html.escape(person_host)}</Config>
   <Config Name="PIM attivo" Target="PIM_ENABLED" Default="1" Mode="" Description="0 = solo iclouddr originale" Type="Variable" Display="always" Required="false" Mask="false">1</Config>
   <Config Name="PIM ogni (secondi)" Target="PIM_INTERVAL" Default="21600" Mode="" Description="intervallo fra un giro e l altro di note e promemoria" Type="Variable" Display="advanced" Required="false" Mask="false">21600</Config>
-""" + (f'''  <Config Name="Foto personali" Target="/icloud/photos/all" Default="{html.escape(photos_host)}" Mode="rw" Description="Libreria PrimarySync, cartelle %Y/%m" Type="Path" Display="always" Required="false" Mask="false">{html.escape(photos_host)}</Config>
+""" + (f'''  <Config Name="Foto personali" Target="/icloud/photos/personale/all" Default="{html.escape(photos_host)}" Mode="rw" Description="Libreria PrimarySync, cartelle %Y/%m" Type="Path" Display="always" Required="false" Mask="false">{html.escape(photos_host)}</Config>
 ''' if photos else "") + """</Container>
 """)
     rc, out, err = sh(f"docker run -d --name {cont} --restart unless-stopped --label net.unraid.docker.managed=dockerman -e PUID={d['user_id']} -e PGID={d['group_id']} -e TZ={d['tz']} -e ENV_CONFIG_FILE_PATH=/config/config.yaml -v {host_appdata}:/config -v {json.dumps(dest_host)}:/icloud/drive{photos_mount} -v {json.dumps(pim_host)}:/icloud/pim -v {json.dumps(person_host)}:/icloud/persona -e PIM_ENABLED=1 --label net.unraid.docker.icon={icon} {image}", 180)
@@ -712,10 +687,19 @@ def ah_events():
 def ah_log(ev):
     evs = (ah_events() + [ev])[-200:]; os.makedirs(os.path.dirname(AH_FILE), exist_ok=True); json.dump(evs, open(AH_FILE, "w"), ensure_ascii=False, indent=1)
 def ah_counters(c):
-    rc, out, _ = dexec(c, "cat /proc/net/dev /sys/fs/cgroup/cpu.stat")   # niente awk: il $ verrebbe espanso dalla shell esterna
+    """(byte ricevuti dal container, µs di CPU del solo programma iclouddr src/main.py). Il traffico e la CPU del modulo PIM
+    o un filo di keep-alive non devono far sembrare vivo un giro appeso (Sofia, 5/11/2026: ~1 KB/s con il giro fermo da 2 h)."""
+    import shlex
+    cmd = "cat /proc/net/dev; for p in /proc/[0-9]*; do grep -qs src/main.py $p/cmdline && cat $p/stat; done"
+    rc, out, _ = sh(f"docker exec {c} sh -c {shlex.quote(cmd)}", 30)
     rx = next((int(l.split(":", 1)[1].split()[0]) for l in out.splitlines() if l.strip().startswith("eth0:")), None)
-    cpu = next((int(l.split()[1]) for l in out.splitlines() if l.startswith("usage_usec")), None)
-    return (rx, cpu) if rx is not None and cpu is not None else None
+    cpu = 0; found = False
+    for l in out.splitlines():
+        if ") " in l and l.split(" ", 1)[0].isdigit():
+            f = l.rsplit(") ", 1)[1].split()
+            try: cpu += (int(f[11]) + int(f[12])) * 10000; found = True   # tick di 10 ms → µs
+            except (IndexError, ValueError): pass
+    return (rx, cpu) if rx is not None and found else None
 def ah_check(name, u, c):
     ct = u["container"]; info = inspect(ct)
     if not info or not info["State"]["Running"]: _ah_samples.pop(ct, None); return
@@ -734,7 +718,7 @@ def ah_check(name, u, c):
     elif len(smp) >= 2 and smp[-1][0] - smp[0][0] >= AH_IDLE * 60 and run >= AH_IDLE:
         drx, dcpu = smp[-1][1] - smp[0][1], (smp[-1][2] - smp[0][2]) / 1e6
         if drx < 0 or dcpu < 0: _ah_samples.pop(ct, None); return   # contatori azzerati: ricomincia a misurare
-        if drx < 100_000 and dcpu < 2: reason = f"giro {cyc[0]['kind']} fermo: {drx // 1000} KB ricevuti e {dcpu:.1f} s di CPU in {AH_IDLE} min"
+        if dcpu < 1 and drx < 5_000_000: reason = f"giro {cyc[0]['kind']} fermo: il programma ha usato {dcpu:.1f} s di CPU in {AH_IDLE} min ({drx // 1000} KB ricevuti)"
     if not reason: return
     recent = [e for e in ah_events() if e.get("container") == ct and e.get("action") == "restart" and now - e.get("ts", 0) < 6 * 3600]
     if len(recent) >= AH_MAXR:
