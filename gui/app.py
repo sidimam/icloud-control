@@ -425,14 +425,22 @@ def drive_view(name, u):
         stt = st_acc.get(a["id"], {})
         v["accounts"].append({**{k: a.get(k) for k in ("id", "type", "label", "email", "mail", "calendar", "contacts", "ics", "exclude", "imap_host", "imap_port")},
                               "has_pw": bool(a.get("password")), "type_name": ACC_TYPES.get(a.get("type"), a.get("type")),
-                              "folder": acc_folder(a), "dir": (person + "/" + acc_folder(a)) if person else stt.get("dir", ""), "st": stt, "error": stt.get("error")})
+                              "folder": acc_folder(a), "dir": (person + "/" + acc_folder(a)) if person else stt.get("dir", ""), "st": stt, "error": stt.get("error"),
+                              "running": (ago(datetime.datetime.fromtimestamp(stt["running"]["since"])) if stt.get("running") else "")})
+    def _count_now(a, key):
+        if key != "mail" or not a.get("dir"): return ""
+        n = 0
+        for dp, _d, fs in os.walk(host_to_local(a["dir"] + "/Posta")):
+            if dp.endswith(("/cur", "/new")): n += len(fs)
+        return " · " + _("{a0} messaggi finora", a0=n) if n else ""
     def agg(key, flag, unit_key, unit_fmt):
         rows = [a for a in v["accounts"] if a.get(flag) or (key == "calendar" and a.get("ics"))]
         if not rows: return False, [], "", _("non ancora attivo: aggiungi un account qui sotto")
         parts = []; last = 0
         for a in rows:
             r = a["st"].get(key) or {}
-            if a["error"] and not r: parts.append(f'{a["label"]}: ' + _("errore"))
+            if a.get("running") and not r: parts.append(f'{a["label"]}: ' + _("prima copia in corso da {a0}", a0=a["running"].replace(_("fa"), "").strip()) + _count_now(a, key))
+            elif a["error"] and not r: parts.append(f'{a["label"]}: ' + _("errore"))
             elif r: parts.append(f'{a["label"]}: ' + unit_fmt(r)); last = max(last, r.get("when") or 0)
             else: parts.append(f'{a["label"]}: ' + _("in attesa del primo giro"))
         return True, [a["dir"] + "/" + unit_key for a in rows if a["dir"]], (_("ultimo giro {a0}", a0=ago(datetime.datetime.fromtimestamp(last))) if last else ""), " · ".join(parts)
@@ -442,7 +450,7 @@ def drive_view(name, u):
             ("contacts", "contacts", "Contatti", _("Contatti"), "users", "b-gray", env_of(info).get("PIM_DAV_INTERVAL", "3600"), lambda r: _("{a0} contatti", a0=r.get("contatti", 0)))):
         on, paths, last, txt = agg(key, flag, folder, fmt)
         svc.append({"name": name, "icon": icon_, "badge": badge, "on": on, "paths": paths, "freq": every(freq) if on else "", "last": last, "info": txt,
-                    "err": any(a["error"] for a in v["accounts"] if a.get(flag))})
+                    "err": any(a["error"] and not a.get("running") for a in v["accounts"] if a.get(flag))})
     v["services"] = svc
     return v
 def photos_view(name, u):
@@ -615,7 +623,7 @@ def new_drive(c, f, name, short):
     p = c["paths"]; d = c["defaults"]; cont = f"iclouddr-{short.lower()}"; host_appdata = f"/mnt/user/appdata/{cont}"
     # Dalla 3.8 i container nuovi usano l'immagine con il modulo PIM, come quelli di famiglia: note e promemoria in
     # <persona>/iCloud, account collegati nella cartella della persona (la cartella che contiene «iCloud Drive»).
-    image = os.environ.get("ICLOUDDR_IMAGE", "ghcr.io/sidimam/iclouddr:0.2.3")
+    image = os.environ.get("ICLOUDDR_IMAGE", "ghcr.io/sidimam/iclouddr:0.2.4")
     # struttura (5/11/2026): documents/<Persona>/iCloud/{iCloud Drive, Note, Promemoria, Posta, Calendario, Contatti}
     person_host = f"/mnt/user/documents/{label}"; pim_host = person_host + "/iCloud"
     appdata = host_to_local(host_appdata); dest = host_to_local(dest_host)
@@ -697,6 +705,7 @@ AH_ON = os.environ.get("AUTOHEAL", "1") != "0"; AH_CHECK = int(os.environ.get("A
 AH_IDLE = int(os.environ.get("AUTOHEAL_IDLE_MIN", "10")); AH_MAXH = float(os.environ.get("AUTOHEAL_MAX_CYCLE_H", "4"))
 AH_MAXR = int(os.environ.get("AUTOHEAL_MAX_RESTARTS", "3")); AH_FILE = os.path.join(APP_DIR, "state", "autoheal.json")
 _ah_samples = {}   # container -> [(ts, byte ricevuti, µs di CPU)]
+_ah_started = {}   # container -> StartedAt dell'ultimo campione
 def ah_events():
     try: return json.load(open(AH_FILE))
     except (FileNotFoundError, ValueError): return []
@@ -710,6 +719,8 @@ def ah_counters(c):
 def ah_check(name, u, c):
     ct = u["container"]; info = inspect(ct)
     if not info or not info["State"]["Running"]: _ah_samples.pop(ct, None); return
+    started = info["State"].get("StartedAt", "")
+    if _ah_started.get(ct) != started: _ah_samples.pop(ct, None); _ah_started[ct] = started   # ripartito: contatori da zero
     if d_auth_running(ct): return   # riautenticazione in corso: non toccare
     _log_cache.pop(ct, None); cyc = [x for x in sync_cycles(ct, 0) if x["running_min"] is not None]
     now = time.time(); k = ah_counters(ct)
@@ -722,6 +733,7 @@ def ah_check(name, u, c):
     if run > long_: reason = f"giro {cyc[0]['kind']} in corso da {run} min (limite {int(long_)})"
     elif len(smp) >= 2 and smp[-1][0] - smp[0][0] >= AH_IDLE * 60 and run >= AH_IDLE:
         drx, dcpu = smp[-1][1] - smp[0][1], (smp[-1][2] - smp[0][2]) / 1e6
+        if drx < 0 or dcpu < 0: _ah_samples.pop(ct, None); return   # contatori azzerati: ricomincia a misurare
         if drx < 100_000 and dcpu < 2: reason = f"giro {cyc[0]['kind']} fermo: {drx // 1000} KB ricevuti e {dcpu:.1f} s di CPU in {AH_IDLE} min"
     if not reason: return
     recent = [e for e in ah_events() if e.get("container") == ct and e.get("action") == "restart" and now - e.get("ts", 0) < 6 * 3600]

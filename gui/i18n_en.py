@@ -1,5 +1,10 @@
 """Traduzioni inglesi della GUI: chiave = testo italiano usato nel codice e nei template (vedi ui.py)."""
 EN = {
+    "prima copia in corso da {a0}": "first copy running for {a0}",
+    "fa": "ago",
+    "{a0} messaggi finora": "{a0} messages so far",
+    "in corso": "running",
+    "Giro in corso da {a0}": "Run in progress since {a0}",
     "Mappa": "Map",
     "Allarga": "Enlarge",
     "In questa zona: ": "In this area: ",
