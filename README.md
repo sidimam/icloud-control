@@ -108,6 +108,16 @@ Gli avvisi automatici del dispatcher si impostano dalle variabili del template U
 `TELEGRAM_TOKEN` e `ALLOWED_CHATS` (le chat da cui il bot accetta comandi) restano come prima. Le risposte ai comandi del bot e
 della GUI non passano dalle ore silenziose: arrivano sempre subito alla chat che le ha chieste.
 
+### Chiavi Immich per libreria, dalla scheda dell'utente (dalla 3.19)
+
+- In **Utenti → (persona) → Immich** ci sono le librerie di foto della persona (es. Simone: *Personale* e *Famiglia*), ognuna con
+  lo stato «chiave API» o «lettura diretta», e **+ Aggiungi una chiave Immich**: si sceglie la libreria e si incolla una chiave
+  con il solo permesso `asset.read`, creata in Immich dall'utente proprietario di quella libreria (per *Famiglia* l'utente
+  Immich «famiglia@…»). La chiave viene provata subito, mai mostrata, e salvata per libreria in `/app/state/immich.json` (600).
+- La ricerca è mista: le librerie con la chiave usano l'API ufficiale di Immich (solo le foto di quella libreria), quelle senza
+  la lettura diretta dell'analisi di Immich; i risultati si alternano. Anche con una sola chiave si cerca sempre in tutte le foto.
+- In Amministrazione resta l'indirizzo di Immich e il riepilogo di quali librerie hanno la chiave.
+
 ### Files, viste, ordine delle schede, ora e meteo (dalla 3.18)
 
 - Schede nell'ordine **Riepilogo, Files, Posta, Calendario, Contatti, Promemoria, Note, Foto, Utenti, 🔍**.

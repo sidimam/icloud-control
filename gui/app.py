@@ -476,6 +476,9 @@ def drive_view(name, u):
         groups.append({"kind": a.get("type"), "title": a.get("type_name") if a.get("type") != "icloud" else "Apple · iCloud", "email": a.get("email"),
                        "badge": {"gmail": "b-red", "outlook": "b-blue"}.get(a.get("type"), "b-teal"), "icon": "send", "rows": acc_rows(a), "acc": a})
     v["acct_groups"] = groups
+    libs = immich_cfg().get("libs") or {}
+    v["photo_libs"] = [{"host": src, "label": os.path.basename(src.rstrip("/")), "key": bool((libs.get(src) or {}).get("key")),
+                        "added": _fmt_date((libs.get(src) or {}).get("added")) if (libs.get(src) or {}).get("added") else ""} for src in photo_paths]
     dd = (disk_load().get("data") or {}).get(v["label"]) or {}
     v["storage"] = [(KIND_NAMES[k], dd[k], KIND_SLOT[k]) for k in KIND_SLOT if dd.get(k)]; v["storage_total"] = sum(dd.values())
     return v
@@ -783,7 +786,9 @@ def admin():
     except Exception: idx_by, idx_runs = {}, {}
     idx = sorted(((k[1], KIND_NAMES.get(k[0], k[0]), v) for k, v in idx_by.items()))
     last = max((r["finished"] for r in idx_runs.values()), default=0); errs = [f"{k}: {r['error']}" for k, r in idx_runs.items() if r.get("error")]
-    imm = immich_cfg(); immich = {"url": imm.get("url"), "on": bool(_immich_keys(imm)), "n": len(_immich_keys(imm))}
+    imm = immich_cfg(); hosts = {h: (p, a) for p, a, h in photo_libraries()}
+    immich = {"url": imm.get("url"), "libs": [(hosts[h][0], hosts[h][1], bool((imm.get("libs") or {}).get(h, {}).get("key"))) for h in hosts]}
+    immich["on"] = any(k for _p, _a, k in immich["libs"]); immich["n"] = sum(1 for _p, _a, k in immich["libs"] if k)
     log_srcs = [("dashboard", "iCloud Dashboard")] + [(n, f"{u.get('label', n)} · {u['container']}") for n, u in cfg()["users"].items()]
     return render_template("admin.html", immich=immich, log_srcs=log_srcs, rows=rows, n=nset(), default_chat=cfg().get("default_chat_id", ""), roles=accounts.ROLES, geocode=_settings().get("geocode", False),
                            idx=idx, idx_last=ago(datetime.datetime.fromtimestamp(last)) if last else "", idx_errs=errs, idx_db=os.path.getsize(SI.DB) if os.path.exists(SI.DB) else 0, fmt_size=_fmt_size)
@@ -1247,41 +1252,71 @@ def immich_smart_all(q, size=500):
                        input=sql, capture_output=True, text=True, timeout=60)
     if r.returncode != 0: return None
     return [m for m in (_immich_map(l) for l in r.stdout.splitlines() if l) if m]
-def _immich_keys(c):
-    k = c.get("keys") or ([c["key"]] if c.get("key") else [])
-    return [x for x in k if x]
-def immich_smart(q, size=500):
-    """Percorsi (dell'indice) delle foto più somiglianti al testo, dalla più vicina; None se Immich non è raggiungibile.
-    Con le chiavi API dedicate (una per utente Immich, permesso asset.read) usa l'API ufficiale e unisce i risultati;
-    senza chiavi legge l'analisi di Immich direttamente, in sola lettura (immich_smart_all)."""
+# 3.19: una chiave Immich (asset.read) per LIBRERIA di foto, aggiunta dalla scheda dell'utente con «+»:
+# immich.json → {"url", "libs": {"<percorso host della libreria>": {"key", "user", "added"}}}. Le librerie con la chiave usano l'API
+# ufficiale di Immich, quelle senza la lettura diretta dell'analisi: la ricerca copre sempre tutte le foto.
+def immich_save(c):
+    tmp = IMMICH_FILE + ".tmp"; fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as fh: json.dump(c, fh)
+    os.replace(tmp, IMMICH_FILE)
+def photo_libraries():
+    """Tutte le librerie di foto dei container: [(persona, etichetta, percorso host)]."""
+    return [(s["person"], album, host) for s in idx_sources() for album, _l, host in s.get("photos", [])]
+def _immich_api(key, q, size):
     import urllib.request
-    c = immich_cfg(); keys = _immich_keys(c)
-    if not keys:
-        try: return immich_smart_all(q, size)
-        except Exception as e: print(f"ricerca foto (Immich diretto): {e}", flush=True); return None
+    req = urllib.request.Request(immich_cfg()["url"].rstrip("/") + "/api/search/smart", method="POST", data=json.dumps({"query": q, "size": min(size, 1000), "page": 1}).encode(),
+                                 headers={"Content-Type": "application/json", "Accept": "application/json", "x-api-key": key})
+    items = json.loads(urllib.request.urlopen(req, timeout=60).read()).get("assets", {}).get("items", [])
+    return [m for m in (_immich_map(it.get("originalPath") or "") for it in items) if m]
+def immich_smart(q, size=500):
+    """Percorsi (dell'indice) delle foto più simili al testo, dalla più vicina; None se Immich non è raggiungibile."""
+    libs = immich_cfg().get("libs") or {}; hosts = [h for _p, _a, h in photo_libraries()]
+    keyed = {h: v["key"] for h, v in libs.items() if v.get("key") and h in hosts}
+    free = [h for h in hosts if h not in keyed]
     lists = []
-    for key in keys:   # ogni chiave vede solo le foto del suo utente: una richiesta per chiave
-        req = urllib.request.Request(c["url"].rstrip("/") + "/api/search/smart", method="POST", data=json.dumps({"query": q, "size": min(size, 1000), "page": 1}).encode(),
-                                     headers={"Content-Type": "application/json", "Accept": "application/json", "x-api-key": key})
-        items = json.loads(urllib.request.urlopen(req, timeout=60).read()).get("assets", {}).get("items", [])
-        lists.append([m for m in (_immich_map(it.get("originalPath") or "") for it in items) if m])
-    out, seen = [], set()   # unione alternata: il primo di ogni utente, poi il secondo…
+    for host, key in keyed.items():   # ogni chiave: solo le foto della sua libreria
+        try: lists.append([p for p in _immich_api(key, q, size) if p.startswith(host.rstrip("/") + "/")])
+        except Exception as e: print(f"ricerca foto (chiave di {host}): {e}", flush=True); free.append(host)
+    if free or not hosts:
+        try:
+            direct = immich_smart_all(q, size * 2 if keyed else size)
+            if direct is not None:
+                lists.append([p for p in direct if not keyed or any(p.startswith(h.rstrip("/") + "/") for h in free)] if hosts else direct)
+            elif not lists: return None
+        except Exception as e:
+            print(f"ricerca foto (Immich diretto): {e}", flush=True)
+            if not lists: return None
+    out, seen = [], set()   # unione alternata: il primo di ogni libreria, poi il secondo…
     for row in __import__("itertools").zip_longest(*lists):
         for p in row:
             if p and p not in seen: seen.add(p); out.append(p)
     return out[:size]
+@app.post("/u/<name>/immich/add")
+def u_immich_add(name):
+    u = cfg()["users"].get(name) or abort(404)
+    if accounts.any_password() and not accounts.is_admin(me()) and _own_icloud() != name: abort(403)
+    host = request.form.get("lib", ""); key = request.form.get("key", "").strip()
+    mine = [h for p, _a, h in photo_libraries() if p == u.get("label", name)]
+    if host not in mine or not re.fullmatch(r"[A-Za-z0-9_\-]{20,200}", key): flash(_("Scegli una libreria e incolla una chiave API valida")); return redirect(url_for("index") + f"#u-{name}")
+    try: res = _immich_api(key, "foto", 50)
+    except Exception as e: flash(_("Immich non accetta questa chiave: {a0}", a0=str(e)[:160])); return redirect(url_for("index") + f"#u-{name}")
+    inlib = sum(1 for p in res if p.startswith(host.rstrip("/") + "/"))
+    c = immich_cfg(); c.setdefault("libs", {})[host] = {"key": key, "user": name, "added": time.time()}; immich_save(c)
+    lab = os.path.basename(host.rstrip("/"))
+    flash(_("Chiave Immich salvata per {a0}", a0=lab) + (" · " + _("attenzione: la prova non ha trovato foto di questa libreria, forse la chiave è di un altro utente Immich") if res and not inlib else ""))
+    return redirect(url_for("index") + f"#u-{name}")
+@app.post("/u/<name>/immich/remove")
+def u_immich_remove(name):
+    if accounts.any_password() and not accounts.is_admin(me()) and _own_icloud() != name: abort(403)
+    host = request.form.get("lib", ""); c = immich_cfg()
+    if (c.get("libs") or {}).get(host, {}).get("user") in (name, None) or accounts.is_admin(me()) or not accounts.any_password():
+        (c.get("libs") or {}).pop(host, None); immich_save(c); flash(_("Chiave Immich tolta: questa libreria torna alla lettura diretta"))
+    return redirect(url_for("index") + f"#u-{name}")
 @app.post("/admin/immich")
 def admin_immich():
-    _admin_only(); f = request.form; c = immich_cfg()
-    c["url"] = (f.get("url") or c["url"]).strip().rstrip("/")
-    new = [x.strip() for x in re.split(r"[\s,;]+", f.get("keys", "")) if x.strip()]
-    if new: c["keys"] = new; c.pop("key", None)
-    if f.get("forget") == "1": c.pop("keys", None); c.pop("key", None)
-    tmp = IMMICH_FILE + ".tmp"; fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as fh: json.dump(c, fh)
-    os.replace(tmp, IMMICH_FILE)
-    try: n = len(immich_smart("persone", 20) or []); flash(_("Ricerca nelle foto pronta: la prova ha trovato {a0} foto", a0=n) + (" · " + _("{a0} chiavi API", a0=len(_immich_keys(c))) if _immich_keys(c) else " · " + _("senza chiavi: analisi di Immich letta direttamente")))
-    except Exception as e: flash(_("Immich non risponde con queste chiavi: {a0}", a0=str(e)[:200]))
+    _admin_only(); c = immich_cfg(); c["url"] = (request.form.get("url") or c["url"]).strip().rstrip("/"); c.pop("key", None); c.pop("keys", None); immich_save(c)
+    try: n = len(immich_smart("persone", 20) or []); flash(_("Ricerca nelle foto pronta: la prova ha trovato {a0} foto", a0=n))
+    except Exception as e: flash(_("Immich non risponde: {a0}", a0=str(e)[:200]))
     return redirect(url_for("admin"))
 @app.route("/photos")
 def photos():
