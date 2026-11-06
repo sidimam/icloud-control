@@ -748,6 +748,9 @@ def ah_check(name, u, c):
         drx, dcpu = smp[-1][1] - smp[0][1], (smp[-1][2] - smp[0][2]) / 1e6
         if drx < 0 or dcpu < 0: _ah_samples.pop(ct, None); return   # contatori azzerati: ricomincia a misurare
         if dcpu < 1 and drx < 5_000_000: reason = f"giro {cyc[0]['kind']} fermo: il programma ha usato {dcpu:.1f} s di CPU in {AH_IDLE} min ({drx // 1000} KB ricevuti)"
+        # 3.19.1: giro lungo il doppio del solito (almeno 90 min) e programma quasi fermo (Sofia 6/11: 2 h a 0,2 s di CPU al minuto,
+        # connessioni verso Apple in CLOSE_WAIT) → bloccato anche se la soglia sopra non scatta
+        elif dcpu < 5 and drx < 20_000_000 and run > max(90, 2 * max((x["last_min"] or 0) for x in cyc)): reason = f"giro {cyc[0]['kind']} lento e quasi fermo: in corso da {run} min, {dcpu:.1f} s di CPU in {AH_IDLE} min"
     if not reason: return
     recent = [e for e in ah_events() if e.get("container") == ct and e.get("action") == "restart" and now - e.get("ts", 0) < 6 * 3600]
     if len(recent) >= AH_MAXR:
