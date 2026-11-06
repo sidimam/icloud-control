@@ -108,6 +108,17 @@ Gli avvisi automatici del dispatcher si impostano dalle variabili del template U
 `TELEGRAM_TOKEN` e `ALLOWED_CHATS` (le chat da cui il bot accetta comandi) restano come prima. Le risposte ai comandi del bot e
 della GUI non passano dalle ore silenziose: arrivano sempre subito alla chat che le ha chieste.
 
+### Ricerca intelligente nelle foto e informazioni (dalla 3.15)
+
+- **Cerca cosa c'è nelle foto** (es. «sedia», «spiaggia», «cane sul divano») nella scheda Foto: la ricerca la fa **Immich**, che
+  ha già analizzato con CLIP le stesse foto di `media/photos` (185.584 su 188.122 il 6/11/2026); i risultati tornano nella
+  galleria della dashboard, nell'ordine di somiglianza (fino a 500), con i filtri di persona, album, anno e tipo. Si collega in
+  **Amministrazione → Ricerca intelligente nelle foto (Immich)** con una chiave API creata in Immich (Impostazioni account →
+  Chiavi API, permesso `asset.read`), salvata solo in `/app/state/immich.json` (600). Percorsi di Immich → indice con
+  `IMMICH_PATH_MAP` (default `/external=/mnt/user/media/photos`), indirizzo con `IMMICH_URL`. Senza chiave si cerca nel nome del file.
+- **ⓘ sulle miniature**: apre la foto direttamente con le informazioni. Nel visualizzatore il pannello Informazioni ha il suo
+  «Chiudi» (ed Esc lo chiude per primo): si torna alla foto grande senza uscire dall'anteprima.
+
 ### Fusi orari, festività, ricerca e contatti (dalla 3.14)
 
 - **Calendario**: a destra del selettore la data di oggi e l'ora, con il **fuso orario** (quello del dispositivo o uno scelto,

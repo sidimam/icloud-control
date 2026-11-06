@@ -757,8 +757,9 @@ def admin():
     except Exception: idx_by, idx_runs = {}, {}
     idx = sorted(((k[1], KIND_NAMES.get(k[0], k[0]), v) for k, v in idx_by.items()))
     last = max((r["finished"] for r in idx_runs.values()), default=0); errs = [f"{k}: {r['error']}" for k, r in idx_runs.items() if r.get("error")]
+    imm = immich_cfg(); immich = {"url": imm.get("url"), "on": bool(imm.get("key"))}
     log_srcs = [("dashboard", "iCloud Dashboard")] + [(n, f"{u.get('label', n)} · {u['container']}") for n, u in cfg()["users"].items()]
-    return render_template("admin.html", log_srcs=log_srcs, rows=rows, n=nset(), default_chat=cfg().get("default_chat_id", ""), roles=accounts.ROLES, geocode=_settings().get("geocode", False),
+    return render_template("admin.html", immich=immich, log_srcs=log_srcs, rows=rows, n=nset(), default_chat=cfg().get("default_chat_id", ""), roles=accounts.ROLES, geocode=_settings().get("geocode", False),
                            idx=idx, idx_last=ago(datetime.datetime.fromtimestamp(last)) if last else "", idx_errs=errs, idx_db=os.path.getsize(SI.DB) if os.path.exists(SI.DB) else 0, fmt_size=_fmt_size)
 # Log (3.12): ricerca e filtri sui log della dashboard e dei container iCloud, dalla scheda Amministrazione
 LOG_PARTS = {"drive": r"drive|Drive", "photos": r"photo|Photo|foto", "pim": r" PIM ::|pim", "accounts": r"posta|calendario|contatti|mbsync|vdirsyncer|IMAP",
@@ -1188,6 +1189,43 @@ def _photo_scope(a):
     if who in persons: return persons, shared, who, [f"kind='photo' and person=? and account not in ({','.join('?' * len(shared)) or 'null'})"], [who] + shared
     sh = ",".join("?" * len(shared)) or "null"
     return persons, shared, "", [f"kind='photo' and ((person in ({','.join('?' * len(persons))}) and account not in ({sh})) or account in ({sh}))"], persons + shared + shared
+# ---- ricerca intelligente nelle foto (3.15): la fa Immich (CLIP sulle stesse foto, già analizzate), con una chiave API
+# creata dall'utente in Immich e salvata qui in /app/state/immich.json (600). I percorsi di Immich (/external/…) diventano quelli
+# dell'indice (/mnt/user/media/photos/…) con IMMICH_PATH_MAP.
+IMMICH_FILE = os.path.join(APP_DIR, "state", "immich.json")
+IMMICH_MAP = [x.split("=", 1) for x in os.environ.get("IMMICH_PATH_MAP", "/external=/mnt/user/media/photos").split(",") if "=" in x]
+def immich_cfg():
+    try: d = json.load(open(IMMICH_FILE))
+    except (FileNotFoundError, ValueError): d = {}
+    d.setdefault("url", os.environ.get("IMMICH_URL", "http://192.168.0.100:2283")); return d
+def immich_smart(q, size=500):
+    """Percorsi (dell'indice) delle foto più somiglianti al testo, dalla più vicina; None se Immich non è collegato."""
+    import urllib.request
+    c = immich_cfg()
+    if not c.get("key"): return None
+    req = urllib.request.Request(c["url"].rstrip("/") + "/api/search/smart", method="POST", data=json.dumps({"query": q, "size": min(size, 1000), "page": 1}).encode(),
+                                 headers={"Content-Type": "application/json", "Accept": "application/json", "x-api-key": c["key"]})
+    items = json.loads(urllib.request.urlopen(req, timeout=60).read()).get("assets", {}).get("items", [])
+    out = []
+    for it in items:
+        p = it.get("originalPath") or ""
+        for src, dst in IMMICH_MAP:
+            if p.startswith(src.rstrip("/") + "/"): out.append(dst.rstrip("/") + p[len(src.rstrip("/")):]); break
+    return out
+@app.post("/admin/immich")
+def admin_immich():
+    _admin_only(); f = request.form; c = immich_cfg()
+    c["url"] = (f.get("url") or c["url"]).strip().rstrip("/")
+    if f.get("key", "").strip(): c["key"] = f["key"].strip()
+    if f.get("forget") == "1": c.pop("key", None)
+    tmp = IMMICH_FILE + ".tmp"; fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as fh: json.dump(c, fh)
+    os.replace(tmp, IMMICH_FILE)
+    if c.get("key"):
+        try: n = len(immich_smart("persone", 20) or []); flash(_("Immich collegato: la ricerca di prova ha trovato {a0} foto", a0=n))
+        except Exception as e: flash(_("Immich non risponde con questa chiave: {a0}", a0=str(e)[:200]))
+    else: flash(_("Ricerca intelligente nelle foto scollegata"))
+    return redirect(url_for("admin"))
 @app.route("/photos")
 def photos():
     a = request.args; persons, shared, person, where, args = _photo_scope(a)
@@ -1201,9 +1239,19 @@ def photos():
         y = int(a["year"]); where.append("date >= ? and date < ?"); args += [datetime.datetime(y, 1, 1).timestamp(), datetime.datetime(y + 1, 1, 1).timestamp()]
     per = 120
     fw, fa, forder = filt_sql(a)
+    q = a.get("q", "").strip(); ai = None; ai_err = ""; order_args = []
+    if q:   # «sedia», «spiaggia», «cane sul divano»: Immich ordina per somiglianza; senza Immich si cerca nel nome del file
+        try: ai = immich_smart(q)
+        except Exception as e: ai_err = str(e)[:200]
+        if ai is not None:
+            fw.append(f"path in ({','.join('?' * len(ai)) or 'null'})"); fa += ai
+            if ai and not a.get("fsort"):   # ordine di somiglianza di Immich, se non si è scelto un altro ordinamento
+                forder = "case path " + " ".join(f"when ? then {i}" for i in range(len(ai))) + " end"; order_args = list(ai)
+        else:
+            fw.append("(title like ? or json_extract(extra,'$.rel') like ?)"); fa += [f"%{q}%"] * 2
     con = SI.connect()
     try:
-        rows = [{**dict(r), "x": json.loads(r["extra"] or "{}")} for r in con.execute(f"select * from items where {' and '.join(where + fw)} order by {forder} limit ? offset ?", args + fa + [per + 1, page * per])]
+        rows = [{**dict(r), "x": json.loads(r["extra"] or "{}")} for r in con.execute(f"select * from items where {' and '.join(where + fw)} order by {forder} limit ? offset ?", args + fa + order_args + [per + 1, page * per])]
         exts = [r["ext"] for r in con.execute("select ext, count(*) n from items where kind='photo' and ext != '' group by ext order by n desc")]
         scope_w, scope_a = _photo_scope(a)[3], _photo_scope(a)[4]   # album e anni disponibili nell'ambito scelto
         albums = con.execute(f"select person, account, count(*) n from items where {' and '.join(scope_w)} group by person, account order by person, account", scope_a).fetchall()
@@ -1211,7 +1259,7 @@ def photos():
     finally: con.close()
     more = len(rows) > per; rows = rows[:per]
     for r in rows: r["media"] = "video" if r["ext"] in VID_EXT else ("audio" if r["ext"] in AUD_EXT else "image")
-    return render_template("photos.html", rows=rows, albums=albums, years=years, persons=persons, shared=shared, person=person, album=album, what=what, year=a.get("year", ""), page=page, more=more, exts=exts, fmt_date=_fmt_date, fmt_size=_fmt_size)
+    return render_template("photos.html", rows=rows, albums=albums, years=years, persons=persons, shared=shared, person=person, album=album, what=what, year=a.get("year", ""), page=page, more=more, exts=exts, q=q, ai=ai is not None, ai_err=ai_err, immich_on=bool(immich_cfg().get("key")), fmt_date=_fmt_date, fmt_size=_fmt_size)
 @app.route("/notes")
 def notes():
     persons = allowed_persons(); person = request.args.get("person", ""); sel = [person] if person in persons else persons

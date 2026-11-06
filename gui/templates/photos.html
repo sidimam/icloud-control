@@ -8,6 +8,8 @@
 <select name="year" onchange="this.form.submit()" style="width:auto"><option value="">{{ _('Tutti gli anni') }}</option>{% for y in years %}<option {% if year == y %}selected{% endif %}>{{ y }}</option>{% endfor %}</select>
 <span class="seg">{% for k, l in (('', _('Tutto')), ('photo', _('Foto')), ('video', _('Video'))) %}<label><input type="radio" name="what" value="{{ k }}" {% if what == k %}checked{% endif %} onchange="this.form.submit()"><span>{{ l }}</span></label>{% endfor %}</span>
 </div></form>
+{% set sb_placeholder = _('Cerca cosa c\'è nelle foto: sedia, spiaggia, cane sul divano, torta…') if immich_on else _('Cerca nel nome del file…') %}{% include "_searchbar.html" %}
+{% if q %}<p class="note">{% if ai %}{{ icon('search', 13) }} {{ _('Ricerca intelligente di Immich: prima le foto più simili a «{a0}» (fino a 500).', a0=q) }}{% elif ai_err %}<span class="bad">{{ _('Immich non ha risposto ({a0}): cerco solo nel nome del file.', a0=ai_err) }}</span>{% else %}{{ _('Cerco solo nel nome del file. Per cercare cosa c\'è nelle foto collega Immich in Amministrazione.') }}{% endif %}</p>{% endif %}
 {% set fo = {"name": _('nome del file'), "ext": exts, "dates": _('Scattata'), "sorts": [("date", _('data di scatto')), ("name", _('nome')), ("size", _('dimensione'))], "default": "date"} %}{% include "_filters.html" %}
 <details class="grp" data-k="photo-map" open><summary>{{ icon('globe', 15) }}{{ _('Mappa') }} <span class="mut" id="mapcount"></span>{{ icon('chevron', 15, 'ic chev') }}</summary>
 <div class="list" id="mapwrap" style="position:relative;isolation:isolate"><div id="pmap" style="height:380px"></div>
@@ -16,17 +18,21 @@
 <div id="grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:4px">
 {% for r in rows %}<a href="/item/{{ r.id }}" data-i="{{ loop.index0 }}" class="ph" style="position:relative;display:block;aspect-ratio:1;background:var(--fill);border-radius:6px;overflow:hidden">
 <img loading="lazy" src="/thumb/{{ r.id }}" alt="" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'">
-{% if r.media == 'video' %}<span style="position:absolute;right:6px;bottom:4px;color:#fff;text-shadow:0 1px 3px #000;font-size:12px">▶︎ {{ r.ext }}</span>{% endif %}</a>{% else %}<p class="mut">{{ _('Nessuna foto con questi filtri.') }}</p>{% endfor %}</div>
+{% if r.media == 'video' %}<span style="position:absolute;right:6px;bottom:4px;color:#fff;text-shadow:0 1px 3px #000;font-size:12px">▶︎ {{ r.ext }}</span>{% endif %}<button type="button" class="phi" aria-label="{{ _('Informazioni') }}" title="{{ _('Informazioni') }}">i</button></a>{% else %}<p class="mut">{{ _('Nessuna foto con questi filtri.') }}</p>{% endfor %}</div>
 <div class="row" style="justify-content:center;margin:1rem 0">{% if page > 0 %}<a class="btn tint" href="{{ qs(page=page - 1) }}">← {{ _('Più recenti') }}</a>{% endif %}{% if more %}<a class="btn tint" href="{{ qs(page=page + 1) }}">{{ _('Meno recenti') }} →</a>{% endif %}</div>
 <div id="lb" hidden style="position:fixed;inset:0;z-index:5000;background:rgba(0,0,0,.92);display:flex">
 <div style="flex:1;position:relative;display:flex;align-items:center;justify-content:center;min-width:0" id="lbmain"></div>
-<aside id="lbinfo" hidden style="width:min(360px,90vw);background:var(--card);color:var(--fg);overflow:auto;padding:12px 0"></aside>
-<div style="position:absolute;top:calc(10px + env(safe-area-inset-top,0px));right:12px;display:flex;gap:6px;z-index:2">
+<aside id="lbinfo-wrap" hidden style="width:min(360px,90vw);background:var(--card);color:var(--fg);overflow:auto;padding:0 0 12px;position:relative">
+<div style="position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:.5rem;padding:10px 12px;background:var(--card);border-bottom:.5px solid var(--sep)"><b style="flex:1;font-weight:600">{{ _('Informazioni') }}</b><button class="tint small" id="lbic" title="{{ _('Chiudi le informazioni (resta sulla foto)') }}">✕ {{ _('Chiudi') }}</button></div>
+<div id="lbinfo" hidden></div></aside>
+<div id="lbbar" style="position:absolute;top:calc(10px + env(safe-area-inset-top,0px));right:12px;display:flex;gap:6px;z-index:2">
 <button class="tint small" id="lbi" title="{{ _('Informazioni') }}">ⓘ</button><a class="btn tint" style="font-size:13px;padding:.32rem .65rem" id="lbopen" href="#">{{ _('Scheda') }}</a><button class="tint small" id="lbx" title="{{ _('Chiudi') }}">✕</button></div>
 <button class="tint small" id="lbp" style="position:absolute;left:10px;top:50%">‹</button><button class="tint small" id="lbn" style="position:absolute;right:10px;top:50%">›</button></div>
 {% include "_meta.html" %}
 <style>.pcl{position:relative;width:54px;height:54px;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.35);border:2px solid #fff;background:#888}.pcl img{width:100%;height:100%;object-fit:cover}.pcl b{position:absolute;right:-2px;top:-2px;background:var(--acc);color:#fff;font:600 11px -apple-system,system-ui;padding:1px 6px;border-radius:99px;border:2px solid #fff}
-#mapwrap.big{position:fixed;inset:0;z-index:4000;border-radius:0}#mapwrap.big #pmap{height:100vh!important}</style>
+#mapwrap.big{position:fixed;inset:0;z-index:4000;border-radius:0}
+.phi{position:absolute;top:6px;right:6px;width:26px;height:26px;padding:0;border-radius:50%;border:0;background:rgba(0,0,0,.55);color:#fff;font:italic 600 14px Georgia,serif;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .15s;cursor:pointer;z-index:1;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+a.ph:hover .phi,a.ph:focus-within .phi,.phi:focus-visible{opacity:1}@media (hover:none){.phi{opacity:.9}}#mapwrap.big #pmap{height:100vh!important}</style>
 <script src="/static/vendor/leaflet.js"></script><script src="/static/vendor/markercluster.js"></script>
 <script>
 (function(){
@@ -58,8 +64,10 @@
 <script>
 (function(){
   var items = {{ rows|map(attribute='id')|list|tojson }}, media = {{ rows|map(attribute='media')|list|tojson }};
-  var lb = document.getElementById("lb"), main = document.getElementById("lbmain"), info = document.getElementById("lbinfo"), cur = 0;
-  window.openLB = function (ids, kinds, i) { items = ids; media = kinds; lb.hidden = false; show(i); };
+  var lb = document.getElementById("lb"), main = document.getElementById("lbmain"), info = document.getElementById("lbinfo"), wrap = document.getElementById("lbinfo-wrap"), cur = 0;
+  // il pannello informazioni ha la sua chiusura: si chiude lui e resta la foto grande (3.15)
+  function setInfo(on){ wrap.hidden = !on; info.hidden = !on; document.getElementById("lbbar").style.right = on ? "calc(min(360px,90vw) + 12px)" : "12px"; document.getElementById("lbn").style.right = on ? "calc(min(360px,90vw) + 10px)" : "10px"; if (on) renderMeta(info, items[cur]); }
+  window.openLB = function (ids, kinds, i, withInfo) { items = ids; media = kinds; lb.hidden = false; show(i); setInfo(!!withInfo); };
   function show(i){ cur = (i + items.length) % items.length; var id = items[cur];
     main.innerHTML = media[cur] === "video" ? '<video src="/item/' + id + '/raw" controls autoplay playsinline style="max-width:100%;max-height:100vh"></video>'
       : '<img src="/thumb/' + id + '" alt="" style="width:min(100%,100vh);max-height:100vh;object-fit:contain;filter:blur(2px)">';
@@ -67,11 +75,12 @@
       [cur + 1, cur - 1].forEach(function(j){ if (items[j] && media[j] !== "video") (new Image()).src = "/thumb/" + items[j] + "?s=big"; }); }
     document.getElementById("lbopen").href = "/item/" + id; if (!info.hidden) renderMeta(info, id); }
   var gridIds = items.slice(), gridKinds = media.slice();
-  document.querySelectorAll("a.ph").forEach(function(a){ a.addEventListener("click", function(e){ e.preventDefault(); openLB(gridIds, gridKinds, +a.dataset.i); }); });
-  document.getElementById("lbx").onclick = function(){ lb.hidden = true; main.innerHTML = ""; };
+  document.querySelectorAll("a.ph").forEach(function(a){ a.addEventListener("click", function(e){ e.preventDefault(); openLB(gridIds, gridKinds, +a.dataset.i, e.target.classList.contains("phi")); }); });
+  document.getElementById("lbx").onclick = function(){ lb.hidden = true; main.innerHTML = ""; setInfo(false); };
+  document.getElementById("lbic").onclick = function(){ setInfo(false); };
   document.getElementById("lbp").onclick = function(){ show(cur - 1); }; document.getElementById("lbn").onclick = function(){ show(cur + 1); };
-  document.getElementById("lbi").onclick = function(){ info.hidden = !info.hidden; if (!info.hidden) renderMeta(info, items[cur]); };
-  document.addEventListener("keydown", function(e){ if (lb.hidden) return; if (e.key === "Escape") document.getElementById("lbx").click(); if (e.key === "ArrowLeft") show(cur - 1); if (e.key === "ArrowRight") show(cur + 1); if (e.key === "i") document.getElementById("lbi").click(); });
+  document.getElementById("lbi").onclick = function(){ setInfo(wrap.hidden); };
+  document.addEventListener("keydown", function(e){ if (lb.hidden) return; if (e.key === "Escape") { if (!wrap.hidden) setInfo(false); else document.getElementById("lbx").click(); } if (e.key === "ArrowLeft") show(cur - 1); if (e.key === "ArrowRight") show(cur + 1); if (e.key === "i") document.getElementById("lbi").click(); });
 })();
 </script>
 {% endblock %}

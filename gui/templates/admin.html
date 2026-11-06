@@ -34,6 +34,12 @@
 <div class="li"><span class="k">{{ _('Ultimo aggiornamento') }}</span><span class="v">{{ idx_last or '—' }} · {{ fmt_size(idx_db) }}</span></div>
 {% for e in idx_errs %}<div class="li"><span class="bad" style="font-size:13px">{{ e }}</span></div>{% endfor %}
 <form method="post" action="/admin/reindex"><div class="li"><button class="tint small">{{ icon('restart', 14) }}{{ _('Reindicizza ora') }}</button><span class="mut">{{ _('Si aggiorna da solo ogni 15 minuti, rileggendo solo ciò che è cambiato.') }}</span></div></form></div></details>
+<details class="grp" data-k="adm-immich"><summary>{{ icon('photo', 15) }}{{ _('Ricerca intelligente nelle foto (Immich)') }}{% if immich.on %} <span class="tag ok" style="text-transform:none">{{ _('collegata') }}</span>{% endif %}{{ icon('chevron', 15, 'ic chev') }}</summary>
+<form method="post" action="/admin/immich" class="list" style="padding:12px 16px;display:grid;gap:.6rem">
+<p class="mut" style="margin:0">{{ _('La scheda Foto cerca cosa c\'è nelle immagini (es. «sedia») con l\'analisi che Immich ha già fatto sulle stesse foto. Serve una chiave API di Immich: in Immich → foto profilo → Impostazioni account → Chiavi API → Nuova chiave API, con il permesso «asset.read». La chiave resta solo qui, nel file /app/state/immich.json (600), e non viene mai mostrata.') }}</p>
+<label><span class="f">{{ _('Indirizzo di Immich') }}</span><input name="url" value="{{ immich.url }}"></label>
+<label><span class="f">{{ _('Chiave API') }}{% if immich.on %} <span class="mut">({{ _('salvata: scrivila solo per cambiarla') }})</span>{% endif %}</span><input name="key" type="password" autocomplete="off"></label>
+<div class="row"><button class="small">{{ _('Salva e prova') }}</button>{% if immich.on %}<button class="red small" name="forget" value="1">{{ _('Scollega') }}</button>{% endif %}</div></form></details>
 <details class="grp" data-k="adm-logs"><summary>{{ icon('list', 15) }}{{ _('Log') }}{{ icon('chevron', 15, 'ic chev') }}</summary>
 <form id="logf" class="list" onsubmit="loadLogs();return false" style="padding:12px 16px;display:grid;gap:.6rem">
 <div class="row" style="flex-wrap:nowrap"><input name="q" placeholder="{{ _('Cerca nei log (testo, es. ERROR, Sofia, mbsync)…') }}" aria-label="{{ _('Cerca nei log') }}" style="flex:1"><button>{{ icon('search', 15) }}{{ _('Cerca') }}</button></div>
