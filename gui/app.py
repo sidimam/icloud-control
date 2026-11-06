@@ -1216,12 +1216,17 @@ def notes():
     return render_template("notes.html", rows=rows, folders=sorted(folders.items()), persons=persons, person=person, folder=folder, of=of, fmt_date=_fmt_date)
 @app.route("/reminders")
 def reminders():
-    persons = allowed_persons(); person = request.args.get("person", ""); sel = [person] if person in persons else persons
+    persons = allowed_persons(); person = request.args.get("person", ""); fam = family_lists()
+    if person not in persons and not (person == FAMILY and fam): person = ""
+    sel = [person] if person in persons else ([p for p, _l in fam] if person == FAMILY else persons)
     lst = request.args.get("list", ""); show = request.args.get("show", "open"); of = request.args.get("of", "")
     con = SI.connect()
     try:
         rows = [{**dict(r), "x": json.loads(r["extra"] or "{}")} for r in con.execute(f"select * from items where kind='reminder' and person in ({','.join('?' * len(sel))})", sel)]
     finally: con.close()
+    famset = set(fam)   # «Famiglia» = solo le liste di famiglia; una persona = le sue senza quelle; Tutti = tutto
+    if person == FAMILY: rows = [r for r in rows if (r["person"], r["x"].get("list", "")) in famset]
+    elif person: rows = [r for r in rows if (r["person"], r["x"].get("list", "")) not in famset]
     lists = {}
     for r in rows:
         k = (r["person"], r["x"].get("list", "")); lists.setdefault(k, [0, 0]); lists[k][0 if not r["x"].get("completed") else 1] += 1
@@ -1233,7 +1238,7 @@ def reminders():
     if any(request.args.get(k) for k in ("fq", "fd1", "fd2", "fsort", "fdir")):   # senza un ordinamento scelto resta: da fare, poi per scadenza
         sort_chosen = request.args.get("fsort") or request.args.get("fdir")
         rows = filt_py(rows, request.args, name=lambda r: r["title"], date=lambda r: r["date"], default="date" if sort_chosen else "keep")
-    return render_template("reminders.html", rows=rows, lists=sorted(lists.items()), persons=persons, person=person, lst=lst, of=of, show=show, now=now, fmt_date=_fmt_date)
+    return render_template("reminders.html", rows=rows, lists=sorted(lists.items()), persons=persons, person=person, scopes=family_scopes("reminder"), lst=lst, of=of, show=show, now=now, fmt_date=_fmt_date)
 # ---- Calendario, Posta, Contatti (3.7)
 PALETTE = ["#007aff", "#34c759", "#ff9500", "#ff3b30", "#af52de", "#5ac8fa", "#ff2d55", "#a2845e", "#5856d6", "#30b0c7"]
 def _settings():
@@ -1241,22 +1246,81 @@ def _settings():
     except (FileNotFoundError, ValueError): return {}
 def _save_settings(d):
     os.makedirs(os.path.dirname(SETTINGS_FILE), exist_ok=True); json.dump(d, open(SETTINGS_FILE, "w"), indent=1, ensure_ascii=False)
-def cal_list(persons):
+# Calendari condivisi (3.13): lo stesso calendario iCloud condiviso compare in ogni persona che lo vede (stessi UID degli eventi).
+# Si riconosce dagli eventi in comune (almeno metà del più piccolo) e si mostra una volta sola. Quello di famiglia
+# («Famiglia», «Family» o FAMILY_NAMES) diventa la voce «Famiglia» del selettore, come la libreria di foto condivisa.
+FAMILY = "Famiglia"
+FAMILY_NAMES = {x.strip().lower() for x in os.environ.get("FAMILY_NAMES", "famiglia,family").split(",") if x.strip()}
+_CALG = {"k": None, "v": None}
+def cal_groups():
+    """{cal_id: {"gid", "name", "members": [persona], "ids": [cal_id], "family": bool}} per tutti i calendari indicizzati."""
     con = SI.connect()
     try:
-        rows = con.execute(f"select json_extract(extra,'$.cal_id') cid, json_extract(extra,'$.calendar') name, person, account, count(*) n from items where kind='event' and person in ({','.join('?' * len(persons))}) group by cid order by person, name", persons).fetchall()
+        k = con.execute("select max(finished) from runs where source like '%:event'").fetchone()[0]
+        if _CALG["k"] == k and _CALG["v"] is not None: return _CALG["v"]
+        uids, meta = {}, {}
+        for r in con.execute("select path, person, json_extract(extra,'$.cal_id') cid, json_extract(extra,'$.calendar') name from items where kind='event'"):
+            uids.setdefault(r["cid"], set()).add(r["path"].split("#")[1] if "#" in r["path"] else r["path"]); meta[r["cid"]] = (r["person"], r["name"])
     finally: con.close()
-    colors = _settings().get("calendar_colors", {})
-    return [{"id": r["cid"], "name": r["name"], "person": r["person"], "account": r["account"], "n": r["n"], "color": colors.get(r["cid"]) or PALETTE[i % len(PALETTE)]} for i, r in enumerate(rows)]
+    order = {u.get("label", n): i for i, (n, u) in enumerate(cfg()["users"].items())}
+    ids = sorted(uids, key=lambda c: (order.get(meta[c][0], 99), c)); parent = {c: c for c in ids}
+    def find(c):
+        while parent[c] != c: parent[c] = parent[parent[c]]; c = parent[c]
+        return c
+    for i, a in enumerate(ids):
+        for b in ids[i + 1:]:
+            if meta[a][0] != meta[b][0] and len(uids[a] & uids[b]) * 2 >= min(len(uids[a]), len(uids[b])) > 0: parent[find(b)] = find(a)
+    groups = {}
+    for c in ids: groups.setdefault(find(c), []).append(c)
+    out = {}
+    for root, members in groups.items():
+        names = [meta[c][1] or "" for c in members]
+        g = {"gid": root, "ids": members, "members": [meta[c][0] for c in members], "family": len(members) > 1 and any(n.lower() in FAMILY_NAMES for n in names),
+             "name": max(set(names), key=names.count) if names else ""}
+        if g["family"]: g["name"] = next((n for n in names if n.lower() == FAMILY.lower()), names[0])
+        for c in members: out[c] = g
+    _CALG.update(k=k, v=out); return out
+def cal_scope(person):
+    """Calendari da mostrare e da cui leggere gli eventi: {cal_id canonico: gruppo}. Un gruppo condiviso conta una volta,
+    letto dal primo membro visibile; «Famiglia» = solo il calendario di famiglia, una persona = i suoi senza quello."""
+    persons = allowed_persons(); groups = cal_groups(); out = {}
+    for c, g in groups.items():
+        vis = [x for x, p in zip(g["ids"], g["members"]) if p in persons]
+        if not vis or c != vis[0]: continue
+        if person == FAMILY:
+            if g["family"]: out[c] = g
+        elif person in persons:
+            if g["family"] or person not in g["members"]: continue
+            out[next(x for x, p in zip(g["ids"], g["members"]) if p == person)] = g
+        else: out[c] = g
+    return out
+def cal_list(person=""):
+    sc = cal_scope(person); con = SI.connect()
+    try:
+        ids = list(sc); rows = {r["cid"]: r for r in con.execute(f"select json_extract(extra,'$.cal_id') cid, json_extract(extra,'$.calendar') name, person, account, count(*) n from items where kind='event' and json_extract(extra,'$.cal_id') in ({','.join('?' * len(ids)) or 'null'}) group by cid", ids)} if ids else {}
+    finally: con.close()
+    colors = _settings().get("calendar_colors", {}); out = []
+    for i, c in enumerate(sorted(rows, key=lambda c: (len(sc[c]["members"]) == 1, rows[c]["person"], (sc[c]["name"] or "").lower()))):
+        r, g = rows[c], sc[c]; shared = len(g["members"]) > 1
+        out.append({"id": c, "name": g["name"] if shared else r["name"], "person": ", ".join(dict.fromkeys(g["members"])) if shared else r["person"], "account": r["account"],
+                    "n": r["n"], "shared": shared, "family": g["family"], "color": colors.get(c) or next((colors[x] for x in g["ids"] if x in colors), None) or PALETTE[i % len(PALETTE)]})
+    return out
+def family_scopes(kind):
+    """Le voci in più del selettore: «Famiglia» se c'è un calendario (o una lista di promemoria) di famiglia condiviso."""
+    if kind == "event": return [FAMILY] if any(g["family"] for g in cal_groups().values()) else []
+    return [FAMILY] if family_lists() else []
+def family_lists():
+    """Liste di promemoria di famiglia: condivise (iclouddr «condivisi») e con il nome di famiglia → [(persona, lista)]."""
+    return [(p, l) for p, s in shared_map().items() if p in allowed_persons() for l in s.get("liste", ()) if l.lower() in FAMILY_NAMES]
 @app.route("/calendar")
 def calendar():
     persons = allowed_persons(); person = request.args.get("person", "")
-    sel = [person] if person in persons else persons
-    return render_template("calendar.html", cals=cal_list(sel), persons=persons, person=person, geocode=_settings().get("geocode", False))
+    if person not in persons and person != FAMILY: person = ""
+    return render_template("calendar.html", cals=cal_list(person), persons=persons, person=person, scopes=family_scopes("event"), geocode=_settings().get("geocode", False))
 @app.post("/calendar/color")
 def calendar_color():
     cid = request.form.get("id", ""); col = request.form.get("color", "")
-    if not re.fullmatch(r"#[0-9a-fA-F]{6}", col) or not any(c["id"] == cid for c in cal_list(allowed_persons())): abort(400)
+    if not re.fullmatch(r"#[0-9a-fA-F]{6}", col) or cid not in cal_scope(""): abort(400)
     st = _settings(); st.setdefault("calendar_colors", {})[cid] = col; _save_settings(st); return ("", 204)
 def _expand(r, start, end):
     """Occorrenze di un evento ricorrente fra start ed end (dal file .ics originale)."""
@@ -1279,16 +1343,16 @@ def _iso(v):
     return None
 @app.route("/api/events")
 def api_events():
-    persons = allowed_persons(); person = request.args.get("person", ""); sel = [person] if person in persons else persons
+    person = request.args.get("person", "")
     def ts(v):
         try: return datetime.datetime.fromisoformat(v.replace("Z", "+00:00")).timestamp()
         except Exception: return time.time()
     start, end = ts(request.args.get("start", "")), ts(request.args.get("end", ""))
-    cals = {c["id"]: c for c in cal_list(sel)}
+    cals = {c["id"]: c for c in cal_list(person)}; ids = list(cals)   # un calendario condiviso si legge una volta sola
     con = SI.connect()
     try:
-        rows = con.execute(f"""select * from items where kind='event' and person in ({','.join('?' * len(sel))}) and
-            ((date < ? and coalesce(date_end, date) >= ?) or coalesce(json_extract(extra,'$.rrule'),'') != '')""", sel + [end, start]).fetchall()
+        rows = con.execute(f"""select * from items where kind='event' and json_extract(extra,'$.cal_id') in ({','.join('?' * len(ids)) or 'null'}) and
+            ((date < ? and coalesce(date_end, date) >= ?) or coalesce(json_extract(extra,'$.rrule'),'') != '')""", ids + [end, start]).fetchall()
     finally: con.close()
     out = []
     for r in rows:
@@ -1442,7 +1506,16 @@ def home():
               group by 1, 2, case when kind in ('reminder','event') and instr(path,'#') > 0 then substr(path, 1, instr(path,'#') - 1) else id end)
             group by 1, 2""", shared + persons + shared + shared).fetchall()
         runs = [dict(r) for r in con.execute("select * from runs order by source")]
+        ev = {r["cid"]: (r["n"], r["s"]) for r in con.execute("""select cid, sum(n) n, sum(s) s from (select json_extract(extra,'$.cal_id') cid, count(*) n, max(coalesce(size,0)) s
+            from items where kind='event' group by cid, substr(path, 1, instr(path,'#') - 1)) group by cid""")}
     finally: con.close()
+    # eventi: ogni calendario condiviso una volta sola (di Famiglia o del primo che lo vede), come nella scheda Calendario
+    ev_by = {}
+    for c, g in cal_scope("").items():
+        w = FAMILY if g["family"] else next((p for p in g["members"] if p in persons), None)
+        if w and c in ev: n, s_ = ev[c]; a_ = ev_by.setdefault(w, [0, 0]); a_[0] += n; a_[1] += s_
+    rows = [r for r in rows if r["kind"] != "event"] + [{"who": w, "kind": "event", "n": v[0], "s": v[1]} for w, v in ev_by.items()]
+    if FAMILY in ev_by and FAMILY not in shared: shared = shared + [FAMILY]
     who_order = [p for p in persons] + [a for a in shared]
     cnt = {w: {} for w in who_order}; idx_size = {w: {} for w in who_order}
     for r in rows:

@@ -108,6 +108,18 @@ Gli avvisi automatici del dispatcher si impostano dalle variabili del template U
 `TELEGRAM_TOKEN` e `ALLOWED_CHATS` (le chat da cui il bot accetta comandi) restano come prima. Le risposte ai comandi del bot e
 della GUI non passano dalle ore silenziose: arrivano sempre subito alla chat che le ha chieste.
 
+### Calendari e promemoria di famiglia (dalla 3.13)
+
+- Un calendario iCloud condiviso compare in ogni persona che lo vede, con gli stessi eventi (stesso UID). La dashboard li
+  riconosce (eventi in comune per almeno metà del più piccolo) e li mostra **una volta sola**, con il nome in blu e l'elenco di chi
+  lo vede; in «Tutti» niente più eventi ripetuti (es. Famiglia ×4: 4.545 eventi invece di 18.000).
+- Il calendario di famiglia (nome «Famiglia» o «Family», variabile `FAMILY_NAMES`) è la voce **Famiglia** del selettore, come la
+  libreria di foto condivisa: Tutti → Famiglia → persone. Nella vista di una persona il calendario di famiglia non c'è; gli altri
+  condivisi (es. Liceo Socrate, Ingegneria) restano a ognuno dei membri.
+- **Promemoria**: la lista di famiglia condivisa (dal modulo PIM, «condivisi») è la voce Famiglia e non compare più sotto la
+  persona che la possiede. Le liste che altri condividono con una persona Apple non le espone.
+- Riepilogo: gli eventi di famiglia contano sotto Famiglia, gli altri calendari condivisi una volta sola.
+
 ### Riepilogo, log e filtri (dalla 3.12)
 
 - **Riepilogo** (pagina iniziale `/`; l'elenco dei container è passato in `/users`): riquadri con il numero di file, foto, messaggi,
