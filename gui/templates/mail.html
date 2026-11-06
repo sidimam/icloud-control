@@ -1,6 +1,7 @@
 {% extends "base.html" %}{% block body %}
 <h1 class="title">{{ _('Posta') }}</h1>
 <form method="get" action="/mail">{% include "_personfilter.html" %}</form>
+{% set fo = {"name": _('oggetto o mittente'), "ext": none, "dates": _('Data'), "sorts": [("date", _('data')), ("name", _('oggetto')), ("size", _('dimensione'))], "default": "date"} %}{% include "_filters.html" %}
 <p class="note"><a href="/search?kind=mail">{{ icon('search', 14) }} {{ _('Cerca nella posta con tutti i filtri (da, a, data, allegati, dimensione)') }}</a></p>
 <div class="split">
 <div class="list"><a class="li" href="?person={{ person }}" style="color:inherit"><span class="k">{{ _('Tutta la posta') }}</span><span class="v">{{ tree|sum(attribute='n') }}</span></a>

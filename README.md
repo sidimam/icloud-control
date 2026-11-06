@@ -108,6 +108,26 @@ Gli avvisi automatici del dispatcher si impostano dalle variabili del template U
 `TELEGRAM_TOKEN` e `ALLOWED_CHATS` (le chat da cui il bot accetta comandi) restano come prima. Le risposte ai comandi del bot e
 della GUI non passano dalle ore silenziose: arrivano sempre subito alla chat che le ha chieste.
 
+### Riepilogo, log e filtri (dalla 3.12)
+
+- **Riepilogo** (pagina iniziale `/`; l'elenco dei container è passato in `/users`): riquadri con il numero di file, foto, messaggi,
+  note, promemoria, eventi e contatti e lo spazio di ciascuno; quattro anelli (elementi e spazio per tipo, spazio ed elementi per
+  persona; la libreria condivisa Famiglia è una voce a sé) con legenda, valori e percentuali, fette cliccabili; tabella per
+  persona con i link alle schede già filtrate. Sezioni ripiegabili: **Dettagli e ultime sincronizzazioni** (per persona: stato del
+  container, giorni di sessione, ultimo giro di Drive, Foto, Note, Promemoria, Posta, Calendario, Contatti, condivisi, riavvii
+  automatici, link a scheda utente, log e ricerca) e **Indice di ricerca** (ultimo giro, elementi, durata ed esito di ogni sorgente).
+- **Spazio su disco vero**: un ciclo a bassa priorità misura con `du` ogni 6 ore (`DISK_INTERVAL`) le cartelle iCloud di ogni
+  persona (iCloud Drive, Posta, Note, Promemoria, Calendario, Contatti, account collegati) e gli album di foto (circa 3 minuti),
+  in `/app/state/disk.json`; finché non c'è la prima misura lo spazio è stimato dai file indicizzati.
+- **Amministrazione → Log**: log della dashboard e di ogni container iCloud con ricerca (testo o espressione regolare, evidenziata),
+  livello (tutti, avvisi ed errori, solo errori), componente (Drive, Foto, PIM, posta/calendari/contatti, sessione Apple, riavvio
+  automatico, indice), periodo (1 h – 7 giorni), righe, ordine, errori innocui nascosti o mostrati, aggiornamento ogni 15 s.
+- **Filtri in ogni scheda** (pannello ripiegabile, si apre da solo quando un filtro è attivo): nome, estensione (Foto), intervallo
+  di date (modifica, scadenza, scatto, data), ordinamento (data, nome, dimensione, organizzazione…) e ordine ascendente o
+  discendente; in Calendario il filtro per titolo, luogo o calendario, in Cerca l'ordine ascendente/discendente.
+- Indice della posta: salva ogni 2.000 messaggi (un riavvio non fa più ricominciare da capo) e stima la dimensione degli allegati
+  dal testo codificato invece di decodificarli: circa 70 messaggi al secondo.
+
 ### Elementi condivisi in blu e filtro delle foto (dalla 3.11)
 
 - **Condivisi in blu**: note, liste di promemoria (e i loro promemoria) ed elementi di iCloud Drive che la persona condivide con

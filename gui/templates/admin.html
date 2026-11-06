@@ -34,4 +34,38 @@
 <div class="li"><span class="k">{{ _('Ultimo aggiornamento') }}</span><span class="v">{{ idx_last or '—' }} · {{ fmt_size(idx_db) }}</span></div>
 {% for e in idx_errs %}<div class="li"><span class="bad" style="font-size:13px">{{ e }}</span></div>{% endfor %}
 <form method="post" action="/admin/reindex"><div class="li"><button class="tint small">{{ icon('restart', 14) }}{{ _('Reindicizza ora') }}</button><span class="mut">{{ _('Si aggiorna da solo ogni 15 minuti, rileggendo solo ciò che è cambiato.') }}</span></div></form></div></details>
+<details class="grp" data-k="adm-logs"><summary>{{ icon('list', 15) }}{{ _('Log') }}{{ icon('chevron', 15, 'ic chev') }}</summary>
+<form id="logf" class="list" onsubmit="loadLogs();return false" style="padding:12px 16px;display:grid;gap:.6rem">
+<div class="row" style="flex-wrap:nowrap"><input name="q" placeholder="{{ _('Cerca nei log (testo, es. ERROR, Sofia, mbsync)…') }}" aria-label="{{ _('Cerca nei log') }}" style="flex:1"><button>{{ icon('search', 15) }}{{ _('Cerca') }}</button></div>
+<div class="fgrid">
+<label><span class="f">{{ _('Sorgente') }}</span><select name="src">{% for k, l in log_srcs %}<option value="{{ k }}">{{ l }}</option>{% endfor %}</select></label>
+<label><span class="f">{{ _('Livello') }}</span><select name="level"><option value="">{{ _('Tutti') }}</option><option value="warn">{{ _('Avvisi ed errori') }}</option><option value="bad">{{ _('Solo errori') }}</option></select></label>
+<label><span class="f">{{ _('Componente') }}</span><select name="part"><option value="">{{ _('Tutto') }}</option><option value="drive">iCloud Drive</option><option value="photos">{{ _('Foto') }}</option><option value="pim">{{ _('Note e promemoria (PIM)') }}</option><option value="accounts">{{ _('Posta, calendari, contatti') }}</option><option value="auth">{{ _('Sessione Apple / 2FA') }}</option><option value="autoheal">{{ _('Riavvio automatico') }}</option><option value="index">{{ _('Indice') }}</option></select></label>
+<label><span class="f">{{ _('Periodo') }}</span><select name="since"><option value="1h">{{ _('ultima ora') }}</option><option value="6h">{{ _('ultime 6 ore') }}</option><option value="24h" selected>{{ _('ultime 24 ore') }}</option><option value="72h">{{ _('ultimi 3 giorni') }}</option><option value="7d">{{ _('ultimi 7 giorni') }}</option></select></label>
+<label><span class="f">{{ _('Righe') }}</span><select name="n"><option>200</option><option selected>500</option><option>2000</option><option>5000</option></select></label>
+<label><span class="f">{{ _('Ordine') }}</span><select name="order"><option value="asc">{{ _('dal più vecchio') }}</option><option value="desc">{{ _('dal più recente') }}</option></select></label>
+</div>
+<div class="row"><label class="row"><input type="checkbox" name="regex" value="1"> <span class="mut">{{ _('espressione regolare') }}</span></label><label class="row"><input type="checkbox" name="noise" value="1"> <span class="mut">{{ _('mostra anche gli errori innocui ripetuti') }}</span></label><label class="row"><input type="checkbox" id="logauto"> <span class="mut">{{ _('aggiorna ogni 15 s') }}</span></label></div>
+<p class="mut" id="logstat" aria-live="polite"></p></form>
+<pre class="log" id="logout" style="max-height:70vh;overflow:auto;margin-top:.6rem" hidden></pre></details>
+<script>
+function esc(s){return s.replace(/[&<>]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;"}[c]})}
+function loadLogs(){
+  var f=document.getElementById("logf"), p=new URLSearchParams(new FormData(f)), st=document.getElementById("logstat"), o=document.getElementById("logout");
+  st.textContent={{ _('Carico…')|tojson }};
+  fetch("/admin/logs.json?"+p).then(function(r){return r.json()}).then(function(d){
+    if(d.error){st.textContent=d.error;return}
+    var q=f.q.value.trim(), re=null;
+    if(q){try{re=new RegExp(f.regex.checked?q:q.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"),"gi")}catch(e){}}
+    o.innerHTML=d.lines.map(function(x){var t=esc(x[1]); if(re) t=t.replace(re,function(m){return "<mark>"+m+"</mark>"}); return x[0]?'<span class="'+x[0]+'">'+t+'</span>':t}).join("\n")||{{ _('Nessuna riga con questi filtri.')|tojson }};
+    o.hidden=false;
+    st.textContent={{ _('{a0} righe trovate su {a1} lette da {a2}')|tojson }}.replace("{a0}",d.total).replace("{a1}",d.src_lines).replace("{a2}",d.container)+(d.hidden?" · "+{{ _('{a0} errori innocui nascosti')|tojson }}.replace("{a0}",d.hidden):"")+(d.total>d.lines.length?" · "+{{ _('mostro le ultime {a0}')|tojson }}.replace("{a0}",d.lines.length):"");
+    if(f.order.value==="asc") o.scrollTop=o.scrollHeight;
+  }).catch(function(e){st.textContent=String(e)});
+}
+document.querySelectorAll("#logf select, #logf input[type=checkbox]:not(#logauto)").forEach(function(e){e.addEventListener("change",loadLogs)});
+var logT=null; document.getElementById("logauto").addEventListener("change",function(){clearInterval(logT); if(this.checked) logT=setInterval(loadLogs,15000)});
+document.querySelector('details[data-k="adm-logs"]').addEventListener("toggle",function(){if(this.open&&document.getElementById("logout").hidden) loadLogs()});
+if(document.querySelector('details[data-k="adm-logs"]').open) loadLogs();
+</script>
 {% endblock %}

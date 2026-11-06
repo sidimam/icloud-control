@@ -1,5 +1,5 @@
 {% extends "base.html" %}{% block head %}{% if refresh %}<meta http-equiv="refresh" content="{{refresh}}">{% endif %}{% endblock %}{% block body %}
-<p><a href="/">← {{ _('Utenti iCloud') }}</a></p>
+<p><a href="/users">← {{ _('Utenti iCloud') }}</a></p>
 <h1 class="title">{{u.label}} <span class="mut" style="font-size:15px;font-weight:400">#{{u.name}} · {{u.container}}</span></h1>
 <div class="row" style="margin-bottom:.8rem">{% if u.running %}<span class="tag ok">{{ _('in esecuzione') }}{% if u.health %} · {{u.health}}{% endif %}</span>{% else %}<span class="tag bad">{{ _('fermo') }}</span>{% endif %}
 {% for g in u.cycles or [] %}<span class="tag {% if g.stalled %}bad{% elif g.running_min is not none %}warn{% else %}ok{% endif %}">{{g.kind}}: {% if g.running_min is not none %}{{ _('in corso da {a0} min', a0=g.running_min) }}{% else %}{{ _('completato {a0}', a0=g.last_end) }}{% endif %}</span>{% endfor %}

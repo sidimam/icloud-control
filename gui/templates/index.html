@@ -2,7 +2,7 @@
 <h1 class="title">{{ _('Utenti iCloud') }}</h1>
 <p class="note">{{ _("Un utente = un container iCloud. I comandi Telegram usano il prefisso #nome; il codice Apple arriva sui dispositivi dell'account e si inserisce qui o in chat.") }}</p>
 {% for title, group in sections %}<details class="grp" data-k="sec-{{ loop.index }}" open><summary>{{ icon('cloud', 15) }}{{ _(title) }}{{ icon('chevron', 15, 'ic chev') }}</summary><div class="grid">{% for u in group %}
-<div class="list">
+<div class="list" id="u-{{ u.name }}" style="scroll-margin-top:90px">
 <div class="uhead"><span class="badge {{ 'b-blue' if u.type == 'iclouddrive' else 'b-orange' }}">{{ icon('folder' if u.type == 'iclouddrive' else 'photo', 17) }}</span><div><h2>{{u.label}}</h2><span class="mut">#{{u.name}} · {{u.container}}</span></div></div>
 {% if not u.exists %}<div class="li"><span class="bad">{{ _('Container non trovato.') }}</span></div>{% else %}
 <div class="li"><span class="row">{% if u.running %}<span class="tag ok">{{ _('in esecuzione') }}{% if u.health %} · {{u.health}}{% endif %}</span>{% else %}<span class="tag bad">{{ _('fermo') }}</span>{% endif %}

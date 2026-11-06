@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """iCloud Dashboard (ex icloud-dispatcher) GUI: utenti = container iCloud (foto: boredazfcuk/icloudpd; iCloud Drive: mandarons/icloud-drive), chat Telegram, cosa scaricare, rinnovo 2FA."""
-import json, os, re, secrets, subprocess, shutil, datetime, html, time, threading, sqlite3, email, email.policy
+import json, os, re, secrets, subprocess, shutil, shlex, datetime, html, time, threading, sqlite3, email, email.policy, urllib.parse
 from markupsafe import Markup
 from werkzeug.security import check_password_hash, generate_password_hash
 from concurrent.futures import ThreadPoolExecutor
@@ -466,7 +466,7 @@ def photos_view(name, u):
         v["activity"] = ago(last_activity(c))
     return v
 
-@app.route("/")
+@app.route("/users")
 def index():
     c = cfg()
     mine = c["users"].items() if (not accounts.any_password() or accounts.is_admin(me())) else [(n, u) for n, u in c["users"].items() if n == _own_icloud()]
@@ -757,8 +757,37 @@ def admin():
     except Exception: idx_by, idx_runs = {}, {}
     idx = sorted(((k[1], KIND_NAMES.get(k[0], k[0]), v) for k, v in idx_by.items()))
     last = max((r["finished"] for r in idx_runs.values()), default=0); errs = [f"{k}: {r['error']}" for k, r in idx_runs.items() if r.get("error")]
-    return render_template("admin.html", rows=rows, n=nset(), default_chat=cfg().get("default_chat_id", ""), roles=accounts.ROLES, geocode=_settings().get("geocode", False),
+    log_srcs = [("dashboard", "iCloud Dashboard")] + [(n, f"{u.get('label', n)} · {u['container']}") for n, u in cfg()["users"].items()]
+    return render_template("admin.html", log_srcs=log_srcs, rows=rows, n=nset(), default_chat=cfg().get("default_chat_id", ""), roles=accounts.ROLES, geocode=_settings().get("geocode", False),
                            idx=idx, idx_last=ago(datetime.datetime.fromtimestamp(last)) if last else "", idx_errs=errs, idx_db=os.path.getsize(SI.DB) if os.path.exists(SI.DB) else 0, fmt_size=_fmt_size)
+# Log (3.12): ricerca e filtri sui log della dashboard e dei container iCloud, dalla scheda Amministrazione
+LOG_PARTS = {"drive": r"drive|Drive", "photos": r"photo|Photo|foto", "pim": r" PIM ::|pim", "accounts": r"posta|calendario|contatti|mbsync|vdirsyncer|IMAP",
+             "index": r"indice|index", "autoheal": r"autoheal|riavvio|restart", "auth": r"2FA|auth|sessione|session|login"}
+LOG_SINCE = {"1h": "1h", "6h": "6h", "24h": "24h", "72h": "72h", "7d": "168h"}
+@app.route("/admin/logs.json")
+def admin_logs():
+    _admin_only(); a = request.args
+    src = a.get("src", "dashboard")
+    if src == "dashboard": ct = os.environ.get("HOSTNAME", "icloud-dashboard")
+    else: ct = (cfg()["users"].get(src) or abort(404))["container"]
+    since = LOG_SINCE.get(a.get("since", "24h"), "24h"); n = min(max(int(a.get("n", "500") or 500), 50), 5000)
+    rc, out, err = sh(f"docker logs --since {since} --tail 200000 {shlex.quote(ct)} 2>&1", 90)
+    lines = [ANSI.sub("", l) for l in (out or err).splitlines()]
+    lvl_f = a.get("level", ""); part = LOG_PARTS.get(a.get("part", "")); q = a.get("q", "").strip(); noise = a.get("noise") == "1"
+    try: qre = re.compile(q, re.I) if q and a.get("regex") == "1" else None
+    except re.error as e: return {"error": _("Espressione non valida: {a0}", a0=str(e)), "lines": [], "total": 0, "hidden": 0}
+    rows, hidden = [], 0
+    for l in lines:
+        if not noise and NOISE.search(l): hidden += 1; continue
+        lvl = "bad" if re.search(r"\bERROR\b|ERRORE|Traceback|Exception|CRITICAL", l) else "warn" if re.search(r"\bWARNING\b|WARN|⚠", l) else ""
+        if lvl_f == "bad" and lvl != "bad": continue
+        if lvl_f == "warn" and not lvl: continue
+        if part and not re.search(part, l): continue
+        if q and not (qre.search(l) if qre else q.lower() in l.lower()): continue
+        rows.append([lvl, l])
+    total = len(rows); rows = rows[-n:]
+    if a.get("order") == "desc": rows.reverse()
+    return {"lines": rows, "total": total, "hidden": hidden, "container": ct, "src_lines": len(lines)}
 @app.post("/admin/profile/<name>/<action>")
 def admin_profile(name, action):
     _admin_only(); f = request.form
@@ -855,6 +884,37 @@ def is_shared(r):
 def list_shared(person, name):
     return name in (shared_map().get(person) or {}).get("liste", ())
 app.jinja_env.globals.update(is_shared=is_shared, list_shared=list_shared)
+# ---- filtri comuni delle schede (3.12): fq nome, fext estensione, fd1/fd2 date, fsort campo, fdir asc/desc
+def _fday(s, end=False):
+    try: return datetime.datetime.strptime(s, "%Y-%m-%d").timestamp() + (86399 if end else 0)
+    except (ValueError, TypeError): return None
+def _fdir(a, default):
+    key = a.get("fsort") or default
+    return key, (a.get("fdir") if a.get("fdir") in ("asc", "desc") else ("asc" if key == "name" else "desc"))
+def filt_sql(a, names=("title",), date="date", size="size", ext="ext", default="date", sorts=None):
+    """Condizioni e ordinamento SQL dai filtri della pagina."""
+    where, args = [], []
+    if a.get("fq"): where.append("(" + " or ".join(f"{n} like ?" for n in names) + ")"); args += [f"%{a['fq']}%"] * len(names)
+    if a.get("fext") and ext: where.append(f"{ext}=?"); args.append(a["fext"].lower().lstrip("."))
+    d1, d2 = _fday(a.get("fd1")), _fday(a.get("fd2"), True)
+    if d1: where.append(f"{date} >= ?"); args.append(d1)
+    if d2: where.append(f"{date} <= ?"); args.append(d2)
+    key, d = _fdir(a, default)
+    col = (sorts or {"date": date, "name": f"{names[0]} collate nocase", "size": size}).get(key, date)
+    return where, args, f"{col} {d}"
+def filt_py(rows, a, name, date=None, size=None, ext=None, default="date", keys=None):
+    """Gli stessi filtri su un elenco già in memoria (note, promemoria, contatti)."""
+    q = (a.get("fq") or "").lower()
+    if q: rows = [r for r in rows if q in (name(r) or "").lower()]
+    if a.get("fext") and ext: rows = [r for r in rows if (ext(r) or "") == a["fext"].lower()]
+    d1, d2 = _fday(a.get("fd1")), _fday(a.get("fd2"), True)
+    if date and (d1 or d2): rows = [r for r in rows if date(r) and (not d1 or date(r) >= d1) and (not d2 or date(r) <= d2)]
+    key, d = _fdir(a, default)
+    fn = (keys or {}).get(key) or {"name": lambda r: (name(r) or "").lower(), "date": lambda r: date(r) or 0 if date else 0, "size": lambda r: size(r) or 0 if size else 0}.get(key)
+    if fn:   # per data, gli elementi senza data vanno in fondo in entrambi i versi
+        empty = [r for r in rows if key == "date" and fn(r) in (None, "", 0)]; ids = {id(r) for r in empty}
+        rows = sorted((r for r in rows if id(r) not in ids), key=fn, reverse=(d == "desc")) + empty
+    return rows
 def allowed_persons():
     """Persone visibili: tutte per l'amministratore (o senza password), altrimenti solo quella del proprio container."""
     c = cfg()["users"]
@@ -897,6 +957,7 @@ def search():
     if a.get("att") == "1": where.append("json_array_length(json_extract(i.extra,'$.atts')) > 0")
     if a.get("att_name"): where.append("json_extract(i.extra,'$.atts') like ?"); args.append(f"%{a['att_name']}%")
     order = {"date": "i.date desc", "old": "i.date asc", "size": "i.size desc", "name": "i.title collate nocase"}.get(a.get("sort", ""), "")
+    if order and a.get("fdir") in ("asc", "desc"): order = order.rsplit(" ", 1)[0] + " " + a["fdir"] if order.endswith(("asc", "desc")) else order + " " + a["fdir"]
     con = SI.connect(); rows = []; total = 0
     try:
         if q:
@@ -1128,16 +1189,18 @@ def photos():
     if a.get("year", "").isdigit():
         y = int(a["year"]); where.append("date >= ? and date < ?"); args += [datetime.datetime(y, 1, 1).timestamp(), datetime.datetime(y + 1, 1, 1).timestamp()]
     per = 120
+    fw, fa, forder = filt_sql(a)
     con = SI.connect()
     try:
-        rows = [{**dict(r), "x": json.loads(r["extra"] or "{}")} for r in con.execute(f"select * from items where {' and '.join(where)} order by date desc limit ? offset ?", args + [per + 1, page * per])]
+        rows = [{**dict(r), "x": json.loads(r["extra"] or "{}")} for r in con.execute(f"select * from items where {' and '.join(where + fw)} order by {forder} limit ? offset ?", args + fa + [per + 1, page * per])]
+        exts = [r["ext"] for r in con.execute("select ext, count(*) n from items where kind='photo' and ext != '' group by ext order by n desc")]
         scope_w, scope_a = _photo_scope(a)[3], _photo_scope(a)[4]   # album e anni disponibili nell'ambito scelto
         albums = con.execute(f"select person, account, count(*) n from items where {' and '.join(scope_w)} group by person, account order by person, account", scope_a).fetchall()
         years = [r["y"] for r in con.execute(f"select distinct strftime('%Y', date, 'unixepoch') y from items where {' and '.join(scope_w)} order by y desc", scope_a) if r["y"]]
     finally: con.close()
     more = len(rows) > per; rows = rows[:per]
     for r in rows: r["media"] = "video" if r["ext"] in VID_EXT else ("audio" if r["ext"] in AUD_EXT else "image")
-    return render_template("photos.html", rows=rows, albums=albums, years=years, persons=persons, shared=shared, person=person, album=album, what=what, year=a.get("year", ""), page=page, more=more, fmt_date=_fmt_date, fmt_size=_fmt_size)
+    return render_template("photos.html", rows=rows, albums=albums, years=years, persons=persons, shared=shared, person=person, album=album, what=what, year=a.get("year", ""), page=page, more=more, exts=exts, fmt_date=_fmt_date, fmt_size=_fmt_size)
 @app.route("/notes")
 def notes():
     persons = allowed_persons(); person = request.args.get("person", ""); sel = [person] if person in persons else persons
@@ -1149,6 +1212,7 @@ def notes():
     folders = {}
     for r in rows: folders.setdefault((r["person"], r["x"].get("folder", "")), 0); folders[(r["person"], r["x"].get("folder", ""))] += 1
     if folder: rows = [r for r in rows if r["x"].get("folder") == folder and (not of or r["person"] == of)]
+    rows = filt_py(rows, request.args, name=lambda r: r["title"], date=lambda r: r["date"], size=lambda r: r["size"])
     return render_template("notes.html", rows=rows, folders=sorted(folders.items()), persons=persons, person=person, folder=folder, of=of, fmt_date=_fmt_date)
 @app.route("/reminders")
 def reminders():
@@ -1166,6 +1230,9 @@ def reminders():
     elif show == "done": rows = [r for r in rows if r["x"].get("completed")]
     now = time.time()
     rows.sort(key=lambda r: (r["x"].get("completed", False), r["date"] is None, r["date"] or 0, (r["title"] or "").lower()))
+    if any(request.args.get(k) for k in ("fq", "fd1", "fd2", "fsort", "fdir")):   # senza un ordinamento scelto resta: da fare, poi per scadenza
+        sort_chosen = request.args.get("fsort") or request.args.get("fdir")
+        rows = filt_py(rows, request.args, name=lambda r: r["title"], date=lambda r: r["date"], default="date" if sort_chosen else "keep")
     return render_template("reminders.html", rows=rows, lists=sorted(lists.items()), persons=persons, person=person, lst=lst, of=of, show=show, now=now, fmt_date=_fmt_date)
 # ---- Calendario, Posta, Contatti (3.7)
 PALETTE = ["#007aff", "#34c759", "#ff9500", "#ff3b30", "#af52de", "#5ac8fa", "#ff2d55", "#a2845e", "#5856d6", "#30b0c7"]
@@ -1226,6 +1293,8 @@ def api_events():
     out = []
     for r in rows:
         x = json.loads(r["extra"] or "{}"); c = cals.get(x.get("cal_id"), {}); color = c.get("color", PALETTE[0])
+        fq = (request.args.get("fq") or "").lower()
+        if fq and fq not in ((r["title"] or "") + " " + (x.get("location") or "") + " " + (x.get("calendar") or "")).lower(): continue
         base = {"id": r["id"], "title": r["title"] or "—", "color": color, "url": f"/item/{r['id']}",
                 "extendedProps": {"person": r["person"], "calendar": x.get("calendar"), "location": x.get("location"), "geo": x.get("geo"), "cal_id": x.get("cal_id")}}
         if x.get("rrule"):
@@ -1271,7 +1340,8 @@ def mail():
         if acct: where.append("account=?"); args.append(acct)
         if folder: where.append("json_extract(extra,'$.folder')=?"); args.append(folder)
         if of and (acct or folder): where.append("person=?"); args.append(of)
-        rows = [{**dict(r), "x": json.loads(r["extra"] or "{}")} for r in con.execute(f"select * from items where {' and '.join(where)} order by date desc limit 300", args)]
+        fw, fa, forder = filt_sql(request.args, names=("title", "json_extract(extra,'$.from')"))
+        rows = [{**dict(r), "x": json.loads(r["extra"] or "{}")} for r in con.execute(f"select * from items where {' and '.join(where + fw)} order by {forder} limit 300", args + fa)]
     finally: con.close()
     return render_template("mail.html", tree=tree, rows=rows, persons=persons, person=person, acct=acct, folder=folder, of=of, fmt_date=_fmt_date, fmt_size=_fmt_size)
 @app.route("/contacts")
@@ -1300,6 +1370,8 @@ def contacts():
         if q and q not in (item["name"] + " " + " ".join(item["emails"] + item["tels"]) + " " + item["org"]).lower(): continue
         people.append(item)
     people.sort(key=lambda p: p["name"].lower())
+    people = filt_py(people, request.args, name=lambda p: p["name"] + " " + p["org"], default="name",
+                     keys={"name": lambda p: p["name"].lower(), "org": lambda p: (p["org"] or "~").lower(), "who": lambda p: len(p["who"])})
     return render_template("contacts.html", people=people, persons=persons, person=person, q=q, total=len(rows))
 
 @app.post("/admin/reindex")
@@ -1307,6 +1379,105 @@ def admin_reindex():
     _admin_only(); threading.Thread(target=lambda: SI.run(idx_sources(), log=lambda x: print(x, flush=True)), daemon=True).start()
     flash(_("Indicizzazione avviata: dura qualche minuto")); return redirect(url_for("admin"))
 
+# ---- Riepilogo (3.12): pagina iniziale con numeri, spazio su disco e stato di ogni persona
+import viz
+KIND_SLOT = {"file": 1, "photo": 2, "mail": 3, "note": 4, "reminder": 5, "event": 6, "contact": 7}   # colore fisso per tipo
+KIND_TAB = {"file": "/search?kind=file", "photo": "/photos", "mail": "/mail", "note": "/notes", "reminder": "/reminders", "event": "/calendar", "contact": "/contacts"}
+DISK_FILE = os.path.join(APP_DIR, "state", "disk.json"); DISK_EVERY = int(os.environ.get("DISK_INTERVAL", "21600"))
+DISK_DIRS = {"iCloud Drive": "file", "Posta": "mail", "Note": "note", "Promemoria": "reminder", "Calendario": "event", "Contatti": "contact"}
+def _du(paths):
+    """Byte occupati da ogni percorso (du a priorità bassa); i percorsi che non esistono valgono 0."""
+    paths = [p for p in paths if os.path.isdir(p)]
+    if not paths: return {}
+    rc, out, _e = sh("nice -n 19 du -sb " + " ".join(shlex.quote(p) for p in paths) + " 2>/dev/null", 1800)
+    res = {}
+    for l in out.splitlines():
+        n, _t, p = l.partition("\t")
+        if n.isdigit(): res[p] = int(n)
+    return res
+def disk_measure():
+    """Spazio vero su disco per persona e per tipo: cartelle iCloud (Drive, Posta, Note…), account collegati e foto per album."""
+    out = {}
+    for s in idx_sources():
+        person = s["person"]; d = out.setdefault(person, {}); paths = {}
+        pl = (s.get("person_dir") or (None, None))[0]
+        if pl:
+            for acc in set(s.get("accounts") or []) | {"iCloud"}:
+                for sub, kind in DISK_DIRS.items(): paths[os.path.join(pl, acc, sub)] = (person, kind)
+        for album, local, _h in s.get("photos", []):
+            paths[local] = (person, "photo") if album in PERSONAL_ALBUMS else (album, "photo")
+        for p, n in _du(list(paths)).items():
+            who, kind = paths[p]; out.setdefault(who, {}); out[who][kind] = out[who].get(kind, 0) + n
+    return out
+def disk_loop():
+    time.sleep(180)
+    while True:
+        try:
+            t = time.time(); data = disk_measure()
+            tmp = DISK_FILE + ".tmp"; json.dump({"when": time.time(), "seconds": round(time.time() - t), "data": data}, open(tmp, "w")); os.replace(tmp, DISK_FILE)
+            print(f"spazio su disco: misurato in {time.time() - t:.0f} s", flush=True)
+        except Exception as e: print(f"spazio su disco: {e}", flush=True)
+        time.sleep(DISK_EVERY)
+def disk_load():
+    try: return json.load(open(DISK_FILE))
+    except (FileNotFoundError, ValueError): return {}
+_HOME = {"t": 0, "k": None, "v": None}
+def _home_users():
+    c = cfg()
+    mine = c["users"].items() if (not accounts.any_password() or accounts.is_admin(me())) else [(n, u) for n, u in c["users"].items() if n == _own_icloud()]
+    key = tuple(n for n, _u in mine)
+    if _HOME["k"] == key and time.time() - _HOME["t"] < 30: return _HOME["v"]
+    jobs = [copy_current_request_context(lambda nu=nu: user_view(*nu)) for nu in mine]
+    with ThreadPoolExecutor(max_workers=8) as ex: views = list(ex.map(lambda f: f(), jobs))
+    _HOME.update(t=time.time(), k=key, v=views); return views
+@app.route("/")
+def home():
+    persons = allowed_persons(); shared = shared_albums()
+    con = SI.connect()
+    try:
+        ph = ",".join("?" * len(persons)) or "null"; sh_ = ",".join("?" * len(shared)) or "null"
+        rows = con.execute(f"""select who, kind, sum(n) n, sum(s) s from (
+              select case when kind='photo' and account in ({sh_}) then account else person end who, kind, count(*) n, max(coalesce(size,0)) s
+              from items where (person in ({ph}) and not (kind='photo' and account in ({sh_}))) or (kind='photo' and account in ({sh_}))
+              group by 1, 2, case when kind in ('reminder','event') and instr(path,'#') > 0 then substr(path, 1, instr(path,'#') - 1) else id end)
+            group by 1, 2""", shared + persons + shared + shared).fetchall()
+        runs = [dict(r) for r in con.execute("select * from runs order by source")]
+    finally: con.close()
+    who_order = [p for p in persons] + [a for a in shared]
+    cnt = {w: {} for w in who_order}; idx_size = {w: {} for w in who_order}
+    for r in rows:
+        if r["who"] in cnt: cnt[r["who"]][r["kind"]] = r["n"]; idx_size[r["who"]][r["kind"]] = r["s"]
+    dk = disk_load(); dd = dk.get("data") or {}
+    size = {w: (dd.get(w) if dd.get(w) else idx_size[w]) for w in who_order}
+    slot = {w: i + 1 for i, w in enumerate(persons)}
+    for i, a in enumerate(shared): slot[a] = 6 + i if 6 + i <= 8 else 8
+    kinds = [k for k in KIND_SLOT if any(cnt[w].get(k) for w in who_order)]
+    tot_n = {k: sum(cnt[w].get(k, 0) for w in who_order) for k in KIND_SLOT}
+    tot_s = {k: sum(size[w].get(k, 0) for w in who_order) for k in KIND_SLOT}
+    all_bytes = sum(tot_s.values())
+    q = lambda w: ("?person=" + urllib.parse.quote(w))
+    charts = [
+        (_("Elementi per tipo"), viz.donut([(_(KIND_NAMES[k]), tot_n[k], KIND_SLOT[k], KIND_TAB[k]) for k in kinds], lambda v: f"{v:,}".replace(",", "."),
+                                           f"{sum(tot_n.values()):,}".replace(",", "."), _("elementi"), "n")),
+        (_("Spazio per tipo"), viz.donut([(_(KIND_NAMES[k]), tot_s[k], KIND_SLOT[k], KIND_TAB[k]) for k in KIND_SLOT if tot_s[k]], _fmt_size, _fmt_size(all_bytes), _("su disco"), "s")),
+        (_("Spazio per persona"), viz.donut([(w, sum(size[w].values()), slot[w], ("/photos" + q(w)) if w in shared else ("/search" + q(w))) for w in who_order], _fmt_size,
+                                            _fmt_size(all_bytes), _("su disco"), "p")),
+        (_("Elementi per persona"), viz.donut([(w, sum(cnt[w].values()), slot[w], ("/photos" + q(w)) if w in shared else ("/search" + q(w))) for w in who_order],
+                                              lambda v: f"{v:,}".replace(",", "."), f"{sum(tot_n.values()):,}".replace(",", "."), _("elementi"), "e"))]
+    table = [{"who": w, "shared": w in shared, "slot": slot[w], "n": cnt[w], "s": size[w], "tot": sum(size[w].values())} for w in who_order]
+    views = [v for v in _home_users() if v.get("type") == "iclouddrive"]
+    sh_map = shared_map()
+    for v in views:
+        s = sh_map.get(v["label"]) or {}; v["shared_n"] = len(s.get("note") or ()) + len(s.get("liste") or ()) + len(s.get("drive") or ())
+        tabs = {"iCloud Drive": "/search?kind=file", _("Foto"): "/photos", _("Note"): "/notes", _("Promemoria"): "/reminders", _("Posta"): "/mail",
+                _("Calendario"): "/calendar", _("Contatti"): "/contacts"}
+        for sv in v.get("services") or []:
+            t = tabs.get(sv["name"]); sv["href"] = (t + ("&" if "?" in t else "?") + "person=" + urllib.parse.quote(v["label"])) if t else ""
+    idx_last = max((r["finished"] for r in runs), default=None)
+    return render_template("home.html", charts=charts, table=table, kinds=list(KIND_SLOT), tot_n=tot_n, tot_s=tot_s, all_bytes=all_bytes, views=views, runs=runs,
+                           kind_names=KIND_NAMES, kind_icons=KIND_ICONS, kind_tab=KIND_TAB, disk_when=(ago(datetime.datetime.fromtimestamp(dk["when"])) if dk.get("when") else ""),
+                           disk_real=bool(dd), idx_last=(ago(datetime.datetime.fromtimestamp(idx_last)) if idx_last else ""), fmt_size=_fmt_size, fmt_date=_fmt_date,
+                           fmt_n=lambda v: f"{v:,}".replace(",", "."), persons=persons)
 @app.route("/healthz")
 def healthz(): return "ok"
 if __name__ == "__main__":
@@ -1314,4 +1485,5 @@ if __name__ == "__main__":
     threading.Thread(target=idx_loop, daemon=True).start()  # indice di ricerca
     threading.Thread(target=geo_loop, daemon=True).start()  # coordinate e data di scatto delle foto
     if THUMB_WARM: threading.Thread(target=thumb_warm_loop, daemon=True).start()   # miniature preparate in anticipo
+    threading.Thread(target=disk_loop, daemon=True).start()  # spazio su disco per persona e tipo (ogni 6 ore)
     app.run(host="0.0.0.0", port=PORT, debug=False)

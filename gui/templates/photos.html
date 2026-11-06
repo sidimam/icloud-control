@@ -8,6 +8,7 @@
 <select name="year" onchange="this.form.submit()" style="width:auto"><option value="">{{ _('Tutti gli anni') }}</option>{% for y in years %}<option {% if year == y %}selected{% endif %}>{{ y }}</option>{% endfor %}</select>
 <span class="seg">{% for k, l in (('', _('Tutto')), ('photo', _('Foto')), ('video', _('Video'))) %}<label><input type="radio" name="what" value="{{ k }}" {% if what == k %}checked{% endif %} onchange="this.form.submit()"><span>{{ l }}</span></label>{% endfor %}</span>
 </div></form>
+{% set fo = {"name": _('nome del file'), "ext": exts, "dates": _('Scattata'), "sorts": [("date", _('data di scatto')), ("name", _('nome')), ("size", _('dimensione'))], "default": "date"} %}{% include "_filters.html" %}
 <details class="grp" data-k="photo-map" open><summary>{{ icon('globe', 15) }}{{ _('Mappa') }} <span class="mut" id="mapcount"></span>{{ icon('chevron', 15, 'ic chev') }}</summary>
 <div class="list" id="mapwrap" style="position:relative;isolation:isolate"><div id="pmap" style="height:380px"></div>
 <button class="tint small" id="mapbig" style="position:absolute;top:10px;right:10px;z-index:500" title="{{ _('Allarga') }}">⤢</button></div>

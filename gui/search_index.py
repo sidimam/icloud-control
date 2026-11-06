@@ -194,9 +194,16 @@ def _addr(v):
     return ", ".join(f"{n} <{a}>" if n else a for n, a in email.utils.getaddresses([str(v or "")]))
 
 
+def _att_size(part):
+    """Dimensione dell'allegato stimata dal testo codificato (base64 = 3/4): decodificarlo costa molto su gigabyte di posta."""
+    raw = part.get_payload()
+    if not isinstance(raw, str): return 0
+    return len(raw) * 3 // 4 if (part.get("Content-Transfer-Encoding") or "").lower().strip() == "base64" else len(raw)
+
+
 def index_mail(c, person, account, mail_root, host_root):
     known, seen = _known(c, "mail", person), set()
-    prefix = host_root
+    prefix = host_root; done = 0
     for p in _walk(mail_root):
         if "/cur/" not in p and "/new/" not in p:
             continue
@@ -214,7 +221,7 @@ def index_mail(c, person, account, mail_root, host_root):
         for part in msg.walk():
             fn = part.get_filename()
             if fn:
-                atts.append({"name": fn, "type": part.get_content_type(), "size": len(part.get_payload(decode=True) or b"")})
+                atts.append({"name": fn, "type": part.get_content_type(), "size": _att_size(part)})
             elif part.get_content_type() == "text/plain" and not text:
                 try: text = part.get_content()
                 except Exception: pass
@@ -232,6 +239,9 @@ def index_mail(c, person, account, mail_root, host_root):
                     "size": st.st_size, "mtime": st.st_mtime, "date": date,
                     "extra": json.dumps({"from": frm, "to": to, "cc": cc, "folder": folder, "atts": atts, "local": p}, ensure_ascii=False)},
                 body=text, meta=f"{frm} {to} {cc} {' '.join(a['name'] for a in atts)} {folder}")
+        done += 1
+        if done % 2000 == 0:   # salva ogni 2000 messaggi: se il container si riavvia, il giro dopo riparte da qui
+            c.commit()
     _prune(c, "mail", person, seen, prefix)
     return len(seen)
 

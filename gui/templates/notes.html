@@ -1,6 +1,7 @@
 {% extends "base.html" %}{% block body %}
 <h1 class="title">{{ _('Note') }}</h1>
 <form method="get" action="/notes">{% include "_personfilter.html" %}</form>
+{% set fo = {"name": _('titolo della nota'), "ext": none, "dates": _('Modificata'), "sorts": [("date", _('data di modifica')), ("name", _('titolo')), ("size", _('dimensione'))], "default": "date"} %}{% include "_filters.html" %}
 <div class="split">
 <div class="list"><a class="li" href="?person={{ person }}" style="color:inherit"><span class="k">{{ _('Tutte le note') }}</span><span class="v">{{ folders|sum(attribute=1) }}</span></a>
 {% for (p, f), n in folders %}<a class="li" href="?person={{ person }}&folder={{ f|urlencode }}&of={{ p|urlencode }}" style="color:inherit;{{ 'background:var(--acc-t)' if folder == f and (not of or of == p) }}"><span class="badge b-orange">{{ icon('folder', 15) }}</span><span class="k">{{ f or '—' }}{% if not person and persons|length > 1 %} <span class="mut">· {{ p }}</span>{% endif %}</span><span class="v">{{ n }}</span></a>{% endfor %}</div>

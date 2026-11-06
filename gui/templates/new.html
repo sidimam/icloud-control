@@ -11,7 +11,7 @@
 <div class="li col"><label class="f" for="ig">{{ _('Cartelle di iCloud Drive da saltare (separate da virgola)') }}</label><input id="ig" name="ignore" value="Home"></div>
 <div class="li"><label class="k" for="ph1">{{ _('Scarica anche le foto personali (libreria PrimarySync)') }}</label><span class="v"><input id="ph1" class="sw" type="checkbox" name="photos" checked onchange="document.getElementById('ph').hidden=!this.checked"></span></div>
 <div class="li col" id="ph"><label class="f" for="photos_dest">{{ _('Cartella foto su Unraid (sotto /mnt/user/media/photos)') }}</label><input name="photos_dest" id="photos_dest" placeholder="/mnt/user/media/photos/Nome/Personale"></div>
-<div class="li"><button>{{ icon('plus', 16) }}{{ _('Crea') }}</button><a class="v" href="/">{{ _('Annulla') }}</a></div></div></form>
+<div class="li"><button>{{ icon('plus', 16) }}{{ _('Crea') }}</button><a class="v" href="/users">{{ _('Annulla') }}</a></div></div></form>
 <p class="note">{{ _('La libreria condivisa di famiglia la scarica solo il container di chi la gestisce: per aggiungerla a mano servono filters.libraries e library_destinations nel suo config.yaml (vedi README).') }}</p>
 <script>function hint(n){n=n.trim()||'Nome';document.getElementById('drive_dest').placeholder='/mnt/user/documents/'+n+'/iCloud/iCloud Drive';document.getElementById('photos_dest').placeholder='/mnt/user/media/photos/'+n+'/Personale'}</script>
 {% endblock %}

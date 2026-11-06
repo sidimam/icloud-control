@@ -1,0 +1,17 @@
+{# Filtri comuni delle schede (3.12). Il chiamante imposta fo = {"name": segnaposto, "ext": [estensioni] o none, "dates": etichetta o none, "sorts": [(chiave, etichetta)], "default": chiave}.
+   Gli altri parametri della pagina (persona, cartella, lista…) restano come campi nascosti. #}
+{% set fkeys = ('fq', 'fext', 'fd1', 'fd2', 'fsort', 'fdir', 'page') %}
+{% set factive = request.args.get('fq') or request.args.get('fext') or request.args.get('fd1') or request.args.get('fd2') or request.args.get('fsort') or request.args.get('fdir') %}
+<details class="grp" data-k="flt-{{ request.endpoint }}" {% if factive %}open{% endif %}><summary>{{ icon('filter', 15) }}{{ _('Filtri') }}{% if factive %} <span class="tag ok" style="text-transform:none">{{ _('attivi') }}</span>{% endif %}{{ icon('chevron', 15, 'ic chev') }}</summary>
+<form method="get" class="list" style="padding:12px 16px;display:grid;gap:.6rem">
+{% for k, v in request.args.items(multi=True) if k not in fkeys %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+<div class="fgrid">
+<label><span class="f">{{ _('Nome') }}</span><input name="fq" value="{{ request.args.get('fq', '') }}" placeholder="{{ fo.name or _('contiene…') }}"></label>
+{% if fo.ext is not none %}<label><span class="f">{{ _('Estensione') }}</span><select name="fext"><option value="">{{ _('tutte') }}</option>{% for e in fo.ext %}<option {% if request.args.get('fext') == e %}selected{% endif %}>{{ e }}</option>{% endfor %}</select></label>{% endif %}
+{% if fo.dates %}<label><span class="f">{{ fo.dates }} · {{ _('dal') }}</span><input type="date" name="fd1" value="{{ request.args.get('fd1', '') }}"></label>
+<label><span class="f">{{ fo.dates }} · {{ _('al') }}</span><input type="date" name="fd2" value="{{ request.args.get('fd2', '') }}"></label>{% endif %}
+{% if fo.sorts %}<label><span class="f">{{ _('Ordina per') }}</span><select name="fsort">{% for k, l in fo.sorts %}<option value="{{ k }}" {% if (request.args.get('fsort') or fo.default) == k %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></label>
+<label><span class="f">{{ _('Ordine') }}</span><select name="fdir"><option value="">{{ _('automatico') }}</option><option value="desc" {% if request.args.get('fdir') == 'desc' %}selected{% endif %}>{{ _('discendente') }}</option><option value="asc" {% if request.args.get('fdir') == 'asc' %}selected{% endif %}>{{ _('ascendente') }}</option></select></label>{% endif %}
+</div>
+<div class="row"><button class="small">{{ icon('filter', 14) }}{{ _('Applica') }}</button>{% if factive %}<a href="?{% for k, v in request.args.items(multi=True) if k not in fkeys %}{{ k }}={{ v|urlencode }}&{% endfor %}">{{ _('Azzera filtri') }}</a>{% endif %}</div>
+</form></details>

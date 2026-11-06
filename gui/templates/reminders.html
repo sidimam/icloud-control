@@ -2,6 +2,7 @@
 <h1 class="title">{{ _('Promemoria') }}</h1>
 <form method="get" action="/reminders">{% include "_personfilter.html" %}<input type="hidden" name="list" value="{{ lst }}"><input type="hidden" name="of" value="{{ of }}">
 <div class="seg" style="margin-bottom:.8rem">{% for k, l in (('open', _('Da fare')), ('done', _('Fatti')), ('all', _('Tutti'))) %}<label><input type="radio" name="show" value="{{ k }}" {% if show == k %}checked{% endif %} onchange="this.form.submit()"><span>{{ l }}</span></label>{% endfor %}</div></form>
+{% set fo = {"name": _('titolo del promemoria'), "ext": none, "dates": _('Scadenza'), "sorts": [("date", _('scadenza')), ("name", _('titolo'))], "default": "date"} %}{% include "_filters.html" %}
 <div class="split">
 <div class="list"><a class="li" href="?person={{ person }}&show={{ show }}" style="color:inherit"><span class="k">{{ _('Tutte le liste') }}</span></a>
 {% for (p, l), n in lists %}<a class="li" href="?person={{ person }}&show={{ show }}&list={{ l|urlencode }}&of={{ p|urlencode }}" style="color:inherit;{{ 'background:var(--acc-t)' if lst == l and (not of or of == p) }}"><span class="badge b-red">{{ icon('check', 15) }}</span><span class="k{{ ' shr' if list_shared(p, l) }}"{% if list_shared(p, l) %} title="{{ _('Lista condivisa') }}"{% endif %}>{{ l }}{% if not person and persons|length > 1 %} <span class="mut">· {{ p }}</span>{% endif %}</span><span class="v">{{ n[0] }}{% if n[1] %} <span class="mut">/ {{ n[0] + n[1] }}</span>{% endif %}</span></a>{% endfor %}</div>

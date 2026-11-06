@@ -1,6 +1,7 @@
 {% extends "base.html" %}{% block head %}<link rel="stylesheet" href="/static/vendor/leaflet.css">{% endblock %}{% block body %}
 <h1 class="title">{{ _('Calendario') }}</h1>
 <form method="get" action="/calendar">{% include "_personfilter.html" %}</form>
+{% set fo = {"name": _('titolo, luogo o calendario'), "ext": none, "dates": none, "sorts": [], "default": ""} %}{% include "_filters.html" %}
 <div class="split">
 <div style="display:grid;gap:1rem">
 <details class="grp" data-k="cal-list" open style="margin:0"><summary>{{ icon('doc', 15) }}{{ _('Calendari') }}{{ icon('chevron', 15, 'ic chev') }}</summary><div class="list">
@@ -37,7 +38,7 @@
     locale: lang, initialView: view, firstDay: 1, height: "auto", nowIndicator: true, navLinks: true, dayMaxEvents: true,
     headerToolbar: {left: "prev,next today", center: "title", right: "multiMonthYear,dayGridMonth,timeGridWeek,timeGridDay,listMonth"},
     views: {multiMonthYear: {multiMonthMaxColumns: 3}},
-    events: function(info, ok, ko){ fetch("/api/events?start=" + encodeURIComponent(info.startStr) + "&end=" + encodeURIComponent(info.endStr) + "&person=" + encodeURIComponent(person)).then(function(r){return r.json();}).then(function(d){ ok(d.events.filter(function(e){ return !hidden.has(e.extendedProps.cal_id); })); }).catch(ko); },
+    events: function(info, ok, ko){ fetch("/api/events?start=" + encodeURIComponent(info.startStr) + "&end=" + encodeURIComponent(info.endStr) + "&person=" + encodeURIComponent(person) + "&fq=" + encodeURIComponent(new URLSearchParams(location.search).get("fq") || "")).then(function(r){return r.json();}).then(function(d){ ok(d.events.filter(function(e){ return !hidden.has(e.extendedProps.cal_id); })); }).catch(ko); },
     eventsSet: placeMarkers,
     datesSet: function(i){ try { localStorage.setItem("cal:view", i.view.type); } catch(e) {} },
     eventClick: function(i){ i.jsEvent.preventDefault(); location.href = i.event.url; }

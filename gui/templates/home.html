@@ -1,0 +1,42 @@
+{% extends "base.html" %}{% block body %}
+<h1 class="title">{{ _('Riepilogo') }}</h1>
+<p class="note">{% if idx_last %}{{ _('Indice aggiornato {a0}', a0=idx_last) }} · {% endif %}{% if disk_real %}{{ _('spazio su disco misurato {a0}', a0=disk_when) }}{% else %}{{ _('spazio stimato dai file indicizzati: la misura vera su disco parte 3 minuti dopo l\'avvio e si ripete ogni 6 ore') }}{% endif %}</p>
+<div class="tiles">
+{% for k in kinds %}<a class="tile" href="{{ kind_tab[k] }}"><span class="badge {{ kind_icons[k][1] }}">{{ icon(kind_icons[k][0], 16) }}</span><span class="tn">{{ fmt_n(tot_n[k]) }}</span><span class="tl">{{ _(kind_names[k]) }}</span><span class="mut">{{ fmt_size(tot_s[k]) if tot_s[k] else '—' }}</span></a>{% endfor %}
+<div class="tile"><span class="badge b-indigo">{{ icon('chart', 16) }}</span><span class="tn">{{ fmt_size(all_bytes) }}</span><span class="tl">{{ _('Spazio totale') }}</span><span class="mut">{{ _('{a0} persone', a0=persons|length) }}</span></div>
+</div>
+<div class="charts">{% for title, svg in charts %}<section class="card"><h2>{{ title }}</h2>{{ svg }}</section>{% endfor %}</div>
+
+<details class="grp" data-k="home-table" open><summary>{{ icon('users', 15) }}{{ _('Per persona') }}{{ icon('chevron', 15, 'ic chev') }}</summary>
+<div class="list wide-scroll"><table class="t"><thead><tr><th>{{ _('Persona') }}</th>{% for k in kinds %}<th style="text-align:right">{{ _(kind_names[k]) }}</th>{% endfor %}<th style="text-align:right">{{ _('Spazio') }}</th></tr></thead><tbody>
+{% for r in table %}<tr><td><span class="sw" style="background:var(--c{{ r.slot }})"></span> {% if r.shared %}<a href="/photos?person={{ r.who|urlencode }}">{{ r.who }}</a> <span class="mut">{{ _('libreria condivisa') }}</span>{% else %}<a href="/search?person={{ r.who|urlencode }}">{{ r.who }}</a>{% endif %}</td>
+{% for k in kinds %}<td style="text-align:right">{% if r.n.get(k) %}<a href="{{ kind_tab[k] }}{{ '&' if '?' in kind_tab[k] else '?' }}person={{ r.who|urlencode }}">{{ fmt_n(r.n[k]) }}</a><br><span class="mut">{{ fmt_size(r.s.get(k)) if r.s.get(k) else '' }}</span>{% else %}<span class="mut">—</span>{% endif %}</td>{% endfor %}
+<td style="text-align:right"><b style="font-weight:600">{{ fmt_size(r.tot) }}</b></td></tr>{% endfor %}
+</tbody></table></div></details>
+
+<details class="grp" data-k="home-details"><summary>{{ icon('restart', 15) }}{{ _('Dettagli e ultime sincronizzazioni') }}{{ icon('chevron', 15, 'ic chev') }}</summary><div class="grid">
+{% for v in views %}<div class="list">
+<div class="uhead"><span class="badge b-blue">{{ icon('cloud', 17) }}</span><div><h2><a href="/users#u-{{ v.name }}">{{ v.label }}</a></h2><span class="mut">{{ v.container }}{% if v.apple_id %} · {{ v.apple_id }}{% endif %}</span></div></div>
+<div class="li"><span class="row">{% if not v.exists %}<span class="tag bad">{{ _('container non trovato') }}</span>{% elif v.running %}<span class="tag ok">{{ _('in esecuzione') }}</span>{% else %}<span class="tag bad">{{ _('fermo') }}</span>{% endif %}
+{% if v.days %}<span class="tag {{ 'warn' if v.days|int <= 3 else 'ok' }}">{{ _('sessione: {a0} giorni', a0=v.days) }}</span>{% endif %}{% if v.stalled %}<span class="tag warn">{{ _('sembra bloccato') }}</span>{% endif %}
+{% if v.shared_n %}<span class="tag"><span class="shr">{{ _('{a0} condivisi', a0=v.shared_n) }}</span></span>{% endif %}{% if v.activity %}<span class="mut">{{ _('ultima attività {a0}', a0=v.activity) }}</span>{% endif %}</span></div>
+{% for s in v.services %}<a class="li" href="{{ s.href or ('/users#u-' ~ v.name) }}" style="color:inherit;align-items:flex-start"><span class="badge {{ s.badge }}">{{ icon(s.icon, 15) }}</span><span class="k" style="flex:1;min-width:0">{{ s.name }}<br><span class="mut {{ 'bad' if s.err }}">{% if not s.on %}{{ s.info or _('non attivo') }}{% else %}{{ s.last or '—' }}{% if s.freq %} · {{ s.freq }}{% endif %}{% if s.info %} · {{ s.info }}{% endif %}{% endif %}</span></span></a>{% endfor %}
+{% if v.autoheal and v.autoheal.last %}<div class="li"><span class="k">{{ _('Riavvio automatico') }}</span><span class="v">{{ v.autoheal.last.when }}{% if v.autoheal.n24 %} · {{ _('{a0} nelle ultime 24 h', a0=v.autoheal.n24) }}{% endif %}</span></div>{% endif %}
+<div class="li"><span class="row"><a class="btn tint" href="/users#u-{{ v.name }}" style="font-size:13px;padding:.32rem .65rem">{{ _('Scheda utente') }}</a><a class="btn tint" href="/u/{{ v.name }}/logs" style="font-size:13px;padding:.32rem .65rem">{{ _('Log') }}</a><a class="btn tint" href="/search?person={{ v.label|urlencode }}" style="font-size:13px;padding:.32rem .65rem">{{ _('Cerca nei suoi dati') }}</a></span></div>
+</div>{% else %}<div class="list"><div class="li"><span class="mut">{{ _('Nessun container iCloud Drive.') }}</span></div></div>{% endfor %}
+</div></details>
+
+<details class="grp" data-k="home-index"><summary>{{ icon('search', 15) }}{{ _('Indice di ricerca') }}{{ icon('chevron', 15, 'ic chev') }}</summary>
+<div class="list wide-scroll"><table class="t"><thead><tr><th>{{ _('Sorgente') }}</th><th>{{ _('Ultimo giro') }}</th><th style="text-align:right">{{ _('Elementi') }}</th><th style="text-align:right">{{ _('Durata') }}</th><th>{{ _('Esito') }}</th></tr></thead><tbody>
+{% for r in runs %}{% set p, k = (r.source.split(':') + [''])[:2] %}<tr><td><a href="{{ kind_tab.get(k, '/search') }}{{ '&' if '?' in kind_tab.get(k, '/search') else '?' }}person={{ p|urlencode }}">{{ p }} · {{ _(kind_names.get(k, k)) }}</a></td><td>{{ fmt_date(r.finished) }}</td><td style="text-align:right">{{ fmt_n(r.count or 0) }}</td><td style="text-align:right">{{ r.seconds }} s</td><td>{% if r.error %}<span class="bad" style="font-size:13px">{{ r.error }}</span>{% else %}<span class="ok">✓</span>{% endif %}</td></tr>{% endfor %}
+</tbody></table></div><p class="note">{% if me_admin or not me %}<a href="/admin">{{ _('Reindicizza o vedi i log in Amministrazione') }}</a>{% endif %}</p></details>
+<script>
+// legenda ↔ fetta: passando su una si evidenzia l'altra
+document.querySelectorAll(".viz").forEach(function(v){
+  v.querySelectorAll("[data-i]").forEach(function(e){
+    e.addEventListener("mouseenter",function(){v.querySelectorAll('[data-i="'+e.dataset.i+'"]').forEach(function(x){x.classList.add("hot")});v.classList.add("hov")});
+    e.addEventListener("mouseleave",function(){v.querySelectorAll(".hot").forEach(function(x){x.classList.remove("hot")});v.classList.remove("hov")});
+  });
+});
+</script>
+{% endblock %}
