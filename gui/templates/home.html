@@ -1,6 +1,5 @@
 {% extends "base.html" %}{% block body %}
-<h1 class="title">{{ _('Riepilogo') }}</h1>
-<p class="note">{% if idx_last %}{{ _('Indice aggiornato {a0}', a0=idx_last) }} · {% endif %}{% if disk_real %}{{ _('spazio su disco misurato {a0}', a0=disk_when) }}{% else %}{{ _('spazio stimato dai file indicizzati: la misura vera su disco parte 3 minuti dopo l\'avvio e si ripete ogni 6 ore') }}{% endif %}</p>
+{% set hinfo %}{% if idx_last %}{{ _('Indice aggiornato {a0}', a0=idx_last) }} · {% endif %}{% if disk_real %}{{ _('spazio su disco misurato {a0}', a0=disk_when) }}{% else %}{{ _('spazio stimato dai file indicizzati: la misura vera su disco parte 3 minuti dopo l\'avvio e si ripete ogni 6 ore') }}{% endif %}{% endset %}<h1 class="title" style="display:flex;align-items:center;gap:.5rem">{{ _('Riepilogo') }} {{ info(hinfo|striptags) }}</h1>
 <div class="tiles">
 {% for k in kinds %}<a class="tile" href="{{ kind_tab[k] }}"><span class="badge {{ kind_icons[k][1] }}">{{ icon(kind_icons[k][0], 16) }}</span><span class="tn">{{ fmt_n(tot_n[k]) }}</span><span class="tl">{{ _(kind_names[k]) }}</span><span class="mut">{{ fmt_size(tot_s[k]) if tot_s[k] else '—' }}</span></a>{% endfor %}
 <div class="tile"><span class="badge b-indigo">{{ icon('chart', 16) }}</span><span class="tn">{{ fmt_size(all_bytes) }}</span><span class="tl">{{ _('Spazio totale') }}</span><span class="mut">{{ _('{a0} persone', a0=persons|length) }}</span></div>

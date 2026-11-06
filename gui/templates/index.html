@@ -1,8 +1,7 @@
 {% extends "base.html" %}{% block body %}
 <h1 class="title">{{ _('Utenti') }}</h1>
-<p class="note">{{ _("Un utente = un container iCloud. I comandi Telegram usano il prefisso #nome; il codice Apple arriva sui dispositivi dell'account e si inserisce qui o in chat.") }}</p>
 <div class="row" style="justify-content:flex-end;margin:-.4rem 0 .8rem"><span class="mut">{{ _('Disposizione') }}</span><span class="seg" role="radiogroup" aria-label="{{ _('Disposizione') }}">
-<label><input type="radio" name="ulay" value="h" checked><span>{{ _('Orizzontale') }}</span></label><label><input type="radio" name="ulay" value="v"><span>{{ _('Verticale') }}</span></label></span></div>
+<label><input type="radio" name="ulay" value="h" checked><span>{{ _('Orizzontale') }}</span></label><label><input type="radio" name="ulay" value="v"><span>{{ _('Verticale') }}</span></label></span>{{ info(_("Un utente = un container iCloud. I comandi Telegram usano il prefisso #nome; il codice Apple arriva sui dispositivi dell'account e si inserisce qui o in chat.")) }}</div>
 {% for title, group in sections %}{% if sections|length > 1 %}<details class="grp" data-k="sec-{{ loop.index }}" open><summary>{{ icon('cloud', 15) }}{{ _(title) }}{{ icon('chevron', 15, 'ic chev') }}</summary>{% endif %}<div class="ugrid">{% for u in group %}
 <div class="list" id="u-{{ u.name }}" style="scroll-margin-top:90px">
 <div class="uhead" style="padding:18px 16px 10px"><span class="avatar">{{ u.label[:1] }}</span><div style="min-width:0"><h2 style="font-size:19px">{{u.label}}</h2><span class="mut">{{ u.apple_id or '' }}</span></div></div>
@@ -30,9 +29,9 @@
 <div class="li"><span class="k">{{ _('Ultimo evento') }}</span><span class="v">{{u.last or '—'}}</span></div>
 {% if u.type == "iclouddrive" %}<details class="li col" style="display:block"><summary style="list-style:none;display:flex;align-items:center;gap:.6rem;cursor:pointer"><span class="badge b-green">{{ icon('send', 17) }}</span><span class="k">{{ _('Account collegati') }}{% if u.accounts %} <span class="mut">({{ u.accounts|length }})</span>{% endif %}</span><span class="v">{{ icon('chevron', 15, 'ic chev') }}</span></summary>
 <div style="padding:.6rem 0;display:grid;gap:.8rem">
-{% if not u.can_accounts %}<p class="mut">{{ _("Per collegare posta, calendari e contatti il container deve usare l'immagine ghcr.io/sidimam/iclouddr con la cartella della persona montata su /icloud/persona.") }}</p>
+{% if not u.can_accounts %}<p class="mut">{{ _('Non disponibile per questo container') }} {{ info(_("Per collegare posta, calendari e contatti il container deve usare l'immagine ghcr.io/sidimam/iclouddr con la cartella della persona montata su /icloud/persona.")) }}</p>
 {% else %}
-<p class="mut">{{ _('Posta, calendari e contatti in sola lettura, nella cartella del servizio: {a0}/iCloud, Gmail, Outlook… con dentro Posta, Calendario, Contatti.', a0=u.person_dir or '…') }}</p>
+<div class="row" style="justify-content:flex-end">{{ info(_('Posta, calendari e contatti in sola lettura, nella cartella del servizio: {a0}/iCloud, Gmail, Outlook… con dentro Posta, Calendario, Contatti.', a0=u.person_dir or '…')) }}</div>
 {% for a in u.accounts %}<details style="border:.5px solid var(--sep);border-radius:10px;padding:.5rem .7rem"><summary style="list-style:none;display:flex;gap:.5rem;align-items:center;cursor:pointer"><b style="font-weight:500">{{ a.label }}</b><span class="mut">{{ a.type_name }} · {{ a.email or '—' }} · {{ _('cartella') }} {{ a.folder }}</span><span style="margin-left:auto" class="row">{% if a.running %}<span class="tag warn">{{ _('in corso') }}</span>{% elif a.error %}<span class="tag bad">{{ _('errore') }}</span>{% elif a.st %}<span class="tag ok">{{ _('attivo') }}</span>{% else %}<span class="tag">{{ _('in attesa') }}</span>{% endif %}{{ icon('chevron', 14, 'ic chev') }}</span></summary>
 {% if a.running %}<p class="mut" style="font-size:13px">{{ _('Giro in corso da {a0}', a0=a.running) }}</p>{% elif a.error %}<p class="bad" style="font-size:13px">{{ a.error }}</p>{% endif %}
 <form method="post" action="/u/{{u.name}}/accounts/{{a.id}}/save" style="display:grid;gap:.4rem;margin-top:.5rem">{% set acc = a %}{% include "account_form.html" %}

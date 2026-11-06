@@ -9,7 +9,7 @@
 <div class="li"><label class="k" for="tf">{{ _('Disattiva la verifica in due passaggi (telefono perso)') }}</label><span class="v"><input id="tf" class="sw" type="checkbox" name="totp_off"></span></div></div>
 <div class="row" style="margin-top:1rem"><button>{{ _('Conferma') }}</button><a href="/login">{{ _('Annulla') }}</a></div></form>
 {% else %}
-<p class="note">{{ _('Il bot di casa manda un codice alla chat Telegram privata collegata al profilo. Se il tuo profilo non ne ha una, chiedi a un amministratore di reimpostarti la password o il 2FA dalla scheda Amministrazione.') }}</p>
+<p class="note" style="display:flex;justify-content:flex-end">{{ info(_('Il bot di casa manda un codice alla chat Telegram privata collegata al profilo. Se il tuo profilo non ne ha una, chiedi a un amministratore di reimpostarti la password o il 2FA dalla scheda Amministrazione.')) }}</p>
 <form method="post" action="/recover"><input type="hidden" name="step" value="start">
 <div class="list"><div class="li col"><label class="f" for="u">{{ _('Profilo') }}</label><input id="u" name="user" autocomplete="username" autocapitalize="none" autofocus required></div></div>
 <div class="row" style="margin-top:1rem"><button>{{ icon('send') }}{{ _('Mandami il codice') }}</button><a href="/login">{{ _('Annulla') }}</a></div></form>

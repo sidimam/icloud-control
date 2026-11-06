@@ -108,6 +108,18 @@ Gli avvisi automatici del dispatcher si impostano dalle variabili del template U
 `TELEGRAM_TOKEN` e `ALLOWED_CHATS` (le chat da cui il bot accetta comandi) restano come prima. Le risposte ai comandi del bot e
 della GUI non passano dalle ore silenziose: arrivano sempre subito alla chat che le ha chieste.
 
+### Descrizioni dietro la «i» e ricerca foto su tutta la famiglia (dalla 3.17)
+
+- Le descrizioni (es. «Un utente = un container iCloud…», le spiegazioni di Amministrazione, Nuovo utente, Contatti, Calendario,
+  dei moduli degli account, lo stato dell'indice nel Riepilogo) sono dietro un pulsante **i**: un clic apre il popup, un altro
+  clic, un clic fuori o Esc lo chiudono. Restano in vista solo i messaggi di stato e le istruzioni dei passaggi di accesso
+  (codici di recupero, codice 2FA).
+- **Ricerca nelle foto**: con le **chiavi API dedicate** di Immich (una per utente Immich, solo permesso `asset.read`, in
+  Amministrazione, una per riga) usa l'API ufficiale e unisce i risultati, perché ogni chiave vede solo le foto del suo utente.
+  Senza chiavi legge l'analisi di Immich direttamente e in sola lettura su tutte le foto: il motore CLIP di Immich
+  (`docker exec Immich … :3003/predict`, modello `IMMICH_CLIP_MODEL`, default `ViT-B-32__openai`) trasforma il testo in un
+  vettore e la ricerca dei più vicini avviene nel database di Immich (`smart_search`, pgvector), ~0,5 s.
+
 ### Utenti in stile pannello iCloud (dalla 3.16)
 
 - Dalla **3.16.1** le foto stanno in `media/photos/<persona>/<account>/<libreria>` (es. `Simone/iCloud/Famiglia`), come i

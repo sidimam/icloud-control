@@ -17,7 +17,7 @@
 </div></details>
 <details class="grp" data-k="cal-map" open style="margin:0"><summary>{{ icon('globe', 15) }}{{ _('Mappa degli appuntamenti') }}{{ icon('chevron', 15, 'ic chev') }}</summary>
 <div class="list" style="isolation:isolate"><div id="map" style="height:300px"></div></div>
-<p class="note">{% if geocode %}{{ _('I luoghi senza coordinate vengono cercati con OpenStreetMap.') }}{% else %}{{ _('Sulla mappa solo i luoghi con coordinate (scelti da Mappe). La ricerca degli altri indirizzi con OpenStreetMap si attiva in Amministrazione.') }}{% endif %}</p></details>
+{% set minfo %}{% if geocode %}{{ _('I luoghi senza coordinate vengono cercati con OpenStreetMap.') }}{% else %}{{ _('Sulla mappa solo i luoghi con coordinate (scelti da Mappe). La ricerca degli altri indirizzi con OpenStreetMap si attiva in Amministrazione.') }}{% endif %}{% endset %}<p class="note" style="display:flex;justify-content:flex-end">{{ info(minfo|striptags) }}</p></details>
 </div>
 <div class="list" style="padding:.8rem"><div id="cal"></div></div>
 </div>

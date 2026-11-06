@@ -93,6 +93,11 @@ table.t tr:last-child td{border-bottom:0}
 details.acct>summary::-webkit-details-marker{display:none}
 .svc{padding:.4rem 0 .2rem}.srow{display:flex;gap:.6rem;align-items:flex-start;padding:.5rem 0;border-top:.5px solid var(--sep)}
 code.path{font-size:11.5px;word-break:break-all;background:none;padding:0;color:var(--mut)}
+/* «i» con popup (3.17) */
+.ibtn{width:22px;height:22px;min-width:22px;padding:0;border-radius:50%;border:1.5px solid var(--acc);background:none;color:var(--acc);font:italic 600 13px Georgia,serif;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;vertical-align:middle;flex:none}
+.ibtn:hover,.ibtn[aria-expanded=true]{background:var(--acc);color:#fff}
+#ipop{position:absolute;z-index:6000;max-width:min(380px,calc(100vw - 32px));background:var(--card);color:var(--fg);border-radius:12px;padding:12px 14px;font-size:14px;line-height:1.45;box-shadow:0 8px 30px rgba(0,0,0,.25),0 0 0 .5px var(--sep);white-space:pre-line}
+#ipop[hidden]{display:none}
 /* filtri (3.12) */
 .fgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.6rem}
 .fgrid label{display:block}
@@ -136,6 +141,20 @@ table.t td a{color:var(--acc)}
 {% if reset_set and request.endpoint not in ("login", "login_2fa", "recover") %}<div class="flash warn">{{ icon('warn') }}<div>{{ _("La variabile GUI_RESET_PASSWORD del container è compilata: a ogni riavvio reimposta la password dell'admin e gli spegne il 2FA. Svuotala nel template di Unraid e riavvia.") }}</div></div>{% endif %}
 {% with m=get_flashed_messages() %}{% for x in m %}<div class="flash">{{ icon('check') }}<div>{{x}}</div></div>{% endfor %}{% endwith %}
 {% block body %}{% endblock %}</main>
+<div id="ipop" role="dialog" hidden></div>
+<script>
+// «i»: un solo popup per la pagina, vicino al pulsante; si chiude con un altro clic, fuori o con Esc (3.17)
+(function(){ var pop = document.getElementById("ipop"), cur = null;
+  function close(){ pop.hidden = true; if (cur) cur.setAttribute("aria-expanded", "false"); cur = null; }
+  document.addEventListener("click", function(e){ var b = e.target.closest(".ibtn");
+    if (!b) { if (!pop.contains(e.target)) close(); return; }
+    e.preventDefault(); e.stopPropagation(); if (cur === b) { close(); return; } close();
+    pop.textContent = b.dataset.info; pop.hidden = false; cur = b; b.setAttribute("aria-expanded", "true");
+    var r = b.getBoundingClientRect(), w = pop.offsetWidth, x = Math.min(Math.max(16, r.left + window.scrollX - w / 2 + r.width / 2), window.scrollX + document.documentElement.clientWidth - w - 16);
+    pop.style.left = x + "px"; pop.style.top = (r.bottom + window.scrollY + 8) + "px"; }, true);
+  document.addEventListener("keydown", function(e){ if (e.key === "Escape") close(); });
+  window.addEventListener("resize", close); })();
+</script>
 <script>
 // Ricorda quali sezioni ripiegabili sono aperte (per questo browser). Senza localStorage la pagina funziona lo stesso.
 document.querySelectorAll("details.grp[data-k]").forEach(function(d){

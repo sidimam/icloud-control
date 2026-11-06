@@ -70,6 +70,13 @@ _P = {
 }
 
 
+def info(text, label=None):
+    """Pulsante «i» (3.17): le descrizioni stanno dietro una i e si aprono in un popup (vedi base.html)."""
+    from markupsafe import escape
+    lab = label or _("Informazioni")
+    return Markup(f'<button type="button" class="ibtn" aria-label="{escape(lab)}" title="{escape(lab)}" aria-expanded="false" data-info="{escape(text)}">i</button>')
+
+
 def icon(name, size=18, cls="ic"):
     return Markup(f'<svg class="{cls}" width="{size}" height="{size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
                   f'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{_P.get(name, "")}</svg>')

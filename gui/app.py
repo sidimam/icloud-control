@@ -13,7 +13,7 @@ app = Flask(__name__, template_folder=os.path.join(os.path.dirname(__file__), "t
 # GUI_RESET_PASSWORD, se compilata, all'avvio reimposta la password dell'admin e gli spegne il 2FA: poi va svuotata.
 import accounts, ui
 from ui import _
-app.jinja_env.globals.update(_=_, icon=ui.icon, cur_lang=ui.current_lang, cur_theme=ui.current_theme, LANGS=ui.LANGS)
+app.jinja_env.globals.update(_=_, icon=ui.icon, info=ui.info, cur_lang=ui.current_lang, cur_theme=ui.current_theme, LANGS=ui.LANGS)
 GUI_USER = accounts.ADMIN; GUI_RESET = os.environ.get("GUI_RESET_PASSWORD", "")
 accounts.bootstrap(GUI_RESET)
 def _secret():   # chiave di sessione persistente in /app/state: un riavvio non disconnette
@@ -783,7 +783,7 @@ def admin():
     except Exception: idx_by, idx_runs = {}, {}
     idx = sorted(((k[1], KIND_NAMES.get(k[0], k[0]), v) for k, v in idx_by.items()))
     last = max((r["finished"] for r in idx_runs.values()), default=0); errs = [f"{k}: {r['error']}" for k, r in idx_runs.items() if r.get("error")]
-    imm = immich_cfg(); immich = {"url": imm.get("url"), "on": bool(imm.get("key"))}
+    imm = immich_cfg(); immich = {"url": imm.get("url"), "on": bool(_immich_keys(imm)), "n": len(_immich_keys(imm))}
     log_srcs = [("dashboard", "iCloud Dashboard")] + [(n, f"{u.get('label', n)} · {u['container']}") for n, u in cfg()["users"].items()]
     return render_template("admin.html", immich=immich, log_srcs=log_srcs, rows=rows, n=nset(), default_chat=cfg().get("default_chat_id", ""), roles=accounts.ROLES, geocode=_settings().get("geocode", False),
                            idx=idx, idx_last=ago(datetime.datetime.fromtimestamp(last)) if last else "", idx_errs=errs, idx_db=os.path.getsize(SI.DB) if os.path.exists(SI.DB) else 0, fmt_size=_fmt_size)
@@ -1224,33 +1224,64 @@ def immich_cfg():
     try: d = json.load(open(IMMICH_FILE))
     except (FileNotFoundError, ValueError): d = {}
     d.setdefault("url", os.environ.get("IMMICH_URL", "http://192.168.0.100:2283")); return d
+IMMICH_CT = os.environ.get("IMMICH_CONTAINER", "Immich"); IMMICH_DB_CT = os.environ.get("IMMICH_DB_CONTAINER", "Immich_PostgreSQL")
+IMMICH_MODEL = os.environ.get("IMMICH_CLIP_MODEL", "ViT-B-32__openai")
+def _immich_map(p):
+    for src, dst in IMMICH_MAP:
+        if p.startswith(src.rstrip("/") + "/"): return dst.rstrip("/") + p[len(src.rstrip("/")):]
+    return None
+def immich_smart_all(q, size=500):
+    """Ricerca su TUTTE le foto della famiglia (3.17): il testo diventa un vettore col motore CLIP di Immich e si cercano le foto
+    più vicine nel suo database (pgvector), in sola lettura, tramite il socket Docker. L'API di Immich invece vede solo le foto
+    dell'utente della chiave. None se Immich non è raggiungibile."""
+    r = subprocess.run(["docker", "exec", IMMICH_CT, "curl", "-s", "-m", "60", "-X", "POST", "http://127.0.0.1:3003/predict",
+                        "-F", json.dumps({"clip": {"textual": {"modelName": IMMICH_MODEL}}}).join(("entries=", "")), "--form-string", "text=" + q],
+                       capture_output=True, text=True, timeout=90)
+    if r.returncode != 0: return None
+    try: vec = [float(x) for x in json.loads(json.loads(r.stdout)["clip"])]
+    except Exception: return None
+    lit = "[" + ",".join(f"{x:.7g}" for x in vec) + "]"
+    sql = (f"select a.\"originalPath\" from (select \"assetId\", embedding <=> '{lit}' d from smart_search order by embedding <=> '{lit}' limit {int(size)}) s "
+           "join asset a on a.id = s.\"assetId\" where a.\"deletedAt\" is null order by s.d;")
+    r = subprocess.run(["docker", "exec", "-i", IMMICH_DB_CT, "psql", "-U", "postgres", "-d", "immich", "-At", "-v", "ON_ERROR_STOP=1"],
+                       input=sql, capture_output=True, text=True, timeout=60)
+    if r.returncode != 0: return None
+    return [m for m in (_immich_map(l) for l in r.stdout.splitlines() if l) if m]
+def _immich_keys(c):
+    k = c.get("keys") or ([c["key"]] if c.get("key") else [])
+    return [x for x in k if x]
 def immich_smart(q, size=500):
-    """Percorsi (dell'indice) delle foto più somiglianti al testo, dalla più vicina; None se Immich non è collegato."""
+    """Percorsi (dell'indice) delle foto più somiglianti al testo, dalla più vicina; None se Immich non è raggiungibile.
+    Con le chiavi API dedicate (una per utente Immich, permesso asset.read) usa l'API ufficiale e unisce i risultati;
+    senza chiavi legge l'analisi di Immich direttamente, in sola lettura (immich_smart_all)."""
     import urllib.request
-    c = immich_cfg()
-    if not c.get("key"): return None
-    req = urllib.request.Request(c["url"].rstrip("/") + "/api/search/smart", method="POST", data=json.dumps({"query": q, "size": min(size, 1000), "page": 1}).encode(),
-                                 headers={"Content-Type": "application/json", "Accept": "application/json", "x-api-key": c["key"]})
-    items = json.loads(urllib.request.urlopen(req, timeout=60).read()).get("assets", {}).get("items", [])
-    out = []
-    for it in items:
-        p = it.get("originalPath") or ""
-        for src, dst in IMMICH_MAP:
-            if p.startswith(src.rstrip("/") + "/"): out.append(dst.rstrip("/") + p[len(src.rstrip("/")):]); break
-    return out
+    c = immich_cfg(); keys = _immich_keys(c)
+    if not keys:
+        try: return immich_smart_all(q, size)
+        except Exception as e: print(f"ricerca foto (Immich diretto): {e}", flush=True); return None
+    lists = []
+    for key in keys:   # ogni chiave vede solo le foto del suo utente: una richiesta per chiave
+        req = urllib.request.Request(c["url"].rstrip("/") + "/api/search/smart", method="POST", data=json.dumps({"query": q, "size": min(size, 1000), "page": 1}).encode(),
+                                     headers={"Content-Type": "application/json", "Accept": "application/json", "x-api-key": key})
+        items = json.loads(urllib.request.urlopen(req, timeout=60).read()).get("assets", {}).get("items", [])
+        lists.append([m for m in (_immich_map(it.get("originalPath") or "") for it in items) if m])
+    out, seen = [], set()   # unione alternata: il primo di ogni utente, poi il secondo…
+    for row in __import__("itertools").zip_longest(*lists):
+        for p in row:
+            if p and p not in seen: seen.add(p); out.append(p)
+    return out[:size]
 @app.post("/admin/immich")
 def admin_immich():
     _admin_only(); f = request.form; c = immich_cfg()
     c["url"] = (f.get("url") or c["url"]).strip().rstrip("/")
-    if f.get("key", "").strip(): c["key"] = f["key"].strip()
-    if f.get("forget") == "1": c.pop("key", None)
+    new = [x.strip() for x in re.split(r"[\s,;]+", f.get("keys", "")) if x.strip()]
+    if new: c["keys"] = new; c.pop("key", None)
+    if f.get("forget") == "1": c.pop("keys", None); c.pop("key", None)
     tmp = IMMICH_FILE + ".tmp"; fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as fh: json.dump(c, fh)
     os.replace(tmp, IMMICH_FILE)
-    if c.get("key"):
-        try: n = len(immich_smart("persone", 20) or []); flash(_("Immich collegato: la ricerca di prova ha trovato {a0} foto", a0=n))
-        except Exception as e: flash(_("Immich non risponde con questa chiave: {a0}", a0=str(e)[:200]))
-    else: flash(_("Ricerca intelligente nelle foto scollegata"))
+    try: n = len(immich_smart("persone", 20) or []); flash(_("Ricerca nelle foto pronta: la prova ha trovato {a0} foto", a0=n) + (" · " + _("{a0} chiavi API", a0=len(_immich_keys(c))) if _immich_keys(c) else " · " + _("senza chiavi: analisi di Immich letta direttamente")))
+    except Exception as e: flash(_("Immich non risponde con queste chiavi: {a0}", a0=str(e)[:200]))
     return redirect(url_for("admin"))
 @app.route("/photos")
 def photos():
@@ -1285,7 +1316,7 @@ def photos():
     finally: con.close()
     more = len(rows) > per; rows = rows[:per]
     for r in rows: r["media"] = "video" if r["ext"] in VID_EXT else ("audio" if r["ext"] in AUD_EXT else "image")
-    return render_template("photos.html", rows=rows, albums=albums, years=years, persons=persons, shared=shared, person=person, album=album, what=what, year=a.get("year", ""), page=page, more=more, exts=exts, q=q, ai=ai is not None, ai_err=ai_err, immich_on=bool(immich_cfg().get("key")), fmt_date=_fmt_date, fmt_size=_fmt_size)
+    return render_template("photos.html", rows=rows, albums=albums, years=years, persons=persons, shared=shared, person=person, album=album, what=what, year=a.get("year", ""), page=page, more=more, exts=exts, q=q, ai=ai is not None, ai_err=ai_err, immich_on=True, fmt_date=_fmt_date, fmt_size=_fmt_size)
 @app.route("/notes")
 def notes():
     persons = allowed_persons(); person = request.args.get("person", ""); sel = [person] if person in persons else persons
