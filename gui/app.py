@@ -1317,6 +1317,47 @@ def photos():
     more = len(rows) > per; rows = rows[:per]
     for r in rows: r["media"] = "video" if r["ext"] in VID_EXT else ("audio" if r["ext"] in AUD_EXT else "image")
     return render_template("photos.html", rows=rows, albums=albums, years=years, persons=persons, shared=shared, person=person, album=album, what=what, year=a.get("year", ""), page=page, more=more, exts=exts, q=q, ai=ai is not None, ai_err=ai_err, immich_on=True, fmt_date=_fmt_date, fmt_size=_fmt_size)
+# ---- Files (3.18): iCloud Drive di ogni persona come in Finder — cartelle, file, ricerca, filtri e viste
+@app.route("/files")
+def files():
+    a = request.args; persons = allowed_persons(); person = a.get("person", "") if a.get("person", "") in persons else ""
+    path = a.get("path", "").strip("/"); q = a.get("q", "").strip()
+    sel = [person] if person else persons
+    flat = bool(q or a.get("fext") or a.get("fd1") or a.get("fd2"))
+    con = SI.connect()
+    try:
+        where, args = [f"kind='file' and person in ({','.join('?' * len(sel))})"], list(sel)
+        if path: where.append("json_extract(extra,'$.rel') like ? escape '\\'"); args.append(path.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "/%")
+        if q:
+            hit = fts_ids("file", q) or set(); where.append(f"id in ({','.join(str(i) for i in hit) or 'null'})")
+        fw, fa, forder = filt_sql(a, default="name")
+        rows = [{**dict(r), "x": json.loads(r["extra"] or "{}")} for r in con.execute(f"select * from items where {' and '.join(where + fw)} order by {forder}", args + fa)]
+        exts = [r["ext"] for r in con.execute("select ext, count(*) n from items where kind='file' and ext != '' group by ext order by n desc limit 40")]
+    finally: con.close()
+    folders, items = {}, []
+    if flat or (not person and len(persons) > 1 and not path):
+        if not flat:   # «Tutti» alla radice: una cartella per persona
+            for r in rows: f = folders.setdefault(r["person"], {"name": r["person"], "n": 0, "size": 0, "mtime": 0, "person": r["person"], "path": ""}); f["n"] += 1; f["size"] += r["size"] or 0; f["mtime"] = max(f["mtime"], r["mtime"] or 0)
+        else: items = rows[:2000]
+    else:
+        pre = path + "/" if path else ""
+        for r in rows:
+            rest = (r["x"].get("rel") or "")[len(pre):]
+            if "/" in rest:
+                name = rest.split("/", 1)[0]; f = folders.setdefault(name, {"name": name, "n": 0, "size": 0, "mtime": 0, "person": r["person"], "path": pre + name})
+                f["n"] += 1; f["size"] += r["size"] or 0; f["mtime"] = max(f["mtime"], r["mtime"] or 0)
+            else: items.append(r)
+    sh = (shared_map().get(person) or {}).get("drive", []) if person else []
+    for f in folders.values(): f["shared"] = any(f["path"] == p or f["path"].startswith(p + "/") for p in sh) if f["path"] else False
+    key, d = _fdir(a, "name"); rev = d == "desc"
+    fl = sorted(folders.values(), key=(lambda f: f["name"].lower()) if key == "name" else (lambda f: f["mtime"]) if key == "date" else (lambda f: f["size"]), reverse=rev)
+    crumbs = []
+    if path:
+        acc = ""
+        for part in path.split("/"): acc = f"{acc}/{part}" if acc else part; crumbs.append((part, acc))
+    if not person and len(persons) > 1 and not flat: crumbs = []
+    return render_template("files.html", folders=fl, items=items, persons=persons, person=person, path=path, crumbs=crumbs, q=q, flat=flat, exts=exts,
+                           total=len(rows), fmt_date=_fmt_date, fmt_size=_fmt_size, kind_icons=KIND_ICONS, IMG_EXT=IMG_EXT, VID_EXT=VID_EXT)
 @app.route("/notes")
 def notes():
     persons = allowed_persons(); person = request.args.get("person", ""); sel = [person] if person in persons else persons
@@ -1331,7 +1372,7 @@ def notes():
     if request.args.get("q", "").strip():
         hit = fts_ids("note", request.args["q"]); rows = [r for r in rows if hit is None or r["id"] in hit]
     rows = filt_py(rows, request.args, name=lambda r: r["title"], date=lambda r: r["date"], size=lambda r: r["size"])
-    return render_template("notes.html", rows=rows, folders=sorted(folders.items()), persons=persons, person=person, folder=folder, of=of, fmt_date=_fmt_date)
+    return render_template("notes.html", rows=rows, folders=sorted(folders.items()), persons=persons, person=person, folder=folder, of=of, fmt_date=_fmt_date, fmt_size=_fmt_size)
 @app.route("/reminders")
 def reminders():
     persons = allowed_persons(); person = request.args.get("person", ""); fam = family_lists()
@@ -1611,7 +1652,7 @@ def contacts():
     for i, r in enumerate(rows): groups.setdefault(find(i), []).append(r)
     people = []
     for g in groups.values():
-        names = sorted({r["title"] for r in g if r["title"]}, key=len, reverse=True)
+        names = sorted({r["title"] for r in g if r["title"]}, key=lambda n: (bool(re.fullmatch(r"[+\d][\d\s+()./-]*", n)), -len(n)))   # un nome vero prima di un numero
         item = {"name": names[0] if names else "—", "ids": [r["id"] for r in g], "who": sorted({r["person"] for r in g}), "noname": all(r["x"].get("noname") for r in g),
                 "emails": sorted({e for r in g for e in r["x"].get("emails", [])}), "tels": sorted({t for r in g for t in r["x"].get("tels", [])}),
                 "org": next((r["x"].get("org") for r in g if r["x"].get("org")), "")}
@@ -1679,6 +1720,35 @@ def _home_users():
     jobs = [copy_current_request_context(lambda nu=nu: user_view(*nu)) for nu in mine]
     with ThreadPoolExecutor(max_workers=8) as ex: views = list(ex.map(lambda f: f(), jobs))
     _HOME.update(t=time.time(), k=key, v=views); return views
+# meteo (3.18): Open-Meteo (gratuito, senza chiave), posizione di casa arrotondata; in cache 15 minuti
+WEATHER = {"lat": os.environ.get("WEATHER_LAT", "41.85"), "lon": os.environ.get("WEATHER_LON", "12.49"), "place": os.environ.get("WEATHER_PLACE", "Roma")}
+_WX = {"t": 0, "v": None}
+WMO = {0: ("Sereno", "☀️", "🌙"), 1: ("Poco nuvoloso", "🌤️", "🌙"), 2: ("Parzialmente nuvoloso", "⛅", "☁️"), 3: ("Coperto", "☁️", "☁️"), 45: ("Nebbia", "🌫️", "🌫️"), 48: ("Nebbia con brina", "🌫️", "🌫️"),
+       51: ("Pioviggine leggera", "🌦️", "🌧️"), 53: ("Pioviggine", "🌦️", "🌧️"), 55: ("Pioviggine intensa", "🌧️", "🌧️"), 56: ("Pioviggine gelata", "🌧️", "🌧️"), 57: ("Pioviggine gelata", "🌧️", "🌧️"),
+       61: ("Pioggia leggera", "🌦️", "🌧️"), 63: ("Pioggia", "🌧️", "🌧️"), 65: ("Pioggia forte", "🌧️", "🌧️"), 66: ("Pioggia gelata", "🌧️", "🌧️"), 67: ("Pioggia gelata", "🌧️", "🌧️"),
+       71: ("Neve leggera", "🌨️", "🌨️"), 73: ("Neve", "🌨️", "🌨️"), 75: ("Neve forte", "❄️", "❄️"), 77: ("Nevischio", "🌨️", "🌨️"), 80: ("Rovesci", "🌦️", "🌧️"), 81: ("Rovesci", "🌧️", "🌧️"),
+       82: ("Rovesci forti", "⛈️", "⛈️"), 85: ("Rovesci di neve", "🌨️", "🌨️"), 86: ("Rovesci di neve", "🌨️", "🌨️"), 95: ("Temporale", "⛈️", "⛈️"), 96: ("Temporale con grandine", "⛈️", "⛈️"), 99: ("Temporale con grandine", "⛈️", "⛈️")}
+def weather():
+    if _WX["v"] and time.time() - _WX["t"] < 900: return _WX["v"]
+    import urllib.request
+    url = ("https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,is_day"
+           "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset&timezone=Europe%2FRome&forecast_days=5").format(**WEATHER)
+    try:
+        d = json.loads(urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "icloud-dashboard"}), timeout=10).read())
+        cu = d["current"]; dl = d["daily"]
+        def desc(code, day=True):
+            w = WMO.get(int(code), ("—", "🌡️", "🌡️")); return _(w[0]), w[1] if day else w[2]
+        now_t, now_i = desc(cu["weather_code"], cu.get("is_day", 1))
+        days = []
+        for i, day in enumerate(dl["time"]):
+            t, ic = desc(dl["weather_code"][i])
+            days.append({"date": day, "name": _("Oggi") if i == 0 else _("Domani") if i == 1 else _(("Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom")[datetime.date.fromisoformat(day).weekday()]) + " " + day[-2:], "text": t, "icon": ic,
+                         "max": round(dl["temperature_2m_max"][i]), "min": round(dl["temperature_2m_min"][i]), "rain": dl["precipitation_probability_max"][i]})
+        v = {"place": WEATHER["place"], "temp": round(cu["temperature_2m"]), "feels": round(cu["apparent_temperature"]), "hum": cu["relative_humidity_2m"], "wind": round(cu["wind_speed_10m"]),
+             "text": now_t, "icon": now_i, "days": days, "sunrise": dl["sunrise"][0][-5:], "sunset": dl["sunset"][0][-5:]}
+        _WX.update(t=time.time(), v=v); return v
+    except Exception as e:
+        print(f"meteo: {e}", flush=True); return _WX["v"]
 @app.route("/")
 def home():
     persons = allowed_persons(); shared = shared_albums()
@@ -1732,7 +1802,7 @@ def home():
         for sv in v.get("services") or []:
             t = tabs.get(sv["name"]); sv["href"] = (t + ("&" if "?" in t else "?") + "person=" + urllib.parse.quote(v["label"])) if t else ""
     idx_last = max((r["finished"] for r in runs), default=None)
-    return render_template("home.html", charts=charts, table=table, kinds=list(KIND_SLOT), tot_n=tot_n, tot_s=tot_s, all_bytes=all_bytes, views=views, runs=runs,
+    return render_template("home.html", wx=weather(), charts=charts, table=table, kinds=list(KIND_SLOT), tot_n=tot_n, tot_s=tot_s, all_bytes=all_bytes, views=views, runs=runs,
                            kind_names=KIND_NAMES, kind_icons=KIND_ICONS, kind_tab=KIND_TAB, disk_when=(ago(datetime.datetime.fromtimestamp(dk["when"])) if dk.get("when") else ""),
                            disk_real=bool(dd), idx_last=(ago(datetime.datetime.fromtimestamp(idx_last)) if idx_last else ""), fmt_size=_fmt_size, fmt_date=_fmt_date,
                            fmt_n=lambda v: f"{v:,}".replace(",", "."), persons=persons)

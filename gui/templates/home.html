@@ -1,5 +1,15 @@
 {% extends "base.html" %}{% block body %}
 {% set hinfo %}{% if idx_last %}{{ _('Indice aggiornato {a0}', a0=idx_last) }} · {% endif %}{% if disk_real %}{{ _('spazio su disco misurato {a0}', a0=disk_when) }}{% else %}{{ _('spazio stimato dai file indicizzati: la misura vera su disco parte 3 minuti dopo l\'avvio e si ripete ogni 6 ore') }}{% endif %}{% endset %}<h1 class="title" style="display:flex;align-items:center;gap:.5rem">{{ _('Riepilogo') }} {{ info(hinfo|striptags) }}</h1>
+<div class="hero">
+<section class="card hclock"><div id="hclock" class="hc-time">--:--</div><div id="hdate" class="hc-date"></div></section>
+{% if wx %}<section class="card hwx"><div class="row" style="flex-wrap:nowrap;gap:.8rem"><span class="wx-ic" aria-hidden="true">{{ wx.icon }}</span><div style="min-width:0"><div class="hc-temp">{{ wx.temp }}°</div><div>{{ wx.text }} · {{ wx.place }}</div>
+<div class="mut">{{ _('percepita {a0}°', a0=wx.feels) }} · {{ _('umidità {a0}%', a0=wx.hum) }} · {{ _('vento {a0} km/h', a0=wx.wind) }} · ☀︎ {{ wx.sunrise }}–{{ wx.sunset }}</div></div></div>
+<div class="wxdays">{% for d in wx.days %}<div class="wxd"><span class="mut">{{ d.name }}</span><span class="wx-ic2">{{ d.icon }}</span><span><b style="font-weight:600">{{ d.max }}°</b> <span class="mut">{{ d.min }}°</span></span>{% if d.rain %}<span class="mut" title="{{ _('probabilità di pioggia') }}">💧{{ d.rain }}%</span>{% endif %}</div>{% endfor %}</div></section>{% endif %}
+</div>
+<script>(function(){ var lang = {{ cur_lang()|tojson }};
+  function t(){ var d = new Date(); document.getElementById("hclock").textContent = d.toLocaleTimeString(lang, {hour: "2-digit", minute: "2-digit"});
+    document.getElementById("hdate").textContent = d.toLocaleDateString(lang, {weekday: "long", day: "numeric", month: "long", year: "numeric"}).replace(/^./, function(c){ return c.toUpperCase(); }); }
+  t(); setInterval(t, 10000); })();</script>
 <div class="tiles">
 {% for k in kinds %}<a class="tile" href="{{ kind_tab[k] }}"><span class="badge {{ kind_icons[k][1] }}">{{ icon(kind_icons[k][0], 16) }}</span><span class="tn">{{ fmt_n(tot_n[k]) }}</span><span class="tl">{{ _(kind_names[k]) }}</span><span class="mut">{{ fmt_size(tot_s[k]) if tot_s[k] else '—' }}</span></a>{% endfor %}
 <div class="tile"><span class="badge b-indigo">{{ icon('chart', 16) }}</span><span class="tn">{{ fmt_size(all_bytes) }}</span><span class="tl">{{ _('Spazio totale') }}</span><span class="mut">{{ _('{a0} persone', a0=persons|length) }}</span></div>

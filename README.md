@@ -108,6 +108,18 @@ Gli avvisi automatici del dispatcher si impostano dalle variabili del template U
 `TELEGRAM_TOKEN` e `ALLOWED_CHATS` (le chat da cui il bot accetta comandi) restano come prima. Le risposte ai comandi del bot e
 della GUI non passano dalle ore silenziose: arrivano sempre subito alla chat che le ha chieste.
 
+### Files, viste, ordine delle schede, ora e meteo (dalla 3.18)
+
+- Schede nell'ordine **Riepilogo, Files, Posta, Calendario, Contatti, Promemoria, Note, Foto, Utenti, 🔍**.
+- **Files**: l'iCloud Drive di ogni persona come in Finder (Tutti → persona → cartelle, percorso cliccabile), con campo Cerca
+  (testo completo), Filtri (nome, estensione, date, ordinamento) e le cartelle condivise in blu.
+- **Selettore di vista** in ogni scheda, ricordato per scheda nel browser: Files *Elenco / Miniature / Dettagli*, Posta e
+  Promemoria *Elenco / Dettagli*, Note *Elenco / Schede / Dettagli*, Contatti *Schede / Elenco / Dettagli*, Foto
+  *Miniature / Miniature grandi / Dettagli* (il Calendario ha già Anno, Mese, Settimana, Giorno, Agenda).
+- **Riepilogo**: ora (che scorre) e data, **meteo** attuale e dei prossimi giorni da Open-Meteo (gratuito, senza chiave;
+  `WEATHER_LAT`, `WEATHER_LON`, `WEATHER_PLACE`, default la zona di casa a Roma, in cache 15 minuti).
+- Contatti uniti fra più rubriche: un nome vero vince sempre su un numero di telefono.
+
 ### Descrizioni dietro la «i» e ricerca foto su tutta la famiglia (dalla 3.17)
 
 - Le descrizioni (es. «Un utente = un container iCloud…», le spiegazioni di Amministrazione, Nuovo utente, Contatti, Calendario,

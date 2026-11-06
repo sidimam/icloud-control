@@ -1,0 +1,5 @@
+{# Selettore di vista (3.18): vs = [(chiave, etichetta, icona)]. La scelta va nel parametro «view» e il browser la ricorda per scheda. #}
+<span class="vsel" role="group" aria-label="{{ _('Vista') }}">{% for k, l, ic in vs %}<a href="{{ qs(view=k, page=0) }}" class="{{ 'on' if cur_view == k }}" data-view="{{ k }}" title="{{ l }}" aria-label="{{ l }}" aria-current="{{ 'true' if cur_view == k else 'false' }}">{{ icon(ic, 15) }}<span>{{ l }}</span></a>{% endfor %}</span>
+<script>(function(){ var k = "view:{{ request.endpoint }}", u = new URL(location.href);
+  try { if (!u.searchParams.get("view")) { var v = localStorage.getItem(k); if (v && v !== {{ vs[0][0]|tojson }} && {{ vs|map(attribute=0)|list|tojson }}.indexOf(v) >= 0) { u.searchParams.set("view", v); location.replace(u.toString()); } }
+        else localStorage.setItem(k, u.searchParams.get("view")); } catch(e) {} })();</script>

@@ -1,0 +1,29 @@
+{% extends "base.html" %}{% block body %}
+<h1 class="title">{{ _('Files') }}</h1>
+<form method="get" action="/files">{% include "_personfilter.html" %}</form>
+{% set sb_placeholder = _('Cerca nei file (nome, cartella)…') %}{% include "_searchbar.html" %}
+{% set fo = {"name": _('nome del file'), "ext": exts, "dates": _('Modificato'), "sorts": [("name", _('nome')), ("date", _('data di modifica')), ("size", _('dimensione'))], "default": "name"} %}{% include "_filters.html" %}
+{% set vs = [("list", _('Elenco'), "list"), ("grid", _('Miniature'), "grid"), ("table", _('Dettagli'), "table")] %}{% set cur_view = request.args.get('view') if request.args.get('view') in vs|map(attribute=0)|list else vs[0][0] %}
+<div class="toolbar"><nav class="row" aria-label="{{ _('Percorso') }}" style="gap:.3rem;font-size:15px;min-width:0">
+{% if person %}{% if persons|length > 1 %}<a href="?">{{ _('Tutti') }}</a><span class="mut">›</span>{% endif %}<a href="?person={{ person|urlencode }}" style="font-weight:{{ 600 if not path }}">{{ person }} · iCloud Drive</a>
+{% for name, p in crumbs %}<span class="mut">›</span><a href="?person={{ person|urlencode }}&path={{ p|urlencode }}" style="font-weight:{{ 600 if loop.last }}">{{ name }}</a>{% endfor %}
+{% else %}<b style="font-weight:600">{{ _('iCloud Drive di tutti') }}</b>{% endif %}
+{% if flat %}<span class="mut">· {{ _('{a0} risultati', a0=items|length) }}{% if items|length >= 2000 %} ({{ _('primi 2000') }}){% endif %}</span>{% endif %}</nav>
+{% include "_viewsel.html" %}</div>
+{% macro flink(f) %}{% if not person and not f.path %}?person={{ f.person|urlencode }}{% else %}?person={{ (person or f.person)|urlencode }}&path={{ f.path|urlencode }}{% endif %}{% endmacro %}
+{% macro ficon(r) %}{% if r.ext in IMG_EXT or r.ext in VID_EXT or r.ext == 'pdf' %}<img loading="lazy" src="/thumb/{{ r.id }}" alt="" onerror="this.outerHTML='<span class=&quot;badge b-blue&quot;></span>'">{% else %}<span class="badge b-blue">{{ icon('doc', 15) }}</span>{% endif %}{% endmacro %}
+{% if not folders and not items %}<div class="list"><div class="li"><span class="mut">{{ _('Nessun file qui.') }}</span></div></div>
+{% elif cur_view == 'grid' %}
+<div class="fgrid2">{% for f in folders %}<a class="ftile" href="{{ flink(f) }}"><span class="fth"><span class="badge b-blue" style="width:48px;height:48px;border-radius:12px">{{ icon('folder', 26) }}</span></span><span class="fn{{ ' shr' if f.shared }}">{{ f.name }}</span><span class="mut">{{ _('{a0} file', a0=f.n) }} · {{ fmt_size(f.size) }}</span></a>{% endfor %}
+{% for r in items %}<a class="ftile" href="/item/{{ r.id }}"><span class="fth">{% if r.ext in IMG_EXT or r.ext in VID_EXT or r.ext == 'pdf' %}<img loading="lazy" src="/thumb/{{ r.id }}" alt="" onerror="this.style.display='none'">{% else %}<span class="badge b-gray" style="width:48px;height:48px;border-radius:12px;font-size:12px;font-weight:600">{{ (r.ext or '?')|upper|truncate(4, true, '') }}</span>{% endif %}</span><span class="fn{{ ' shr' if is_shared(r) }}">{{ r.title }}</span><span class="mut">{{ fmt_size(r.size) }} · {{ fmt_date(r.mtime, false) }}</span></a>{% endfor %}</div>
+{% elif cur_view == 'table' %}
+<div class="list wide-scroll"><table class="t"><thead><tr><th>{{ _('Nome') }}</th>{% if flat or not person %}<th>{{ _('Cartella') }}</th>{% endif %}<th>{{ _('Tipo') }}</th><th style="text-align:right">{{ _('Dimensione') }}</th><th>{{ _('Modificato') }}</th>{% if not person %}<th>{{ _('Persona') }}</th>{% endif %}</tr></thead><tbody>
+{% for f in folders %}<tr><td><a href="{{ flink(f) }}" class="{{ 'shr' if f.shared }}">📁 {{ f.name }}</a></td>{% if flat or not person %}<td class="mut">{{ f.path.rsplit('/', 1)[0] if '/' in f.path else '' }}</td>{% endif %}<td class="mut">{{ _('cartella') }} · {{ f.n }}</td><td style="text-align:right">{{ fmt_size(f.size) }}</td><td>{{ fmt_date(f.mtime) }}</td>{% if not person %}<td>{{ f.person }}</td>{% endif %}</tr>{% endfor %}
+{% for r in items %}<tr><td><a href="/item/{{ r.id }}" class="{{ 'shr' if is_shared(r) }}">{{ r.title }}</a></td>{% if flat or not person %}<td class="mut" style="word-break:break-all">{{ r.x.rel.rsplit('/', 1)[0] if '/' in r.x.rel else '' }}</td>{% endif %}<td class="mut">{{ r.ext }}</td><td style="text-align:right">{{ fmt_size(r.size) }}</td><td>{{ fmt_date(r.mtime) }}</td>{% if not person %}<td>{{ r.person }}</td>{% endif %}</tr>{% endfor %}
+</tbody></table></div>
+{% else %}
+<div class="list">{% for f in folders %}<a class="li" href="{{ flink(f) }}" style="color:inherit"><span class="badge b-blue">{{ icon('folder', 15) }}</span><span class="k" style="flex:1;min-width:0"><span class="{{ 'shr' if f.shared }}">{{ f.name }}</span><br><span class="mut">{{ _('{a0} file', a0=f.n) }} · {{ fmt_size(f.size) }}</span></span><span class="v">{{ fmt_date(f.mtime) }} ›</span></a>{% endfor %}
+{% for r in items %}<a class="li" href="/item/{{ r.id }}" style="color:inherit">{% if r.ext in IMG_EXT or r.ext in VID_EXT or r.ext == 'pdf' %}<img loading="lazy" src="/thumb/{{ r.id }}" alt="" style="width:29px;height:29px;object-fit:cover;border-radius:7px;flex:none;background:var(--fill)" onerror="this.style.visibility='hidden'">{% else %}<span class="badge b-gray">{{ icon('doc', 15) }}</span>{% endif %}
+<span class="k" style="flex:1;min-width:0"><span class="{{ 'shr' if is_shared(r) }}">{{ r.title }}</span>{% if flat or not person %}<br><span class="mut" style="word-break:break-all">{{ r.person }} · {{ r.x.rel.rsplit('/', 1)[0] if '/' in r.x.rel else '/' }}</span>{% endif %}</span><span class="v">{{ fmt_size(r.size) }}<br><span class="mut">{{ fmt_date(r.mtime) }}</span></span></a>{% endfor %}</div>
+{% endif %}
+{% endblock %}
