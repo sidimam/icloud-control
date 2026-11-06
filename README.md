@@ -138,7 +138,7 @@ della GUI non passano dalle ore silenziose: arrivano sempre subito alla chat che
 - **Foto**: il filtro è «Tutti, Famiglia, Simone, Daniela, Sofia, Maria»: le librerie condivise (ogni album diverso da Personale,
   es. Famiglia) sono una voce a sé, visibile a tutti; una persona mostra solo le sue foto personali. Le persone nuove compaiono da
   sole in tutte le schede appena il loro container è configurato.
-- Le nuove persone create da qui usano `ghcr.io/sidimam/iclouddr:0.2.6` (`ICLOUDDR_IMAGE`).
+- Le nuove persone create da qui usano `ghcr.io/sidimam/iclouddr:0.2.7` (`ICLOUDDR_IMAGE`).
 
 ### Foto, mappa, miniature e metadati (dalla 3.9)
 

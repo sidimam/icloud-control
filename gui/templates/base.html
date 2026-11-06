@@ -110,14 +110,14 @@ table.t td a{color:var(--acc)}
 <a class="brand" href="/"><img src="/static/icon.png" alt="">iCloud Dashboard</a>
 <nav class="tabs" aria-label="{{ _('Menu') }}">{% if me or request.endpoint not in ("login", "login_2fa", "recover") %}
 <a href="/" class="{{ 'on' if request.endpoint == 'home' }}">{{ icon('chart') }}{{ _('Riepilogo') }}</a>
-<a href="/users" class="{{ 'on' if request.endpoint in ('index','u_logs') }}">{{ icon('users') }}{{ _('Utenti iCloud') }}</a>
-<a href="/search" class="{{ 'on' if request.endpoint in ('search','item') }}">{{ icon('search') }}{{ _('Cerca') }}</a>
 <a href="/photos" class="{{ 'on' if request.endpoint == 'photos' }}">{{ icon('photo') }}{{ _('Foto') }}</a>
 <a href="/calendar" class="{{ 'on' if request.endpoint == 'calendar' }}">{{ icon('doc') }}{{ _('Calendario') }}</a>
 <a href="/mail" class="{{ 'on' if request.endpoint == 'mail' }}">{{ icon('send') }}{{ _('Posta') }}</a>
 <a href="/contacts" class="{{ 'on' if request.endpoint == 'contacts' }}">{{ icon('person') }}{{ _('Contatti') }}</a>
 <a href="/notes" class="{{ 'on' if request.endpoint == 'notes' }}">{{ icon('doc') }}{{ _('Note') }}</a>
 <a href="/reminders" class="{{ 'on' if request.endpoint == 'reminders' }}">{{ icon('check') }}{{ _('Promemoria') }}</a>
+<a href="/users" class="{{ 'on' if request.endpoint in ('index','u_logs') }}">{{ icon('users') }}{{ _('Utenti') }}</a>
+<a href="/search" class="{{ 'on' if request.endpoint in ('search','item') }}" title="{{ _('Cerca') }}" aria-label="{{ _('Cerca') }}">{{ icon('search') }}</a>
 {% if me_admin or not me %}<a href="/new" class="{{ 'on' if request.endpoint == 'new' }}">{{ icon('plus') }}{{ _('Nuovo utente') }}</a>{% endif %}
 <a href="/account" class="{{ 'on' if request.endpoint == 'account' }}">{{ icon('person') }}{{ _('Il mio profilo') }}</a>
 {% if me_admin %}<a href="/admin" class="{{ 'on' if request.endpoint == 'admin' }}">{{ icon('gear') }}{{ _('Amministrazione') }}</a>{% endif %}

@@ -1,5 +1,5 @@
 {% extends "base.html" %}{% block body %}
-<h1 class="title">{{ _('Utenti iCloud') }}</h1>
+<h1 class="title">{{ _('Utenti') }}</h1>
 <p class="note">{{ _("Un utente = un container iCloud. I comandi Telegram usano il prefisso #nome; il codice Apple arriva sui dispositivi dell'account e si inserisce qui o in chat.") }}</p>
 {% for title, group in sections %}<details class="grp" data-k="sec-{{ loop.index }}" open><summary>{{ icon('cloud', 15) }}{{ _(title) }}{{ icon('chevron', 15, 'ic chev') }}</summary><div class="grid">{% for u in group %}
 <div class="list" id="u-{{ u.name }}" style="scroll-margin-top:90px">

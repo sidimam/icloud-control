@@ -1,5 +1,6 @@
 """Traduzioni inglesi della GUI: chiave = testo italiano usato nel codice e nei template (vedi ui.py)."""
 EN = {
+    "Utenti": "Users",
     "Avvisi ed errori": "Warnings and errors",
     "Azzera filtri": "Clear filters",
     "Carico…": "Loading…",
