@@ -452,6 +452,32 @@ def drive_view(name, u):
         svc.append({"name": name, "icon": icon_, "badge": badge, "on": on, "paths": paths, "freq": every(freq) if on else "", "last": last, "info": txt,
                     "err": any(a["error"] and not a.get("running") for a in v["accounts"] if a.get(flag))})
     v["services"] = svc
+    # 3.16: vista «pannello iCloud» → Account › servizio › percorso. Apple = iCloud Drive, Foto, Note, Promemoria del container
+    # più posta/calendari/contatti dell'account iCloud; ogni altro account (Gmail, Outlook, IMAP) ha i suoi servizi e percorsi.
+    def acc_rows(a):
+        rows = []
+        for key, flag, sub, name_, icon_, badge, unit in (("mail", "mail", "Posta", _("Posta"), "send", "b-blue", lambda r: _("{a0} messaggi", a0=r.get("messaggi", 0))),
+                                                         ("calendar", "calendar", "Calendario", _("Calendario"), "doc", "b-red", lambda r: _("{a0} eventi", a0=r.get("eventi", 0))),
+                                                         ("contacts", "contacts", "Contatti", _("Contatti"), "users", "b-gray", lambda r: _("{a0} contatti", a0=r.get("contatti", 0)))):
+            on = bool(a.get(flag) or (key == "calendar" and a.get("ics"))); r = a["st"].get(key) or {}
+            info = (_("prima copia in corso da {a0}", a0=a["running"].replace(_("fa"), "").strip()) if a.get("running") and not r else
+                    a["error"] if a.get("error") and not r else unit(r) if r else _("in attesa del primo giro") if on else _("non attivo"))
+            rows.append({"name": name_, "icon": icon_, "badge": badge, "on": on, "paths": [a["dir"] + "/" + sub] if a.get("dir") and on else [],
+                         "last": _("ultimo giro {a0}", a0=ago(datetime.datetime.fromtimestamp(r["when"]))) if r.get("when") else "", "info": info,
+                         "freq": every(env_of(info_ct).get("PIM_MAIL_INTERVAL" if key == "mail" else "PIM_DAV_INTERVAL", "900" if key == "mail" else "3600")) if on else "",
+                         "err": bool(a.get("error") and not a.get("running"))})
+        return rows
+    info_ct = info; groups = []
+    icl = [a for a in v["accounts"] if a.get("type") == "icloud"]
+    groups.append({"kind": "apple", "title": "Apple · iCloud", "email": v.get("apple_id") or (icl[0]["email"] if icl else ""), "badge": "b-gray", "icon": "cloud",
+                   "rows": svc[:4] + [r for a in icl[:1] for r in acc_rows(a)], "acc": icl[0] if icl else None})
+    for a in v["accounts"]:
+        if a in icl[:1]: continue
+        groups.append({"kind": a.get("type"), "title": a.get("type_name") if a.get("type") != "icloud" else "Apple · iCloud", "email": a.get("email"),
+                       "badge": {"gmail": "b-red", "outlook": "b-blue"}.get(a.get("type"), "b-teal"), "icon": "send", "rows": acc_rows(a), "acc": a})
+    v["acct_groups"] = groups
+    dd = (disk_load().get("data") or {}).get(v["label"]) or {}
+    v["storage"] = [(KIND_NAMES[k], dd[k], KIND_SLOT[k]) for k in KIND_SLOT if dd.get(k)]; v["storage_total"] = sum(dd.values())
     return v
 def photos_view(name, u):
     c = u["container"]; info = inspect(c); v = {"name": name, "type": "icloudpd", "label": u.get("label", name), "container": c, "chat_id": u.get("chat_id", ""), "exists": info is not None}
@@ -476,7 +502,7 @@ def index():
     # Due sezioni per tipo: prima le foto (icloudpd), poi iCloud Drive; dentro ogni sezione l'ordine di config.json.
     sections = [("Foto iCloud (icloudpd)", [v for v in users if v["type"] == "icloudpd"]), ("iCloud Drive (mandarons/icloud-drive)", [v for v in users if v["type"] == "iclouddrive"])]
     sections = [sct for sct in sections if sct[1]]
-    return render_template("index.html", sections=sections, cfg=c)
+    return render_template("index.html", sections=sections, cfg=c, fmt_size=_fmt_size)
 @app.post("/u/<name>/auth")
 def u_auth(name):
     c = cfg(); u = c["users"].get(name) or abort(404)

@@ -1,19 +1,24 @@
 {% extends "base.html" %}{% block body %}
 <h1 class="title">{{ _('Utenti') }}</h1>
 <p class="note">{{ _("Un utente = un container iCloud. I comandi Telegram usano il prefisso #nome; il codice Apple arriva sui dispositivi dell'account e si inserisce qui o in chat.") }}</p>
-{% for title, group in sections %}<details class="grp" data-k="sec-{{ loop.index }}" open><summary>{{ icon('cloud', 15) }}{{ _(title) }}{{ icon('chevron', 15, 'ic chev') }}</summary><div class="grid">{% for u in group %}
+<div class="row" style="justify-content:flex-end;margin:-.4rem 0 .8rem"><span class="mut">{{ _('Disposizione') }}</span><span class="seg" role="radiogroup" aria-label="{{ _('Disposizione') }}">
+<label><input type="radio" name="ulay" value="h" checked><span>{{ _('Orizzontale') }}</span></label><label><input type="radio" name="ulay" value="v"><span>{{ _('Verticale') }}</span></label></span></div>
+{% for title, group in sections %}{% if sections|length > 1 %}<details class="grp" data-k="sec-{{ loop.index }}" open><summary>{{ icon('cloud', 15) }}{{ _(title) }}{{ icon('chevron', 15, 'ic chev') }}</summary>{% endif %}<div class="ugrid">{% for u in group %}
 <div class="list" id="u-{{ u.name }}" style="scroll-margin-top:90px">
-<div class="uhead"><span class="badge {{ 'b-blue' if u.type == 'iclouddrive' else 'b-orange' }}">{{ icon('folder' if u.type == 'iclouddrive' else 'photo', 17) }}</span><div><h2>{{u.label}}</h2><span class="mut">#{{u.name}} · {{u.container}}</span></div></div>
+<div class="uhead" style="padding:18px 16px 10px"><span class="avatar">{{ u.label[:1] }}</span><div style="min-width:0"><h2 style="font-size:19px">{{u.label}}</h2><span class="mut">{{ u.apple_id or '' }}</span></div></div>
 {% if not u.exists %}<div class="li"><span class="bad">{{ _('Container non trovato.') }}</span></div>{% else %}
 <div class="li"><span class="row">{% if u.running %}<span class="tag ok">{{ _('in esecuzione') }}{% if u.health %} · {{u.health}}{% endif %}</span>{% else %}<span class="tag bad">{{ _('fermo') }}</span>{% endif %}
 {% if u.days %}<span class="tag {% if u.days|int <= 3 %}warn{% else %}ok{% endif %}">{{ _('sessione: {a0} giorni', a0=u.days) }}</span>{% endif %}{% if u.auth %}<span class="tag warn">{{ _('autenticazione in corso') }}</span>{% endif %}</span></div>
 <div class="li">{% include "actions.html" %}</div>
 {% if u.type == "iclouddrive" %}
-<div class="li"><span class="k">Apple ID</span><span class="v">{{u.apple_id}}</span></div>
-<div class="li" style="padding-bottom:4px"><span class="mut" style="text-transform:uppercase;letter-spacing:.02em">{{ _('Cosa scarica') }}</span></div>
-{% for sv in u.services %}<div class="li" style="align-items:flex-start"><span class="badge {{ sv.badge if sv.on else 'b-gray' }}" style="{{ '' if sv.on else 'opacity:.45' }}">{{ icon(sv.icon, 17) }}</span>
-<span class="k" style="min-width:0;flex:1"><b style="font-weight:500">{{ sv.name }}</b>{% if sv.info %}<br><span class="mut {{ 'bad' if sv.err }}">{{ sv.info }}</span>{% endif %}{% for p in sv.paths %}<br><span class="mut" style="word-break:break-all">{{ p }}</span>{% endfor %}</span>
-<span class="v" style="flex:none">{% if sv.on %}<span class="tag ok">{{ _('attivo') }}</span>{% if sv.freq %}<br><span class="mut">{{ sv.freq }}</span>{% endif %}{% if sv.last %}<br><span class="mut">{{ sv.last }}</span>{% endif %}{% else %}<span class="tag">{{ _('spento') }}</span>{% endif %}</span></div>{% endfor %}
+{% if u.storage %}<div class="li col"><span class="row" style="justify-content:space-between"><span class="k">{{ _('Spazio sul NAS') }}</span><span class="v">{{ fmt_size(u.storage_total) }}</span></span>
+<span class="sbar" role="img" aria-label="{{ _('Spazio sul NAS') }}">{% for n, b, sl in u.storage %}<i style="flex:{{ b }};background:var(--c{{ sl }})" title="{{ _(n) }}: {{ fmt_size(b) }}"></i>{% endfor %}</span>
+<span class="row" style="gap:.2rem .8rem">{% for n, b, sl in u.storage %}<span class="mut"><span class="sw" style="background:var(--c{{ sl }})"></span> {{ _(n) }} {{ fmt_size(b) }}</span>{% endfor %}</span></div>{% endif %}
+<div class="li" style="padding-bottom:2px"><span class="mut" style="text-transform:uppercase;letter-spacing:.02em">{{ _('Account') }}</span></div>
+{% for g in u.acct_groups %}<details class="li col acct" style="display:block" {% if loop.first %}open{% endif %}><summary style="list-style:none;display:flex;align-items:center;gap:.6rem;cursor:pointer"><span class="badge {{ g.badge }}">{{ icon(g.icon, 16) }}</span><span class="k" style="flex:1;min-width:0"><b style="font-weight:600">{{ g.title }}</b><br><span class="mut">{{ g.email or '—' }} · {{ _('{a0} servizi attivi', a0=g.rows|selectattr('on')|list|length) }}</span></span>{% if g.rows|selectattr('err')|list %}<span class="tag bad">{{ _('errore') }}</span>{% endif %}{{ icon('chevron', 15, 'ic chev') }}</summary>
+<div class="svc">{% for sv in g.rows %}<div class="srow"><span class="badge {{ sv.badge if sv.on else 'b-gray' }}" style="width:26px;height:26px;{{ '' if sv.on else 'opacity:.45' }}">{{ icon(sv.icon, 15) }}</span>
+<span class="k" style="min-width:0;flex:1"><span style="font-weight:500">{{ sv.name }}</span>{% if sv.info %}<br><span class="mut {{ 'bad' if sv.err }}">{{ sv.info }}</span>{% endif %}{% for p in sv.paths %}<br><code class="path">{{ p }}</code>{% endfor %}</span>
+<span class="v" style="flex:none;text-align:right">{% if sv.on %}<span class="tag ok">{{ _('attivo') }}</span>{% if sv.freq %}<br><span class="mut">{{ sv.freq }}</span>{% endif %}{% if sv.last %}<br><span class="mut">{{ sv.last }}</span>{% endif %}{% else %}<span class="tag">{{ _('spento') }}</span>{% endif %}</span></div>{% endfor %}</div></details>{% endfor %}
 {% for g in u.cycles or [] %}{% if g.stalled %}<div class="li"><span class="bad">{{ icon('warn', 15) }} {{ _('Giro {a0}', a0=g.kind) }}: {{ _('in corso dalle {a0} ({a1} min)', a0=g.since, a1=g.running_min) }}</span></div>{% endif %}{% endfor %}
 <div class="li"><span class="k">{{ _('Ultima riga di log') }}</span><span class="v">{{u.activity or '—'}}</span></div>
 <div class="li"><span class="k">{{ _('Riavvio automatico') }}</span><span class="v">{% if not u.autoheal_on %}{{ _('spento (AUTOHEAL=0)') }}{% elif u.autoheal and u.autoheal.last %}{% set e = u.autoheal.last %}<span class="{% if e.action == 'gave_up' %}bad{% endif %}">{% if e.action == 'gave_up' %}{{ _('sospeso il {a0}: troppi blocchi', a0=e.when) }}{% else %}{{ _('ultimo il {a0}', a0=e.when) }}{% endif %}</span><br><span class="mut">{{e.reason}}</span>{% if u.autoheal.n24 %}<br><span class="mut">{{ _('{a0} nelle ultime 24 h', a0=u.autoheal.n24) }}</span>{% endif %}{% else %}{{ _('attivo, nessun intervento') }}{% endif %}</span></div>
@@ -43,6 +48,7 @@
 <form method="post" action="/u/{{u.name}}/code" class="row"><input name="code" placeholder="{{ _('codice a 6 cifre') }}" style="width:11em" inputmode="numeric" pattern="[0-9]{6}"><button class="tint small">{{ _('Invia codice') }}</button></form></div></details>
 <details class="li col" style="display:block"><summary style="list-style:none;display:flex;align-items:center;gap:.6rem;cursor:pointer"><span class="badge b-gray">{{ icon('gear', 17) }}</span><span class="k">{{ _('Impostazioni') }}</span><span class="v">{{ icon('chevron', 15, 'ic chev') }}</span></summary>
 <form method="post" action="/u/{{u.name}}/settings" style="padding:.6rem 0;display:grid;gap:.45rem">
+<p class="mut" style="margin:0">{{ _('Container') }}: <code>{{ u.container }}</code> · {{ _('comandi Telegram') }} <code>#{{ u.name }}</code>{% if u.image %} · <code>{{ u.image }}</code>{% endif %}</p>
 <label class="f">{{ _('Etichetta') }}</label><input name="label" value="{{u.label}}">
 {% if u.type == "iclouddrive" %}<label class="f">Apple ID</label><input name="apple_id" value="{{u.apple_id}}">
 <label class="f">{{ _('Controlla iCloud Drive ogni (secondi)') }}</label><input name="sync_interval" value="{{u.sync_interval}}">
@@ -55,4 +61,10 @@
 <label class="f">{{ _('Promemoria da N giorni prima') }}</label><input name="notification_days" value="{{u.notification_days}}">{% endif %}
 <div class="row"><button class="small">{{ _('Salva e riavvia') }}</button></div></form>
 <form method="post" action="/u/{{u.name}}/delete" onsubmit="return confirm('{{ _("Toglie l'utente dalla GUI e dal bot; il container resta. Continuare?") }}')" style="padding-bottom:.4rem"><button class="red small">{{ icon('trash', 15) }}{{ _('Rimuovi dalla GUI') }}</button></form></details>
-{% endif %}</div>{% endfor %}</div></details>{% endfor %}{% endblock %}
+{% endif %}</div>{% endfor %}</div>{% if sections|length > 1 %}</details>{% endif %}{% endfor %}
+<script>
+// disposizione delle schede: orizzontale (affiancate) o verticale (una per riga, più larga); ricordata nel browser
+(function(){ var g = document.querySelectorAll(".ugrid"), v = "h"; try { v = localStorage.getItem("users:layout") || "h"; } catch(e) {}
+  function set(x){ g.forEach(function(e){ e.classList.toggle("vert", x === "v"); }); document.querySelectorAll('input[name=ulay]').forEach(function(r){ r.checked = r.value === x; }); }
+  set(v); document.querySelectorAll('input[name=ulay]').forEach(function(r){ r.addEventListener("change", function(){ set(r.value); try { localStorage.setItem("users:layout", r.value); } catch(e) {} }); }); })();
+</script>{% endblock %}

@@ -108,6 +108,15 @@ Gli avvisi automatici del dispatcher si impostano dalle variabili del template U
 `TELEGRAM_TOKEN` e `ALLOWED_CHATS` (le chat da cui il bot accetta comandi) restano come prima. Le risposte ai comandi del bot e
 della GUI non passano dalle ore silenziose: arrivano sempre subito alla chat che le ha chieste.
 
+### Utenti in stile pannello iCloud (dalla 3.16)
+
+- Ogni persona ha una scheda come il pannello iCloud: iniziale, nome, Apple ID, stato, azioni, **barra dello spazio sul NAS** per
+  tipo (dalla misura con `du`) e la sezione **Account**: *Apple · iCloud* (iCloud Drive, Foto, Note, Promemoria, Posta, Calendario,
+  Contatti) e ogni altro account collegato (*Gmail*, *Outlook*, IMAP) con i suoi servizi; per ogni servizio stato, frequenza,
+  ultimo giro, conteggi e **percorsi** sul NAS (`/mnt/user/documents/<persona>/<account>/…`). Il nome del container e
+  dell'immagine non compare più nei titoli (resta nelle Impostazioni della scheda).
+- **Disposizione** orizzontale (schede affiancate) o verticale (una per riga, servizi su due colonne), ricordata nel browser.
+
 ### Ricerca intelligente nelle foto e informazioni (dalla 3.15)
 
 - **Cerca cosa c'è nelle foto** (es. «sedia», «spiaggia», «cane sul divano») nella scheda Foto: la ricerca la fa **Immich**, che

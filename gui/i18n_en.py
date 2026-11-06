@@ -1,5 +1,12 @@
 """Traduzioni inglesi della GUI: chiave = testo italiano usato nel codice e nei template (vedi ui.py)."""
 EN = {
+    "Disposizione": "Layout",
+    "Orizzontale": "Horizontal",
+    "Verticale": "Vertical",
+    "Spazio sul NAS": "Space on the NAS",
+    "{a0} servizi attivi": "{a0} active services",
+    "Container": "Container",
+    "comandi Telegram": "Telegram commands",
     "Cerca cosa c'è nelle foto: sedia, spiaggia, cane sul divano, torta…": "Search what's in the photos: chair, beach, dog on the sofa, cake…",
     "Cerca nel nome del file…": "Search the file name…",
     "Ricerca intelligente di Immich: prima le foto più simili a «{a0}» (fino a 500).": "Immich smart search: the photos most similar to «{a0}» first (up to 500).",
