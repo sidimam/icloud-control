@@ -18,6 +18,7 @@
 <div class="li"><a class="btn tint" href="/item/{{ d.id }}/raw?dl=1">{{ _('Scarica il messaggio (.eml)') }}</a></div>
 {% elif d.kind == 'event' %}
 <div class="li"><span class="k">{{ _('Calendario') }}</span><span class="v">{{ d.x.calendar }}</span></div><div class="li"><span class="k">{{ _('Inizio') }}</span><span class="v">{{ fmt_date(d.date, not d.x.allday) }}</span></div>{% if d.date_end %}<div class="li"><span class="k">{{ _('Fine') }}</span><span class="v">{{ fmt_date(d.date_end, not d.x.allday) }}</span></div>{% endif %}
+{% if d.x.tz and not d.x.allday %}<div class="li"><span class="k">{{ _('Fuso orario') }}</span><span class="v">{{ d.x.tz }}{% if d.x.tz != local_tz and d.tz_time %} · {{ _('lì: {a0}', a0=d.tz_time) }}{% endif %}<br><span class="mut">{{ _('orari mostrati nell\'ora di {a0}', a0=local_tz) }}</span></span></div>{% endif %}
 {% if d.x.location %}<div class="li"><span class="k">{{ _('Luogo') }}</span><span class="v">{{ d.x.location }}</span></div>{% endif %}{% if d.x.rrule %}<div class="li"><span class="k">{{ _('Ripetizione') }}</span><span class="v"><code>{{ d.x.rrule }}</code></span></div>{% endif %}
 {% if d.x.desc %}<div class="li col"><span class="k">{{ _('Note') }}</span><span style="white-space:pre-wrap">{{ d.x.desc }}</span></div>{% endif %}
 {% elif d.kind == 'contact' %}

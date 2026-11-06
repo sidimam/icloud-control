@@ -1,6 +1,13 @@
 {% extends "base.html" %}{% block head %}<link rel="stylesheet" href="/static/vendor/leaflet.css">{% endblock %}{% block body %}
 <h1 class="title">{{ _('Calendario') }}</h1>
-<form method="get" action="/calendar">{% include "_personfilter.html" %}</form>
+<div class="row" style="justify-content:space-between;align-items:flex-start;gap:.8rem"><form method="get" action="/calendar">{% include "_personfilter.html" %}</form>
+<div class="today" style="text-align:right;margin-left:auto"><div id="today" style="font-size:17px;font-weight:600"></div>
+<div class="row" style="justify-content:flex-end;gap:.4rem;margin-top:.2rem"><span class="mut" id="nowclock"></span><label class="mut" for="tzsel">{{ _('Fuso orario') }}</label>
+<select id="tzsel" style="width:auto;max-width:230px;padding:.3rem .5rem;font-size:13px"></select></div></div></div>
+{% set sb_placeholder = _('Cerca negli appuntamenti (titolo, luogo, note), in tutte le date…') %}{% include "_searchbar.html" %}
+{% if q %}<details class="grp" data-k="cal-found" open><summary>{{ icon('search', 15) }}{{ _('{a0} appuntamenti trovati', a0=found|length) }}{{ icon('chevron', 15, 'ic chev') }}</summary>
+<div class="list" style="max-height:340px;overflow:auto">{% for r in found %}<div class="li" style="align-items:flex-start"><span class="k" style="flex:1;min-width:0">{% if r.id %}<a href="/item/{{ r.id }}">{{ r.title or '—' }}</a>{% else %}{{ r.title }}{% endif %}<br><span class="mut">{{ r.x.calendar }}{% if r.person %} · {{ r.person }}{% endif %}{% if r.x.location %} · {{ r.x.location }}{% endif %}{% if r.x.rrule %} · {{ _('si ripete') }}{% endif %}</span></span>
+<span class="v" style="flex:none"><button type="button" class="tint small gotod" data-d="{{ (r.date or 0)|int }}">{{ fmt_date(r.date, not r.x.allday) }}</button></span></div>{% else %}<div class="li"><span class="mut">{{ _('Nessun appuntamento con questo testo.') }}</span></div>{% endfor %}</div></details>{% endif %}
 {% set fo = {"name": _('titolo, luogo o calendario'), "ext": none, "dates": none, "sorts": [], "default": ""} %}{% include "_filters.html" %}
 <div class="split">
 <div style="display:grid;gap:1rem">
@@ -15,13 +22,26 @@
 <div class="list" style="padding:.8rem"><div id="cal"></div></div>
 </div>
 <style>.fc{--fc-border-color:var(--sep);--fc-page-bg-color:var(--card);--fc-neutral-bg-color:var(--fill);--fc-today-bg-color:var(--acc-t);--fc-button-bg-color:var(--fill);--fc-button-border-color:transparent;--fc-button-text-color:var(--fg);--fc-button-hover-bg-color:var(--acc-t);--fc-button-hover-border-color:transparent;--fc-button-active-bg-color:var(--acc);--fc-button-active-border-color:transparent;font-size:14px}.fc .fc-button{border-radius:8px;text-transform:capitalize;font-weight:500}.fc .fc-toolbar-title{font-size:20px;font-weight:600}.fc a{color:inherit}.leaflet-container{background:var(--fill)}</style>
-<script src="/static/vendor/fullcalendar.js"></script><script src="/static/vendor/fullcalendar-it.js"></script><script src="/static/vendor/leaflet.js"></script>
+<script src="/static/vendor/fullcalendar.js"></script><script src="/static/vendor/fullcalendar-it.js"></script><script src="/static/vendor/luxon.js"></script><script src="/static/vendor/fullcalendar-luxon.js"></script><script src="/static/vendor/leaflet.js"></script>
 <script>
 (function(){
   var person = {{ person|tojson }}, lang = {{ cur_lang()|tojson }}, geocodeOn = {{ geocode|tojson }};
   var hidden = new Set(); try { hidden = new Set(JSON.parse(localStorage.getItem("cal:hidden") || "[]")); } catch(e) {}
   document.querySelectorAll(".calvis").forEach(function(cb){ cb.checked = !hidden.has(cb.value); cb.addEventListener("change", function(){ if (cb.checked) hidden.delete(cb.value); else hidden.add(cb.value); try{localStorage.setItem("cal:hidden", JSON.stringify([...hidden]));}catch(e){} cal.refetchEvents(); }); });
   var view = "dayGridMonth"; try { view = localStorage.getItem("cal:view") || view; } catch(e) {}
+  // fuso orario (3.14): quello del browser, oppure uno scelto e ricordato; la data di oggi e l'ora sono in quel fuso
+  var home = {{ local_tz|tojson }}, browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone || home, tz = browserTz;
+  try { tz = localStorage.getItem("cal:tz") || browserTz; } catch(e) {}
+  var sel = document.getElementById("tzsel"), zones = [];
+  try { zones = Intl.supportedValuesOf("timeZone"); } catch(e) { zones = [home, "UTC", "Europe/London", "America/New_York", "Asia/Tokyo"]; }
+  var first = [browserTz, home, "UTC"].filter(function(z, i, a){ return z && a.indexOf(z) === i; });
+  function off(z){ try { return new Intl.DateTimeFormat("en", {timeZone: z, timeZoneName: "shortOffset"}).formatToParts(new Date()).find(function(p){return p.type === "timeZoneName";}).value.replace("GMT", "UTC"); } catch(e) { return ""; } }
+  first.concat(zones.filter(function(z){ return first.indexOf(z) < 0; })).forEach(function(z){ var o = document.createElement("option"); o.value = z; o.textContent = z.replace(/_/g, " ") + " (" + off(z) + ")" + (z === browserTz ? " · " + {{ _('questo dispositivo')|tojson }} : ""); sel.appendChild(o); });
+  if (zones.indexOf(tz) < 0 && first.indexOf(tz) < 0) tz = browserTz; sel.value = tz;
+  function tick(){ var d = new Date();
+    document.getElementById("today").textContent = new Intl.DateTimeFormat(lang, {timeZone: tz, weekday: "long", day: "numeric", month: "long", year: "numeric"}).format(d).replace(/^./, function(c){return c.toUpperCase();});
+    document.getElementById("nowclock").textContent = new Intl.DateTimeFormat(lang, {timeZone: tz, hour: "2-digit", minute: "2-digit"}).format(d) + " ·"; }
+  tick(); setInterval(tick, 30000);
   var map = L.map("map").setView([41.9, 12.5], 5); L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {maxZoom: 19, attribution: "© OpenStreetMap"}).addTo(map);
   var markers = L.layerGroup().addTo(map), geoCache = {};
   function placeMarkers(events){
@@ -35,15 +55,19 @@
       fetch("/api/geocode?q=" + encodeURIComponent(q)).then(function(r){return r.json();}).then(function(d){ geoCache[q] = d.geo; cb(d.geo); next(i + 1); }).catch(function(){ next(i + 1); }); })(0);
   }
   var cal = new FullCalendar.Calendar(document.getElementById("cal"), {
-    locale: lang, initialView: view, firstDay: 1, height: "auto", nowIndicator: true, navLinks: true, dayMaxEvents: true,
+    locale: lang, timeZone: tz, initialView: view, firstDay: 1, height: "auto", nowIndicator: true, navLinks: true, dayMaxEvents: true,
+    eventDidMount: function(i){ var p = i.event.extendedProps; var t = [i.event.title, p.calendar, p.location].filter(Boolean).join(" · ");
+      if (p.tz && p.tz !== tz && !i.event.allDay) t += " · " + {{ _('creato nel fuso')|tojson }} + " " + p.tz; i.el.title = t; },
     headerToolbar: {left: "prev,next today", center: "title", right: "multiMonthYear,dayGridMonth,timeGridWeek,timeGridDay,listMonth"},
     views: {multiMonthYear: {multiMonthMaxColumns: 3}},
     events: function(info, ok, ko){ fetch("/api/events?start=" + encodeURIComponent(info.startStr) + "&end=" + encodeURIComponent(info.endStr) + "&person=" + encodeURIComponent(person) + "&fq=" + encodeURIComponent(new URLSearchParams(location.search).get("fq") || "")).then(function(r){return r.json();}).then(function(d){ ok(d.events.filter(function(e){ return !hidden.has(e.extendedProps.cal_id); })); }).catch(ko); },
     eventsSet: placeMarkers,
     datesSet: function(i){ try { localStorage.setItem("cal:view", i.view.type); } catch(e) {} },
-    eventClick: function(i){ i.jsEvent.preventDefault(); location.href = i.event.url; }
+    eventClick: function(i){ i.jsEvent.preventDefault(); if (i.event.url) location.href = i.event.url; }
   });
   cal.render();
+  document.querySelectorAll(".gotod").forEach(function(b){ b.addEventListener("click", function(){ cal.changeView("timeGridDay", new Date(parseInt(b.dataset.d, 10) * 1000)); document.getElementById("cal").scrollIntoView({behavior: "smooth"}); }); });
+  sel.addEventListener("change", function(){ tz = sel.value; try { localStorage.setItem("cal:tz", tz); } catch(e) {} cal.setOption("timeZone", tz); tick(); });
   document.querySelectorAll(".calcol").forEach(function(inp){ inp.addEventListener("change", function(){ var f = new FormData(); f.append("id", inp.dataset.id); f.append("color", inp.value); fetch("/calendar/color", {method: "POST", body: f}).then(function(){ cal.refetchEvents(); }); }); });
 })();
 </script>

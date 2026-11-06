@@ -1,4 +1,4 @@
 {# Scelta «Tutti / una persona», mantenendo gli altri parametri della pagina. #}
 {% if persons|length > 1 %}<div class="seg" role="radiogroup" aria-label="{{ _('Persona') }}" style="margin-bottom:.8rem">
 <label><input type="radio" name="person" value="" {% if not person %}checked{% endif %} onchange="this.form.submit()"><span>{{ _('Tutti') }}</span></label>
-{% for p in (scopes or []) + persons %}<label><input type="radio" name="person" value="{{ p }}" {% if person == p %}checked{% endif %} onchange="this.form.submit()"><span>{{ p }}</span></label>{% endfor %}</div>{% endif %}
+{% for p in (scopes or []) + persons + (scopes_after or []) %}<label><input type="radio" name="person" value="{{ p }}" {% if person == p %}checked{% endif %} onchange="this.form.submit()"><span>{{ p }}</span></label>{% endfor %}</div>{% endif %}

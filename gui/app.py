@@ -170,7 +170,7 @@ def _icloud_of(profile):
 @app.context_processor
 def page_ctx():
     from urllib.parse import urlencode
-    n = me(); return {"qs": lambda **kw: request.path + "?" + urlencode({**request.args.to_dict(), **{k: v for k, v in kw.items()}}), "reset_set": bool(GUI_RESET), "me": n, "me_admin": bool(n and accounts.is_admin(n)), "fmt_ts": lambda t: datetime.datetime.fromtimestamp(t).strftime("%d/%m/%Y %H:%M") if t else "mai"}
+    n = me(); return {"qs": lambda **kw: request.path + "?" + urlencode({**request.args.to_dict(), **{k: v for k, v in kw.items()}}), "reset_set": bool(GUI_RESET), "me": n, "me_admin": bool(n and accounts.is_admin(n)), "local_tz": os.environ.get("TZ", "Europe/Rome"), "fmt_ts": lambda t: datetime.datetime.fromtimestamp(t).strftime("%d/%m/%Y %H:%M") if t else "mai"}
 
 def cfg(): return json.load(open(CFG))
 def save(c): json.dump(c, open(CFG, "w"), indent=2, ensure_ascii=False)
@@ -915,6 +915,14 @@ def filt_py(rows, a, name, date=None, size=None, ext=None, default="date", keys=
         empty = [r for r in rows if key == "date" and fn(r) in (None, "", 0)]; ids = {id(r) for r in empty}
         rows = sorted((r for r in rows if id(r) not in ids), key=fn, reverse=(d == "desc")) + empty
     return rows
+def fts_ids(kind, q):
+    """Identificativi degli elementi di quel tipo che contengono il testo (titolo e contenuto, come nella scheda Cerca)."""
+    fq = SI.fts_query(q)
+    if not fq: return None
+    con = SI.connect()
+    try: return {r[0] for r in con.execute("select i.id from fts join items i on i.id = fts.rowid where fts match ? and i.kind = ?", (fq, kind))}
+    except sqlite3.OperationalError: return set()
+    finally: con.close()
 def allowed_persons():
     """Persone visibili: tutte per l'amministratore (o senza password), altrimenti solo quella del proprio container."""
     c = cfg()["users"]
@@ -987,6 +995,9 @@ def _fmt_size(n):
 @app.route("/item/<int:rid>")
 def item(rid):
     d = _item(rid); body = ""
+    if d["kind"] == "event" and d["x"].get("tz") and d.get("date"):   # ora dell'evento nel fuso in cui è stato creato
+        try: d["tz_time"] = datetime.datetime.fromtimestamp(d["date"], __import__("zoneinfo").ZoneInfo(d["x"]["tz"])).strftime("%d/%m/%Y %H:%M")
+        except Exception: pass
     if d["kind"] == "mail" and _local_ok(d["x"].get("local", "")):
         try:
             msg = email.message_from_binary_file(open(d["x"]["local"], "rb"), policy=email.policy.default)
@@ -1212,6 +1223,8 @@ def notes():
     folders = {}
     for r in rows: folders.setdefault((r["person"], r["x"].get("folder", "")), 0); folders[(r["person"], r["x"].get("folder", ""))] += 1
     if folder: rows = [r for r in rows if r["x"].get("folder") == folder and (not of or r["person"] == of)]
+    if request.args.get("q", "").strip():
+        hit = fts_ids("note", request.args["q"]); rows = [r for r in rows if hit is None or r["id"] in hit]
     rows = filt_py(rows, request.args, name=lambda r: r["title"], date=lambda r: r["date"], size=lambda r: r["size"])
     return render_template("notes.html", rows=rows, folders=sorted(folders.items()), persons=persons, person=person, folder=folder, of=of, fmt_date=_fmt_date)
 @app.route("/reminders")
@@ -1231,6 +1244,8 @@ def reminders():
     for r in rows:
         k = (r["person"], r["x"].get("list", "")); lists.setdefault(k, [0, 0]); lists[k][0 if not r["x"].get("completed") else 1] += 1
     if lst: rows = [r for r in rows if r["x"].get("list") == lst and (not of or r["person"] == of)]
+    if request.args.get("q", "").strip():
+        hit = fts_ids("reminder", request.args["q"]); rows = [r for r in rows if hit is None or r["id"] in hit]
     if show == "open": rows = [r for r in rows if not r["x"].get("completed")]
     elif show == "done": rows = [r for r in rows if r["x"].get("completed")]
     now = time.time()
@@ -1284,6 +1299,7 @@ def cal_scope(person):
     """Calendari da mostrare e da cui leggere gli eventi: {cal_id canonico: gruppo}. Un gruppo condiviso conta una volta,
     letto dal primo membro visibile; «Famiglia» = solo il calendario di famiglia, una persona = i suoi senza quello."""
     persons = allowed_persons(); groups = cal_groups(); out = {}
+    if person == HOLIDAYS: return out
     for c, g in groups.items():
         vis = [x for x, p in zip(g["ids"], g["members"]) if p in persons]
         if not vis or c != vis[0]: continue
@@ -1304,6 +1320,10 @@ def cal_list(person=""):
         r, g = rows[c], sc[c]; shared = len(g["members"]) > 1
         out.append({"id": c, "name": g["name"] if shared else r["name"], "person": ", ".join(dict.fromkeys(g["members"])) if shared else r["person"], "account": r["account"],
                     "n": r["n"], "shared": shared, "family": g["family"], "color": colors.get(c) or next((colors[x] for x in g["ids"] if x in colors), None) or PALETTE[i % len(PALETTE)]})
+    if person in ("", HOLIDAYS):   # festività: in «Tutti» e nella loro voce
+        cal, name = holidays_cal()
+        if cal: out.append({"id": HOL_ID, "name": name, "person": "Apple", "account": _("calendario pubblico"), "n": len(cal.walk("VEVENT")), "shared": False,
+                            "family": False, "holiday": True, "color": colors.get(HOL_ID) or "#8e8e93"})
     return out
 def family_scopes(kind):
     """Le voci in più del selettore: «Famiglia» se c'è un calendario (o una lista di promemoria) di famiglia condiviso."""
@@ -1315,12 +1335,28 @@ def family_lists():
 @app.route("/calendar")
 def calendar():
     persons = allowed_persons(); person = request.args.get("person", "")
-    if person not in persons and person != FAMILY: person = ""
-    return render_template("calendar.html", cals=cal_list(person), persons=persons, person=person, scopes=family_scopes("event"), geocode=_settings().get("geocode", False))
+    if person not in persons and person not in (FAMILY, HOLIDAYS): person = ""
+    cals = cal_list(person); found = []; q = request.args.get("q", "").strip()
+    if q:   # ricerca nel testo (titolo, luogo, note) fra i calendari mostrati, in tutte le date; più vicine a oggi per prime
+        hit = fts_ids("event", q) or set(); ids = [c["id"] for c in cals if c["id"] != HOL_ID]
+        if hit and ids:
+            con = SI.connect()
+            try: found = [{**dict(r), "x": json.loads(r["extra"] or "{}")} for r in con.execute(f"select * from items where kind='event' and id in ({','.join(str(i) for i in hit)}) and json_extract(extra,'$.cal_id') in ({','.join('?' * len(ids))})", ids)]
+            finally: con.close()
+            now = time.time(); found.sort(key=lambda r: abs((r["date"] or 0) - now))
+            found = found[:200]
+        cal_, name = holidays_cal()
+        if cal_ and any(c["id"] == HOL_ID for c in cals):
+            for ev in cal_.walk("VEVENT"):
+                if q.lower() in str(ev.get("SUMMARY") or "").lower():
+                    ds = ev.get("DTSTART").dt; found.append({"id": None, "title": str(ev.get("SUMMARY")), "date": datetime.datetime.combine(ds, datetime.time()).timestamp() if not isinstance(ds, datetime.datetime) else ds.timestamp(),
+                                                              "person": "", "x": {"calendar": name, "allday": True, "rrule": "RRULE" in ev}})
+    return render_template("calendar.html", cals=cals, found=found, q=q, fmt_date=_fmt_date, persons=persons, person=person, scopes=family_scopes("event"),
+                           scopes_after=[HOLIDAYS] if holidays_cal()[0] else [], geocode=_settings().get("geocode", False))
 @app.post("/calendar/color")
 def calendar_color():
     cid = request.form.get("id", ""); col = request.form.get("color", "")
-    if not re.fullmatch(r"#[0-9a-fA-F]{6}", col) or cid not in cal_scope(""): abort(400)
+    if not re.fullmatch(r"#[0-9a-fA-F]{6}", col) or (cid not in cal_scope("") and cid != HOL_ID): abort(400)
     st = _settings(); st.setdefault("calendar_colors", {})[cid] = col; _save_settings(st); return ("", 204)
 def _expand(r, start, end):
     """Occorrenze di un evento ricorrente fra start ed end (dal file .ics originale)."""
@@ -1337,10 +1373,48 @@ def _expand(r, start, end):
             out.append((ds, de))
         return out
     except Exception: return []
+LOCAL_TZ = __import__("zoneinfo").ZoneInfo(os.environ.get("TZ", "Europe/Rome"))
 def _iso(v):
-    if isinstance(v, datetime.datetime): return v.isoformat()
+    """Orari sempre con lo scostamento (3.14): il calendario li mostra poi nel fuso scelto. Senza fuso = ora locale."""
+    if isinstance(v, datetime.datetime): return (v if v.tzinfo else v.replace(tzinfo=LOCAL_TZ)).isoformat()
     if isinstance(v, datetime.date): return v.isoformat()
     return None
+# ---- festività (3.14): calendario pubblico di Apple, scaricato una volta al giorno e tenuto in /app/state
+HOLIDAYS = "Festività"; HOL_ID = "holidays"
+HOL_URL = os.environ.get("HOLIDAYS_URL", "https://calendars.icloud.com/holidays/it_it.ics")
+HOL_FILE = os.path.join(APP_DIR, "state", "holidays.ics"); _HOL = {"t": 0, "cal": None, "name": ""}
+def holidays_cal():
+    """(calendario icalendar, nome) delle festività; il file si riscarica se ha più di 24 h, altrimenti resta quello salvato."""
+    import icalendar, gzip, urllib.request
+    try: age = time.time() - os.path.getmtime(HOL_FILE)
+    except OSError: age = None
+    if (age is None or age > 86400) and HOL_URL:
+        try:
+            req = urllib.request.Request(HOL_URL, headers={"User-Agent": "icloud-dashboard", "Accept-Encoding": "gzip"})
+            data = urllib.request.urlopen(req, timeout=20).read()
+            if data[:2] == b"\x1f\x8b": data = gzip.decompress(data)   # Apple lo manda compresso anche senza chiederlo
+            if b"BEGIN:VCALENDAR" in data[:200]:
+                tmp = HOL_FILE + ".tmp"; open(tmp, "wb").write(data); os.replace(tmp, HOL_FILE); _HOL["t"] = 0
+        except Exception as e: print(f"festività: {e}", flush=True)
+    try: mt = os.path.getmtime(HOL_FILE)
+    except OSError: return None, ""
+    if _HOL["t"] != mt:
+        try:
+            cal = icalendar.Calendar.from_ical(open(HOL_FILE, "rb").read())
+            _HOL.update(t=mt, cal=cal, name=str(cal.get("X-WR-CALNAME") or _("Festività")))
+        except Exception as e: print(f"festività: {e}", flush=True); return None, ""
+    return _HOL["cal"], _HOL["name"]
+def holiday_events(start, end, color):
+    import recurring_ical_events
+    cal, name = holidays_cal()
+    if not cal: return []
+    out = []
+    for ev in recurring_ical_events.of(cal).between(datetime.datetime.fromtimestamp(start), datetime.datetime.fromtimestamp(end)):
+        ds = ev.get("DTSTART").dt; de = ev.get("DTEND").dt if ev.get("DTEND") else None
+        out.append({"id": f"hol-{ev.get('UID')}-{_iso(ds)}", "title": str(ev.get("SUMMARY") or ""), "start": _iso(ds), "end": _iso(de),
+                    "allDay": not isinstance(ds, datetime.datetime), "color": color, "display": "block",
+                    "extendedProps": {"person": "", "calendar": name, "location": "", "geo": None, "cal_id": HOL_ID, "holiday": True}})
+    return out
 @app.route("/api/events")
 def api_events():
     person = request.args.get("person", "")
@@ -1348,7 +1422,7 @@ def api_events():
         try: return datetime.datetime.fromisoformat(v.replace("Z", "+00:00")).timestamp()
         except Exception: return time.time()
     start, end = ts(request.args.get("start", "")), ts(request.args.get("end", ""))
-    cals = {c["id"]: c for c in cal_list(person)}; ids = list(cals)   # un calendario condiviso si legge una volta sola
+    cals = {c["id"]: c for c in cal_list(person)}; ids = [c for c in cals if c != HOL_ID]   # un calendario condiviso si legge una volta sola
     con = SI.connect()
     try:
         rows = con.execute(f"""select * from items where kind='event' and json_extract(extra,'$.cal_id') in ({','.join('?' * len(ids)) or 'null'}) and
@@ -1360,14 +1434,17 @@ def api_events():
         fq = (request.args.get("fq") or "").lower()
         if fq and fq not in ((r["title"] or "") + " " + (x.get("location") or "") + " " + (x.get("calendar") or "")).lower(): continue
         base = {"id": r["id"], "title": r["title"] or "—", "color": color, "url": f"/item/{r['id']}",
-                "extendedProps": {"person": r["person"], "calendar": x.get("calendar"), "location": x.get("location"), "geo": x.get("geo"), "cal_id": x.get("cal_id")}}
+                "extendedProps": {"person": r["person"], "calendar": x.get("calendar"), "location": x.get("location"), "geo": x.get("geo"), "cal_id": x.get("cal_id"), "tz": x.get("tz") or ""}}
         if x.get("rrule"):
             for ds, de in _expand(r, start, end):
                 out.append({**base, "start": _iso(ds), "end": _iso(de), "allDay": not isinstance(ds, datetime.datetime)})
         elif r["date"]:
             allday = bool(x.get("allday"))
-            fmt = (lambda t: datetime.date.fromtimestamp(t).isoformat()) if allday else (lambda t: datetime.datetime.fromtimestamp(t).isoformat())
+            fmt = (lambda t: datetime.date.fromtimestamp(t).isoformat()) if allday else (lambda t: datetime.datetime.fromtimestamp(t, LOCAL_TZ).isoformat())
             out.append({**base, "start": fmt(r["date"]), "end": fmt(r["date_end"]) if r["date_end"] else None, "allDay": allday})
+    if HOL_ID in cals:
+        fq = (request.args.get("fq") or "").lower()
+        out += [e for e in holiday_events(start, end, cals[HOL_ID]["color"]) if not fq or fq in (e["title"] + " " + e["extendedProps"]["calendar"]).lower()]
     return {"events": out[:5000]}
 @app.route("/api/geocode")
 def api_geocode():
@@ -1405,6 +1482,8 @@ def mail():
         if folder: where.append("json_extract(extra,'$.folder')=?"); args.append(folder)
         if of and (acct or folder): where.append("person=?"); args.append(of)
         fw, fa, forder = filt_sql(request.args, names=("title", "json_extract(extra,'$.from')"))
+        if request.args.get("q", "").strip() and SI.fts_query(request.args["q"]):
+            fw.append("id in (select rowid from fts where fts match ?)"); fa.append(SI.fts_query(request.args["q"]))
         rows = [{**dict(r), "x": json.loads(r["extra"] or "{}")} for r in con.execute(f"select * from items where {' and '.join(where + fw)} order by {forder} limit 300", args + fa)]
     finally: con.close()
     return render_template("mail.html", tree=tree, rows=rows, persons=persons, person=person, acct=acct, folder=folder, of=of, fmt_date=_fmt_date, fmt_size=_fmt_size)
@@ -1428,7 +1507,7 @@ def contacts():
     people = []
     for g in groups.values():
         names = sorted({r["title"] for r in g if r["title"]}, key=len, reverse=True)
-        item = {"name": names[0] if names else "—", "ids": [r["id"] for r in g], "who": sorted({r["person"] for r in g}),
+        item = {"name": names[0] if names else "—", "ids": [r["id"] for r in g], "who": sorted({r["person"] for r in g}), "noname": all(r["x"].get("noname") for r in g),
                 "emails": sorted({e for r in g for e in r["x"].get("emails", [])}), "tels": sorted({t for r in g for t in r["x"].get("tels", [])}),
                 "org": next((r["x"].get("org") for r in g if r["x"].get("org")), "")}
         if q and q not in (item["name"] + " " + " ".join(item["emails"] + item["tels"]) + " " + item["org"]).lower(): continue
@@ -1436,7 +1515,8 @@ def contacts():
     people.sort(key=lambda p: p["name"].lower())
     people = filt_py(people, request.args, name=lambda p: p["name"] + " " + p["org"], default="name",
                      keys={"name": lambda p: p["name"].lower(), "org": lambda p: (p["org"] or "~").lower(), "who": lambda p: len(p["who"])})
-    return render_template("contacts.html", people=people, persons=persons, person=person, q=q, total=len(rows))
+    unnamed = [p for p in people if p["noname"]]; people = [p for p in people if not p["noname"]]   # senza nome né organizzazione: a parte
+    return render_template("contacts.html", people=people, unnamed=unnamed, persons=persons, person=person, q=q, total=len(rows))
 
 @app.post("/admin/reindex")
 def admin_reindex():

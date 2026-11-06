@@ -1,6 +1,7 @@
 {% extends "base.html" %}{% block body %}
 <h1 class="title">{{ _('Note') }}</h1>
 <form method="get" action="/notes">{% include "_personfilter.html" %}</form>
+{% set sb_placeholder = _('Cerca nelle note (titolo e testo)…') %}{% include "_searchbar.html" %}
 {% set fo = {"name": _('titolo della nota'), "ext": none, "dates": _('Modificata'), "sorts": [("date", _('data di modifica')), ("name", _('titolo')), ("size", _('dimensione'))], "default": "date"} %}{% include "_filters.html" %}
 <div class="split">
 <div class="list"><a class="li" href="?person={{ person }}" style="color:inherit"><span class="k">{{ _('Tutte le note') }}</span><span class="v">{{ folders|sum(attribute=1) }}</span></a>

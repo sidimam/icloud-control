@@ -7,6 +7,8 @@ RUN apk add --no-cache bash curl jq python3 py3-flask py3-pip tzdata vips-tools 
 RUN mkdir -p /opt/dispatcher/gui/static/vendor \
  && curl -fsSL -o /opt/dispatcher/gui/static/vendor/fullcalendar.js https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js \
  && curl -fsSL -o /opt/dispatcher/gui/static/vendor/fullcalendar-it.js https://cdn.jsdelivr.net/npm/@fullcalendar/core@6.1.15/locales/it.global.min.js \
+ && curl -fsSL -o /opt/dispatcher/gui/static/vendor/luxon.js https://cdn.jsdelivr.net/npm/luxon@3.5.0/build/global/luxon.min.js \
+ && curl -fsSL -o /opt/dispatcher/gui/static/vendor/fullcalendar-luxon.js https://cdn.jsdelivr.net/npm/@fullcalendar/luxon3@6.1.15/index.global.min.js \
  && curl -fsSL -o /opt/dispatcher/gui/static/vendor/leaflet.js https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js \
  && curl -fsSL -o /opt/dispatcher/gui/static/vendor/leaflet.css https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css \
  && curl -fsSL -o /opt/dispatcher/gui/static/vendor/markercluster.js https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js \

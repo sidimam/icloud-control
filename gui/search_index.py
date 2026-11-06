@@ -12,6 +12,7 @@ c'è più. Le sorgenti sono le cartelle che i container iclouddr scrivono sul NA
   contatti   <persona>/<account>/Contatti/**/*.vcf    nome, e-mail, telefoni, organizzazione
 """
 import datetime, email, email.policy, html, json, os, re, sqlite3, threading, time
+from zoneinfo import ZoneInfo
 
 DB = os.path.join(os.environ.get("APP_DIR", "/app"), "state", "iclouddb.db")   # «iclouddb»: un file, nessun container a parte
 _lock = threading.Lock()
@@ -38,6 +39,16 @@ def connect():
         if col not in cols:
             c.execute(f"alter table items add column {col} {typ}")
     c.execute("create index if not exists items_geo on items(kind, geo)")
+    # 3.14: gli eventi con TZID erano letti nell'ora locale → una volta sola si rileggono tutti (pochi secondi)
+    if c.execute("pragma user_version").fetchone()[0] < 2:
+        c.execute("delete from fts where rowid in (select id from items where kind='event')")
+        c.execute("delete from items where kind='event'")
+        c.execute("pragma user_version = 2"); c.commit()
+    # 3.14: contatti con FN vuoto ma nome e cognome in N (rubrica di Daniela) → si rileggono una volta
+    if c.execute("pragma user_version").fetchone()[0] < 3:
+        c.execute("delete from fts where rowid in (select id from items where kind='contact')")
+        c.execute("delete from items where kind='contact'")
+        c.execute("pragma user_version = 3"); c.commit()
     return c
 
 
@@ -258,19 +269,47 @@ def _ics_props(block):
     return out
 
 
-def _ics_dt(pv):
+# Nomi di fuso di Windows/Outlook più comuni → IANA (il resto si cerca così com'è, altrimenti vale l'ora locale)
+WIN_TZ = {"w. europe standard time": "Europe/Berlin", "romance standard time": "Europe/Paris", "central europe standard time": "Europe/Budapest",
+          "gmt standard time": "Europe/London", "utc": "UTC", "eastern standard time": "America/New_York", "central standard time": "America/Chicago",
+          "mountain standard time": "America/Denver", "pacific standard time": "America/Los_Angeles", "e. europe standard time": "Europe/Chisinau",
+          "gtb standard time": "Europe/Athens", "fle standard time": "Europe/Kiev", "tokyo standard time": "Asia/Tokyo", "china standard time": "Asia/Shanghai",
+          "singapore standard time": "Asia/Singapore", "india standard time": "Asia/Kolkata", "aus eastern standard time": "Australia/Sydney"}
+
+
+def _zone(name):
+    name = (name or "").strip().strip('"')
+    if not name:
+        return None
+    for cand in (name, WIN_TZ.get(name.lower()), name.split("/", 1)[-1] if name.count("/") > 1 else None):
+        if cand:
+            try:
+                return ZoneInfo(cand)
+            except Exception:
+                pass
+    return None
+
+
+def _ics_dt(pv, with_tz=False):
+    """(timestamp, tutto il giorno[, fuso]) da DTSTART/DTEND. Con TZID l'ora è di quel fuso (dalla 3.14), con Z è UTC,
+    senza nulla è «fluttuante» e vale l'ora locale."""
     if not pv:
-        return None, False
+        return (None, False, "") if with_tz else (None, False)
     params, v = pv
-    v = v.strip()
+    v = v.strip(); tzname = ""
     try:
         if re.fullmatch(r"\d{8}", v):
-            return datetime.datetime.strptime(v, "%Y%m%d").timestamp(), True
-        if v.endswith("Z"):
-            return datetime.datetime.strptime(v, "%Y%m%dT%H%M%SZ").replace(tzinfo=datetime.timezone.utc).timestamp(), False
-        return datetime.datetime.strptime(v[:15], "%Y%m%dT%H%M%S").timestamp(), False
+            res = (datetime.datetime.strptime(v, "%Y%m%d").timestamp(), True)
+        elif v.endswith("Z"):
+            res = (datetime.datetime.strptime(v, "%Y%m%dT%H%M%SZ").replace(tzinfo=datetime.timezone.utc).timestamp(), False); tzname = "UTC"
+        else:
+            m = re.search(r"TZID=([^;]+)", params or "", re.I); z = _zone(m.group(1)) if m else None
+            d = datetime.datetime.strptime(v[:15], "%Y%m%dT%H%M%S")
+            if z: d = d.replace(tzinfo=z); tzname = getattr(z, "key", m.group(1))
+            res = (d.timestamp(), False)
     except ValueError:
-        return None, False
+        res = (None, False)
+    return res + (tzname,) if with_tz else res
 
 
 def _unesc(v):
@@ -297,7 +336,7 @@ def index_events(c, person, account, cal_root, host_root):
             seen.add(key)
             if known.get(key) == (st.st_mtime, st.st_size):
                 continue
-            start, allday = _ics_dt(pr.get("DTSTART"))
+            start, allday, tzname = _ics_dt(pr.get("DTSTART"), with_tz=True)
             end, _ = _ics_dt(pr.get("DTEND"))
             geo = None
             if pr.get("GEO"):
@@ -311,7 +350,7 @@ def index_events(c, person, account, cal_root, host_root):
             _upsert(c, {"kind": "event", "person": person, "account": account, "path": key, "title": title, "ext": "ics",
                         "size": st.st_size, "mtime": st.st_mtime, "date": start, "date_end": end,
                         "extra": json.dumps({"calendar": disp, "cal_id": f"{person}/{account}/{calname}", "location": loc, "desc": desc[:4000],
-                                             "allday": allday, "geo": geo, "rrule": (pr.get("RRULE") or ("", ""))[1], "url": (pr.get("URL") or ("", ""))[1],
+                                             "allday": allday, "tz": tzname, "geo": geo, "rrule": (pr.get("RRULE") or ("", ""))[1], "url": (pr.get("URL") or ("", ""))[1],
                                              "organizer": (pr.get("ORGANIZER") or ("", ""))[1].replace("mailto:", ""), "local": p}, ensure_ascii=False)},
                     body=f"{loc} {desc}", meta=disp)
     _prune(c, "event", person, seen, host_root)
@@ -335,9 +374,13 @@ def index_contacts(c, person, account, card_root, host_root):
         emails = [e.lower() for e in all_("EMAIL") if e]
         tels = [re.sub(r"[^\d+]", "", t) for t in all_("TEL") if t]
         org = (all_("ORG") or [""])[0].replace(";", " ").strip()
-        _upsert(c, {"kind": "contact", "person": person, "account": account, "path": key, "title": fn or (emails or tels or ["?"])[0],
+        if not fn:   # FN vuoto: nome e cognome dal campo N (cognome;nome;secondo nome;prefisso;suffisso), poi soprannome
+            n = (re.findall(r"(?im)^(?:item\d+\.)?N(?:;[^:]*)?:(.*)$", raw) or [""])[0].split(";") + [""] * 5
+            fn = " ".join(_unesc(x).strip() for x in (n[3], n[1], n[2], n[0], n[4]) if _unesc(x).strip()) or (all_("NICKNAME") or [""])[0]
+        noname = not fn and not org
+        _upsert(c, {"kind": "contact", "person": person, "account": account, "path": key, "title": fn or org or (emails or tels or ["?"])[0],
                     "ext": "vcf", "size": st.st_size, "mtime": st.st_mtime, "date": None,
-                    "extra": json.dumps({"emails": emails, "tels": tels, "org": org, "adr": [a.replace(";", " ").strip() for a in all_("ADR")],
+                    "extra": json.dumps({"emails": emails, "tels": tels, "org": org, "noname": noname, "adr": [a.replace(";", " ").strip() for a in all_("ADR")],
                                          "note": (all_("NOTE") or [""])[0], "local": p}, ensure_ascii=False)},
                 body=" ".join(emails + tels + [org]), meta=org)
     _prune(c, "contact", person, seen, host_root)

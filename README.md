@@ -108,6 +108,23 @@ Gli avvisi automatici del dispatcher si impostano dalle variabili del template U
 `TELEGRAM_TOKEN` e `ALLOWED_CHATS` (le chat da cui il bot accetta comandi) restano come prima. Le risposte ai comandi del bot e
 della GUI non passano dalle ore silenziose: arrivano sempre subito alla chat che le ha chieste.
 
+### Fusi orari, festività, ricerca e contatti (dalla 3.14)
+
+- **Calendario**: a destra del selettore la data di oggi e l'ora, con il **fuso orario** (quello del dispositivo o uno scelto,
+  ricordato nel browser; FullCalendar + Luxon 3.5.0 nell'immagine). Gli eventi creati in un altro fuso (`TZID`, anche i nomi di
+  Outlook come «W. Europe Standard Time») ora sono alla loro ora vera: prima venivano letti come ora italiana (es. un volo da
+  Londra un'ora prima). La scheda dell'evento mostra il fuso in cui è stato creato e l'ora di lì. Gli eventi si rileggono una
+  volta sola all'aggiornamento (pochi secondi).
+- **Festività**: il calendario pubblico di Apple delle festività italiane (`HOLIDAYS_URL`, default
+  `https://calendars.icloud.com/holidays/it_it.ics`, scaricato una volta al giorno in `/app/state/holidays.ics`) è una voce a
+  parte del selettore (Tutti → Famiglia → persone → Festività) e compare anche in «Tutti», con colore e casella come gli altri.
+- **Campo Cerca** sempre visibile in Note, Promemoria, Posta e Calendario: testo completo dall'indice (titolo e contenuto; in
+  Posta anche mittente, destinatari e allegati; in Calendario un elenco degli appuntamenti trovati in qualsiasi data, con il
+  pulsante che porta il calendario a quel giorno). I Filtri restano per nome, date e ordinamento.
+- **Contatti**: se il «nome visualizzato» (FN) è vuoto il nome viene dal campo N (nome e cognome; tutta la rubrica di Daniela era
+  così), poi dal soprannome o dall'organizzazione; quelli senza alcun nome sono nella sezione ripiegabile «Numeri senza nome».
+  Con 4 o più numeri di telefono (es. «Spam Call», 450) i numeri sono ripiegati.
+
 ### Calendari e promemoria di famiglia (dalla 3.13)
 
 - Un calendario iCloud condiviso compare in ogni persona che lo vede, con gli stessi eventi (stesso UID). La dashboard li
