@@ -368,6 +368,13 @@ def run(sources, log=print):
                     err = f"{type(e).__name__}: {str(e)[:200]}"; c.rollback(); log(f"indice {person} {kind}: {err}")
                 c.execute("insert or replace into runs values(?,?,?,?,?)", (f"{person}:{kind}", time.time(), n, round(time.time() - t, 1), err))
                 c.commit()
+            # posta, eventi e contatti rimasti da una cartella che non c'è più (es. «iCloud - Simone» spostata in «iCloud»)
+            if ph:
+                live = tuple(f"{ph}/{acc}/" for acc in s.get("accounts", []))
+                for r in c.execute("select id, path from items where kind in ('mail','event','contact') and person=?", (person,)).fetchall():
+                    if not r["path"].startswith(live):
+                        c.execute("delete from items where id=?", (r["id"],)); c.execute("delete from fts where rowid=?", (r["id"],))
+                c.commit()
         c.close()
         return True
     finally:

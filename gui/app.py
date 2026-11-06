@@ -819,7 +819,7 @@ def idx_sources():
         ph = m.get("/icloud/persona") or (os.path.dirname(dh) if dh else "")
         photos = [(os.path.basename(src.rstrip("/")) or dst, host_to_local(src), src) for dst, src in sorted(m.items()) if dst.startswith("/icloud/photos")]
         out.append({"person": u.get("label", n), "user": n, "drive": (host_to_local(dh), dh) if dh else None, "photos": photos,
-                    "person_dir": (host_to_local(ph), ph) if ph else None, "accounts": [a.get("label") for a in acc_load(u) if a.get("label")]})
+                    "person_dir": (host_to_local(ph), ph) if ph else None, "accounts": [acc_folder(a) for a in acc_load(u)]})   # cartella vera dell'account (iCloud, Gmail…), non l'etichetta
     return out
 def idx_loop():
     time.sleep(60)
@@ -1141,19 +1141,19 @@ def photos():
 @app.route("/notes")
 def notes():
     persons = allowed_persons(); person = request.args.get("person", ""); sel = [person] if person in persons else persons
-    folder = request.args.get("folder", "")
+    folder = request.args.get("folder", ""); of = request.args.get("of", "")   # of = di chi è la cartella (3.11.1)
     con = SI.connect()
     try:
         rows = [{**dict(r), "x": json.loads(r["extra"] or "{}")} for r in con.execute(f"select * from items where kind='note' and person in ({','.join('?' * len(sel))}) order by date desc", sel)]
     finally: con.close()
     folders = {}
     for r in rows: folders.setdefault((r["person"], r["x"].get("folder", "")), 0); folders[(r["person"], r["x"].get("folder", ""))] += 1
-    if folder: rows = [r for r in rows if r["x"].get("folder") == folder]
-    return render_template("notes.html", rows=rows, folders=sorted(folders.items()), persons=persons, person=person, folder=folder, fmt_date=_fmt_date)
+    if folder: rows = [r for r in rows if r["x"].get("folder") == folder and (not of or r["person"] == of)]
+    return render_template("notes.html", rows=rows, folders=sorted(folders.items()), persons=persons, person=person, folder=folder, of=of, fmt_date=_fmt_date)
 @app.route("/reminders")
 def reminders():
     persons = allowed_persons(); person = request.args.get("person", ""); sel = [person] if person in persons else persons
-    lst = request.args.get("list", ""); show = request.args.get("show", "open")
+    lst = request.args.get("list", ""); show = request.args.get("show", "open"); of = request.args.get("of", "")
     con = SI.connect()
     try:
         rows = [{**dict(r), "x": json.loads(r["extra"] or "{}")} for r in con.execute(f"select * from items where kind='reminder' and person in ({','.join('?' * len(sel))})", sel)]
@@ -1161,12 +1161,12 @@ def reminders():
     lists = {}
     for r in rows:
         k = (r["person"], r["x"].get("list", "")); lists.setdefault(k, [0, 0]); lists[k][0 if not r["x"].get("completed") else 1] += 1
-    if lst: rows = [r for r in rows if r["x"].get("list") == lst]
+    if lst: rows = [r for r in rows if r["x"].get("list") == lst and (not of or r["person"] == of)]
     if show == "open": rows = [r for r in rows if not r["x"].get("completed")]
     elif show == "done": rows = [r for r in rows if r["x"].get("completed")]
     now = time.time()
     rows.sort(key=lambda r: (r["x"].get("completed", False), r["date"] is None, r["date"] or 0, (r["title"] or "").lower()))
-    return render_template("reminders.html", rows=rows, lists=sorted(lists.items()), persons=persons, person=person, lst=lst, show=show, now=now, fmt_date=_fmt_date)
+    return render_template("reminders.html", rows=rows, lists=sorted(lists.items()), persons=persons, person=person, lst=lst, of=of, show=show, now=now, fmt_date=_fmt_date)
 # ---- Calendario, Posta, Contatti (3.7)
 PALETTE = ["#007aff", "#34c759", "#ff9500", "#ff3b30", "#af52de", "#5ac8fa", "#ff2d55", "#a2845e", "#5856d6", "#30b0c7"]
 def _settings():
@@ -1263,16 +1263,17 @@ def admin_geocode():
 @app.route("/mail")
 def mail():
     persons = allowed_persons(); person = request.args.get("person", ""); sel = [person] if person in persons else persons
-    acct = request.args.get("account", ""); folder = request.args.get("folder", "")
+    acct = request.args.get("account", ""); folder = request.args.get("folder", ""); of = request.args.get("of", "")
     con = SI.connect()
     try:
         tree = con.execute(f"select person, account, json_extract(extra,'$.folder') folder, count(*) n from items where kind='mail' and person in ({','.join('?' * len(sel))}) group by person, account, folder order by person, account, folder", sel).fetchall()
         where, args = [f"kind='mail' and person in ({','.join('?' * len(sel))})"], list(sel)
         if acct: where.append("account=?"); args.append(acct)
         if folder: where.append("json_extract(extra,'$.folder')=?"); args.append(folder)
+        if of and (acct or folder): where.append("person=?"); args.append(of)
         rows = [{**dict(r), "x": json.loads(r["extra"] or "{}")} for r in con.execute(f"select * from items where {' and '.join(where)} order by date desc limit 300", args)]
     finally: con.close()
-    return render_template("mail.html", tree=tree, rows=rows, persons=persons, person=person, acct=acct, folder=folder, fmt_date=_fmt_date, fmt_size=_fmt_size)
+    return render_template("mail.html", tree=tree, rows=rows, persons=persons, person=person, acct=acct, folder=folder, of=of, fmt_date=_fmt_date, fmt_size=_fmt_size)
 @app.route("/contacts")
 def contacts():
     persons = allowed_persons(); person = request.args.get("person", ""); sel = [person] if person in persons else persons; q = request.args.get("q", "").strip().lower()
