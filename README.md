@@ -59,7 +59,7 @@ cosa scarica (libreria PrimarySync o SharedSync-…, album), cartella, chat Tele
 giorni di promemoria: aggiorna `/config/icloudpd.conf`, il template Unraid e riavvia), **Rimuovi dalla GUI**. **Nuovo utente** (dalla 2.4 solo container
 📁 **iclouddr**, mandarons/icloud-drive: i container icloudpd esistenti restano gestibili ma non se ne creano più) crea cartelle, template Unraid e
 container scrivendo `config.yaml`: iCloud Drive sotto `/mnt/user/documents/<Persona>/iCloud Drive` (cartelle da saltare, default `Home`),
-e a scelta le foto personali (libreria `PrimarySync`, `%Y/%m`, nomi `simple`) sotto `/mnt/user/media/photos/<Persona>/Personale`
+e a scelta le foto personali (libreria `PrimarySync`, `%Y/%m`, nomi `simple`) sotto `/mnt/user/media/photos/<Persona>/iCloud/Personale`
 montate su `/icloud/photos/all`; controllo ogni 30 minuti (foto ogni ora), nessuna porta pubblicata: lo stato si legge qui e la variabile
 `ENV_CONFIG_FILE_PATH=/config/config.yaml` senza la quale l'immagine legge un config vuoto; poi il primo login manuale
 `docker exec -it iclouddr-<nome> /bin/sh -c "su-exec abc icloud --username=<apple id> --session-directory=/config/session_data"` (password, codice, `y` al keyring).
@@ -109,6 +109,9 @@ Gli avvisi automatici del dispatcher si impostano dalle variabili del template U
 della GUI non passano dalle ore silenziose: arrivano sempre subito alla chat che le ha chieste.
 
 ### Utenti in stile pannello iCloud (dalla 3.16)
+
+- Dalla **3.16.1** le foto stanno in `media/photos/<persona>/<account>/<libreria>` (es. `Simone/iCloud/Famiglia`), come i
+  documenti in `documents/<persona>/<account>/…`; «Nuovo utente» propone `media/photos/<Persona>/iCloud/Personale`.
 
 - Ogni persona ha una scheda come il pannello iCloud: iniziale, nome, Apple ID, stato, azioni, **barra dello spazio sul NAS** per
   tipo (dalla misura con `du`) e la sezione **Account**: *Apple · iCloud* (iCloud Drive, Foto, Note, Promemoria, Posta, Calendario,
@@ -191,7 +194,7 @@ della GUI non passano dalle ore silenziose: arrivano sempre subito alla chat che
 
 ### Foto, mappa, miniature e metadati (dalla 3.9)
 
-- L'indice comprende le **foto e i video** che iclouddr scarica in `media/photos/<Persona>/<album>` (Personale, Famiglia):
+- L'indice comprende le **foto e i video** che iclouddr scarica in `media/photos/<Persona>/iCloud/<album>` (Personale, Famiglia; prima del 6/11/2026 senza `iCloud/`):
   188.113 elementi in circa 90 s. Gli amministratori vedono tutte le persone, un utente solo le proprie.
 - **Foto**: galleria per persona, album, anno, foto o video, 120 per pagina; visualizzatore a schermo intero (frecce, Esc, «i»
   per i metadati; HEIC mostrato come JPEG, video riprodotti dal browser). **Mappa** in stile app Foto: i punti vicini si

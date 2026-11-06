@@ -641,7 +641,7 @@ def new_drive(c, f, name, short):
     """Nuovo container iCloud Drive (mandarons/icloud-drive): cartelle, config.yaml, template Unraid, container. Primo login manuale."""
     apple = f["apple_id"].strip(); chat = f.get("chat_id", "").strip(); label = f.get("label", name).strip() or name
     dest_host = (f.get("drive_dest", "") or f"/mnt/user/documents/{label}/iCloud/iCloud Drive").strip().rstrip("/")
-    photos = f.get("photos") == "on"; photos_host = (f.get("photos_dest", "") or f"/mnt/user/media/photos/{label}/Personale").strip().rstrip("/")
+    photos = f.get("photos") == "on"; photos_host = (f.get("photos_dest", "") or f"/mnt/user/media/photos/{label}/iCloud/Personale").strip().rstrip("/")
     ignore = [x.strip() for x in f.get("ignore", "").split(",") if x.strip()]
     photos_note = f" e foto → {photos_host}" if photos else ""; photos_mount = f" -v {json.dumps(photos_host)}:/icloud/photos/personale/all" if photos else ""
     photos_overview = f" e le foto personali in {html.escape(photos_host)}" if photos else ""

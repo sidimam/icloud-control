@@ -4,7 +4,7 @@ SQLite in /app/state/iclouddb.db con FTS5 (tokenizer unicode61 senza accenti). U
 `fts` (rowid = items.id). Ogni giro rilegge solo ciò che è cambiato (percorso + mtime + dimensione) e toglie ciò che non
 c'è più. Le sorgenti sono le cartelle che i container iclouddr scrivono sul NAS, montate qui in sola lettura:
   file       <persona>/iCloud Drive/**            nome, cartella, tipo, dimensione, data
-  foto       media/photos/<persona>/<album>/**    nome, album, tipo, dimensione, data (3.9)
+  foto       media/photos/<persona>/iCloud/<album>/**   nome, album, tipo, dimensione, data (3.9; iCloud/ dalla 3.16.1)
   note       <persona>/iCloud/Note/**/*.html      titolo e testo
   promemoria <persona>/iCloud/Promemoria/*.json   titolo, note, lista, scadenza, fatto
   posta      <persona>/<account>/Posta (Maildir)  da, a, cc, oggetto, data, testo, allegati
@@ -115,7 +115,7 @@ def index_files(c, person, local_root, host_root):
 
 
 def index_photos(c, person, album, local_root, host_root):
-    """Foto e video scaricati da iclouddr (media/photos/<persona>/<album>): nome, cartella, tipo, dimensione, data del file."""
+    """Foto e video scaricati da iclouddr (media/photos/<persona>/iCloud/<album>): nome, cartella, tipo, dimensione, data del file."""
     known, seen = _known(c, "photo", person), set()
     for p in _walk(local_root):
         try:
