@@ -882,6 +882,10 @@ def idx_sources():
         m = mounts(info); dh = m.get("/icloud/drive", "")
         ph = m.get("/icloud/persona") or (os.path.dirname(dh) if dh else "")
         photos = [(os.path.basename(src.rstrip("/")) or dst, host_to_local(src), src) for dst, src in sorted(m.items()) if dst.startswith("/icloud/photos")]
+        pers = m.get("/icloud/photos/personale/all", "").rstrip("/")   # 3.19.3: foto non iCloud in media/photos/<persona>/Archivio, personali
+        if pers.endswith("/iCloud/Personale"):
+            arch = pers[:-len("/iCloud/Personale")] + "/Archivio"
+            if os.path.isdir(host_to_local(arch)): photos.append(("Archivio", host_to_local(arch), arch))
         out.append({"person": u.get("label", n), "user": n, "drive": (host_to_local(dh), dh) if dh else None, "photos": photos,
                     "person_dir": (host_to_local(ph), ph) if ph else None, "accounts": [acc_folder(a) for a in acc_load(u)]})   # cartella vera dell'account (iCloud, Gmail…), non l'etichetta
     return out
@@ -963,7 +967,7 @@ def allowed_persons():
     c = cfg()["users"]
     if not accounts.any_password() or accounts.is_admin(me()): return [u.get("label", n) for n, u in c.items()]
     own = _own_icloud(); return [c[own].get("label", own)] if own in c else []
-PERSONAL_ALBUMS = {"Personale"}   # gli altri album di foto (es. Famiglia) sono librerie condivise, visibili a tutta la famiglia
+PERSONAL_ALBUMS = {"Personale", "Archivio"}   # Archivio = foto non iCloud della persona (3.19.3); gli altri album di foto (es. Famiglia) sono librerie condivise, visibili a tutta la famiglia
 def shared_albums():
     con = SI.connect()
     try: return [r["account"] for r in con.execute("select distinct account from items where kind='photo' and account is not null order by account") if r["account"] not in PERSONAL_ALBUMS]
