@@ -215,7 +215,8 @@ def tpl_set(c, key, value):
 TG_PREFIX = os.environ.get("TELEGRAM_PREFIX", "ICLOUD:").strip()
 def telegram(chat, text):
     if TG_PREFIX and not text.startswith(TG_PREFIX): text = f"{TG_PREFIX} {text}"
-    if TOKEN and chat: sh(f"curl -s -X POST https://api.telegram.org/bot{TOKEN}/sendMessage -d chat_id={chat} --data-urlencode text={json.dumps(text)} >/dev/null", 20)
+    # shlex.quote e non json.dumps: json.dumps scriveva emoji e a capo come \ud83d… e \n letterali (visti su Telegram l'8/11/2026)
+    if TOKEN and chat: sh(f"curl -s -X POST https://api.telegram.org/bot{TOKEN}/sendMessage -d chat_id={shlex.quote(str(chat))} --data-urlencode text={shlex.quote(text)} >/dev/null", 20)
 # ---- notifiche automatiche (2.6): chat, tipi e ore silenziose dalle variabili del template. Le risposte ai comandi del bot e della GUI
 # non passano di qui e arrivano sempre subito. Nelle ore silenziose gli avvisi si accodano in /app/state/notify_queue.json e
 # partono tutti insieme in un solo messaggio appena finiscono.
@@ -703,8 +704,8 @@ def new_drive(c, f, name, short):
 # ---- riavvio automatico dei giri bloccati (2.5). mandarons/icloud-drive a volte resta appeso su una connessione morta (CLOSE_WAIT)
 # a metà giro: nessuna riga di log, rete e CPU ferme, e non riparte più da solo (Sofia, 3/11/2026: 13:26→17:19 e 17:19→21:38).
 # Ogni AUTOHEAL_CHECK_S secondi, per ogni container iclouddr acceso con un giro in corso: se negli ultimi AUTOHEAL_IDLE_MIN minuti
-# ha ricevuto meno di 100 KB e usato meno di 2 s di CPU, oppure il giro dura da più di max(AUTOHEAL_MAX_CYCLE_H, 3 × l'ultimo),
-# il container viene riavviato. Al massimo AUTOHEAL_MAX_RESTARTS riavvii in 6 ore per container, poi un avviso Telegram e basta.
+# ha ricevuto meno di 5 MB e usato meno di 1 s di CPU, oppure il giro dura da più di max(AUTOHEAL_MAX_CYCLE_H, 3 × l'ultimo) senza
+# scaricare (meno di 50 MB negli ultimi AUTOHEAL_IDLE_MIN minuti), il container viene riavviato. Al massimo AUTOHEAL_MAX_RESTARTS riavvii in 6 ore per container, poi un avviso Telegram e basta.
 AH_ON = os.environ.get("AUTOHEAL", "1") != "0"; AH_CHECK = int(os.environ.get("AUTOHEAL_CHECK_S", "120"))
 AH_IDLE = int(os.environ.get("AUTOHEAL_IDLE_MIN", "10")); AH_MAXH = float(os.environ.get("AUTOHEAL_MAX_CYCLE_H", "4"))
 AH_MAXR = int(os.environ.get("AUTOHEAL_MAX_RESTARTS", "3")); AH_FILE = os.path.join(APP_DIR, "state", "autoheal.json")
@@ -743,14 +744,19 @@ def ah_check(name, u, c):
     if not cyc: return
     reason = None; run = max(x["running_min"] for x in cyc)
     long_ = max(AH_MAXH * 60, 3 * max((x["last_min"] or 0) for x in cyc))
-    if run > long_: reason = f"giro {cyc[0]['kind']} in corso da {run} min (limite {int(long_)})"
-    elif len(smp) >= 2 and smp[-1][0] - smp[0][0] >= AH_IDLE * 60 and run >= AH_IDLE:
-        drx, dcpu = smp[-1][1] - smp[0][1], (smp[-1][2] - smp[0][2]) / 1e6
-        if drx < 0 or dcpu < 0: _ah_samples.pop(ct, None); return   # contatori azzerati: ricomincia a misurare
-        if dcpu < 1 and drx < 5_000_000: reason = f"giro {cyc[0]['kind']} fermo: il programma ha usato {dcpu:.1f} s di CPU in {AH_IDLE} min ({drx // 1000} KB ricevuti)"
-        # 3.19.1: giro lungo il doppio del solito (almeno 90 min) e programma quasi fermo (Sofia 6/11: 2 h a 0,2 s di CPU al minuto,
-        # connessioni verso Apple in CLOSE_WAIT) → bloccato anche se la soglia sopra non scatta
-        elif dcpu < 5 and drx < 20_000_000 and run > max(90, 2 * max((x["last_min"] or 0) for x in cyc)): reason = f"giro {cyc[0]['kind']} lento e quasi fermo: in corso da {run} min, {dcpu:.1f} s di CPU in {AH_IDLE} min"
+    full = len(smp) >= 2 and smp[-1][0] - smp[0][0] >= AH_IDLE * 60
+    drx, dcpu = (smp[-1][1] - smp[0][1], (smp[-1][2] - smp[0][2]) / 1e6) if full else (None, None)
+    if full and (drx < 0 or dcpu < 0): _ah_samples.pop(ct, None); return   # contatori azzerati: ricomincia a misurare
+    # 3.19.4: oltre il limite si riavvia solo se il giro non sta scaricando: l'8/11 il limite di 4 h ha interrotto un giro di
+    # Simone che scaricava gigabyte (la cartella Documents/Claude del nuovo Mac), e il giro dopo ricominciava da capo.
+    if run > long_ and not (full and drx >= 50_000_000): reason = f"giro {cyc[0]['kind']} in corso da {run} min (limite {int(long_)})"
+    elif full and run >= AH_IDLE and dcpu < 1 and drx < 5_000_000:
+        reason = f"giro {cyc[0]['kind']} fermo: il programma ha usato {dcpu:.1f} s di CPU in {AH_IDLE} min ({drx // 1000} KB ricevuti)"
+    # 3.19.4: tolta la regola «lento e quasi fermo» della 3.19.1 (doppio del solito + < 5 s di CPU e < 20 MB in 10 min). Mentre
+    # elenca le cartelle iclouddr aspetta Apple a ogni richiesta e usa 2-4 s di CPU ogni 10 min ANCHE quando lavora: lo stack
+    # campionato ogni 15 s l'8/11 mostrava Sofia su una cartella diversa a ogni campione. La regola riavviava giri sani
+    # (Sofia 3-4 volte al giorno, giro normale 53 min) e ogni riavvio rifaceva il giro da zero. Il blocco vero del 6/11 (risposte
+    # di Apple a goccia) lo chiude ora iclouddr ≥ 0.2.8 da solo, dopo 300 s.
     if not reason: return
     recent = [e for e in ah_events() if e.get("container") == ct and e.get("action") == "restart" and now - e.get("ts", 0) < 6 * 3600]
     if len(recent) >= AH_MAXR:
