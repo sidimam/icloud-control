@@ -83,9 +83,16 @@ ma non lascia scaricare, come i database dei password manager, e foto senza vers
 `mandarons/icloud-drive` a volte resta appeso a metà giro su una connessione morta: nessuna riga di log, rete e CPU ferme, e non
 riparte da solo. Ogni 2 minuti il dispatcher guarda i container iCloud Drive accesi con un giro in corso e li **riavvia** se:
 
-- negli ultimi 10 minuti hanno ricevuto meno di 100 KB e usato meno di 2 s di CPU (un giro sano, anche quando non scarica niente,
+- negli ultimi 10 minuti hanno ricevuto meno di 5 MB e usato meno di 1 s di CPU (un giro sano, anche quando non scarica niente,
   scorre le cartelle e riceve centinaia di KB al minuto), oppure
-- il giro dura da più di 4 ore (o di 3 volte l'ultimo giro completo, se più lungo).
+- il giro dura da più di 4 ore (o di 3 volte l'ultimo giro completo, se più lungo) **e non sta scaricando** (meno di 50 MB negli
+  ultimi 10 minuti; dalla 3.19.4: prima il limite interrompeva anche i giri lunghi che scaricavano gigabyte).
+
+Dalla 3.19.4 non c'è più la regola «lento e quasi fermo» della 3.19.1 (doppio del solito con meno di 5 s di CPU e 20 MB in
+10 minuti): mentre elenca le cartelle iclouddr aspetta Apple a ogni richiesta e consuma 2–4 s di CPU ogni 10 minuti anche quando
+lavora, quindi la regola riavviava giri sani (Sofia 3–4 volte al giorno) e ogni riavvio rifaceva il giro da zero. Il blocco vero
+(risposte di Apple «a goccia») lo chiude iclouddr ≥ 0.2.8 da solo dopo 300 s. Per vedere cosa sta facendo un giro:
+`unraid/stackdump.py` del repository iclouddr con `sys.remote_exec` (Python 3.14, `docker exec -u abc`).
 
 Al massimo 3 riavvii in 6 ore per container: dopo, un avviso Telegram alla chat predefinita e niente più riavvii automatici per 6 ore.
 Gli interventi sono in `/app/state/autoheal.json` e nella scheda dell'utente («Riavvio automatico»). Non interviene durante una
@@ -100,7 +107,7 @@ Gli avvisi automatici del dispatcher si impostano dalle variabili del template U
 
 | Variabile | Default | Effetto |
 |---|---|---|
-| `TELEGRAM_CHAT_ID` | vuoto | Chat degli avvisi automatici; vuoto = `default_chat_id` di `config.json` |
+| `TELEGRAM_CHAT_ID` | vuoto | Chat degli avvisi automatici; vuoto = `default_chat_id` di `config.json`. La chat scelta in Amministrazione → Notifiche ha la precedenza (dall'8/11/2026: la chat privata del bot, non il gruppo di famiglia) |
 | `NOTIFY_AUTOHEAL_RESTART` | `1` | Un messaggio a ogni riavvio automatico di un iclouddr bloccato |
 | `NOTIFY_AUTOHEAL_GAVE_UP` | `1` | Avviso quando un container si blocca 3 volte in 6 ore e i riavvii si sospendono |
 | `NOTIFY_QUIET_HOURS` | `23:00-07:30` | In questa fascia gli avvisi si accodano (`/app/state/notify_queue.json`) e arrivano insieme in un solo messaggio alla fine; vuoto = sempre subito |
