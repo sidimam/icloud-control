@@ -1378,16 +1378,18 @@ def fm_roots_all():
         for src in idx_sources():
             h = (src.get("person_dir") or src.get("drive") or (None, ""))[1] or ""
             m = re.match(r"^(/mnt/user/documents/[^/]+)", h)
-            if m and os.path.isdir(host_to_local(m.group(1))): v[src["person"]] = (host_to_local(m.group(1)), h)
+            if m and os.path.isdir(host_to_local(m.group(1))): v[src["person"]] = (host_to_local(m.group(1)), m.group(1), (src.get("drive") or (None, ""))[1] or "")
         _FMR.update(t=time.time(), v=v)
     return _FMR["v"]
 def fm_roots(all_persons=False):
-    allowed = set(allowed_persons()); return {p: r[0] for p, r in fm_roots_all().items() if all_persons or p in allowed}
+    """Radici visibili a chi è entrato; all_persons=True (cestino, lavori in background) non guarda la sessione."""
+    if all_persons: return {p: r[0] for p, r in fm_roots_all().items()}
+    allowed = set(allowed_persons()); return {p: r[0] for p, r in fm_roots_all().items() if p in allowed}
 def fm_icloud(person):
     """Sottocartella della copia di iCloud (es. «iCloud») dentro la cartella della persona: lì le modifiche non vanno a iCloud."""
     r = fm_roots_all().get(person)
-    if not r: return ""
-    m = re.match(r"^/mnt/user/documents/[^/]+/(.+)$", r[1]); return m.group(1).split("/")[0] if m else ""
+    if not r or not r[2].startswith(r[1] + "/"): return ""
+    return r[2][len(r[1]) + 1:].split("/")[0]
 def fm_thumb(p, size):
     ext = os.path.splitext(p)[1][1:].lower()
     if not (ext in IMG_EXT or ext in VID_EXT or ext == "pdf"): return None
