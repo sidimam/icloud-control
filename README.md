@@ -53,6 +53,8 @@ Con il plugin [FolderView3](https://github.com/chodeus/folder.view3) i container
 
 ## Interfaccia web (porta 8787)
 
+In casa: `http://192.168.0.100:8787`. Da fuori (dal 9/11/2026): **https://icloud.manieridimambro.it**, tunnel Cloudflare «Home Tunnels» → porta 8787, dietro Cloudflare Access (app «Cloudflare protection 2», policy Famiglia: le quattro e-mail di casa, sessione 24 h) e poi il login della dashboard con 2FA. Il limite dei tentativi di accesso usa l'IP vero del client (`CF-Connecting-IP`).
+
 La GUI (Flask, nello stesso container) mostra due sezioni con intestazione — 📷 Foto iCloud (icloudpd) sopra, 📁 iCloud Drive sotto — e un riquadro per container: stato del container, giorni al rinnovo del cookie, Apple ID,
 cosa scarica (libreria PrimarySync o SharedSync-…, album), cartella, chat Telegram, ultimo evento. Azioni: **Riautentica**,
 **Invia codice** (alternativa a Telegram), azioni rapide **↻ Riavvia** (fa partire subito un giro), **■ Ferma**, **▶ Avvia** e **📜 Log**, **Impostazioni** (libreria, album, struttura cartelle, chat,
