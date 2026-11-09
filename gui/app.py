@@ -40,6 +40,9 @@ def require_login():
     name = (request.view_args or {}).get("name")
     if request.endpoint and request.endpoint.startswith("u_") and name != _own_icloud(): abort(403)
     return None
+def _icloud_label_of_me():
+    own = _own_icloud(); u = cfg()["users"].get(own) if own else None
+    return u.get("label", own) if u else ""
 def _own_icloud():
     """Utente iCloud del profilo: quello il cui container è iclouddr-<profilo>."""
     return _icloud_of(me()) if me() else ""
@@ -1365,10 +1368,47 @@ def photos():
     more = len(rows) > per; rows = rows[:per]
     for r in rows: r["media"] = "video" if r["ext"] in VID_EXT else ("audio" if r["ext"] in AUD_EXT else "image")
     return render_template("photos.html", rows=rows, albums=albums, years=years, persons=persons, shared=shared, person=person, album=album, what=what, year=a.get("year", ""), page=page, more=more, exts=exts, q=q, ai=ai is not None, ai_err=ai_err, immich_on=True, fmt_date=_fmt_date, fmt_size=_fmt_size)
-# ---- Files (3.18): iCloud Drive di ogni persona come in Finder — cartelle, file, ricerca, filtri e viste
+# ---- File manager (3.20): le cartelle di ogni persona sul NAS (/documents/<persona>), con copia, sposta, annulla… (fm.py)
+import fm
+_FMR = {"t": 0, "v": {}}
+def fm_roots_all():
+    """{persona: cartella locale} = /documents/<cartella della persona> (quella che contiene iCloud/), in cache per 60 s."""
+    if time.time() - _FMR["t"] > 60:
+        v = {}
+        for src in idx_sources():
+            h = (src.get("person_dir") or src.get("drive") or (None, ""))[1] or ""
+            m = re.match(r"^(/mnt/user/documents/[^/]+)", h)
+            if m and os.path.isdir(host_to_local(m.group(1))): v[src["person"]] = (host_to_local(m.group(1)), h)
+        _FMR.update(t=time.time(), v=v)
+    return _FMR["v"]
+def fm_roots(all_persons=False):
+    allowed = set(allowed_persons()); return {p: r[0] for p, r in fm_roots_all().items() if all_persons or p in allowed}
+def fm_icloud(person):
+    """Sottocartella della copia di iCloud (es. «iCloud») dentro la cartella della persona: lì le modifiche non vanno a iCloud."""
+    r = fm_roots_all().get(person)
+    if not r: return ""
+    m = re.match(r"^/mnt/user/documents/[^/]+/(.+)$", r[1]); return m.group(1).split("/")[0] if m else ""
+def fm_thumb(p, size):
+    ext = os.path.splitext(p)[1][1:].lower()
+    if not (ext in IMG_EXT or ext in VID_EXT or ext == "pdf"): return None
+    st = os.stat(p); out = _cache_path({"path": p, "mtime": st.st_mtime, "size": st.st_size}, f"fm{size}")
+    if not os.path.exists(out):
+        with _thumb_sem:
+            if not os.path.exists(out) and not _make_jpeg(p, out, size, ext): return None
+    return out
+fm.init(app, fm_roots, fm_icloud, fm_thumb, lambda: me() or "anon")
+# ---- Files (3.18): ricerca nell'indice di iCloud Drive (con ?q= o i filtri); senza, la scheda è il file manager
 @app.route("/files")
 def files():
     a = request.args; persons = allowed_persons(); person = a.get("person", "") if a.get("person", "") in persons else ""
+    if not (a.get("q", "").strip() or a.get("fext") or a.get("fd1") or a.get("fd2") or a.get("legacy")):
+        roots = fm_roots(); start = person if person in roots else (_icloud_label_of_me() if _icloud_label_of_me() in roots else next(iter(roots), ""))
+        spath = ""
+        if a.get("path") and start:   # vecchi collegamenti ?person=&path= (percorso dentro iCloud Drive)
+            r = fm_roots_all().get(start); d = next((x["drive"][1] for x in idx_sources() if x["person"] == start and x.get("drive")), "")
+            base = re.match(r"^/mnt/user/documents/[^/]+", r[1]).group(0) if r else ""
+            if base and d.startswith(base + "/"): spath = d[len(base) + 1:] + "/" + a["path"].strip("/")
+        return render_template("fm.html", roots=[{"name": n, "icloud": fm_icloud(n)} for n in roots], start=start, start_path=spath, persons=persons)
     path = a.get("path", "").strip("/"); q = a.get("q", "").strip()
     sel = [person] if person else persons
     flat = bool(q or a.get("fext") or a.get("fd1") or a.get("fd2"))

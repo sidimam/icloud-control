@@ -1,0 +1,436 @@
+{% extends "base.html" %}{% block head %}<style>
+/* File manager (3.20): uno o due pannelli in stile commander, anteprima a destra, barra degli strumenti in stile Finder */
+main{max-width:1680px}
+.fm-head{display:flex;flex-wrap:wrap;gap:.6rem 1rem;align-items:center;justify-content:space-between;margin-bottom:.6rem}
+.fm-head h1.title{margin:.3rem 0}
+.fm-search{display:flex;gap:.4rem;align-items:center;flex:1;max-width:420px;min-width:200px}
+.fm-tools{display:flex;flex-wrap:wrap;gap:.35rem;align-items:center;background:var(--card);border-radius:12px;padding:.45rem .55rem;margin-bottom:.6rem;position:sticky;top:57px;z-index:4;box-shadow:0 0 0 .5px var(--sep)}
+.fm-tools .sp{width:1px;height:22px;background:var(--sep);margin:0 .2rem}
+.fm-tools button{font-size:13px;padding:.34rem .6rem;border-radius:8px;background:var(--fill);color:var(--fg);font-weight:500}
+.fm-tools button:hover:not(:disabled){background:var(--acc-t);color:var(--acc)}
+.fm-tools button.on{background:var(--acc);color:#fff}
+.fm-tools button:disabled{opacity:.4;cursor:default}
+.fm-tools select{width:auto;padding:.32rem .5rem;font-size:13px;border-radius:8px}
+.fm-tools .grow{flex:1}
+.fm-warn{display:flex;gap:.5rem;align-items:flex-start;background:color-mix(in srgb,var(--warn) 14%,var(--card));border-radius:10px;padding:.5rem .8rem;margin-bottom:.6rem;font-size:13px}
+.fm-body{display:grid;grid-template-columns:minmax(0,1fr);gap:.8rem;align-items:start}
+.fm-body.prev{grid-template-columns:minmax(0,1fr) minmax(260px,340px)}
+@media (max-width:900px){.fm-body.prev{grid-template-columns:minmax(0,1fr)}}
+.fm-panes{display:grid;grid-template-columns:minmax(0,1fr);gap:.8rem}
+.fm-panes.dual{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+@media (max-width:760px){.fm-panes.dual{grid-template-columns:minmax(0,1fr)}}
+.pane{background:var(--card);border-radius:12px;overflow:hidden;container-type:inline-size;outline:2px solid transparent;transition:outline-color .15s;display:flex;flex-direction:column;min-height:420px}
+.fm-panes.dual .pane.act{outline-color:var(--acc)}
+.pane.drop{outline-color:var(--ok)!important}
+.ph{display:flex;flex-wrap:wrap;gap:.35rem;align-items:center;padding:.5rem .6rem;border-bottom:.5px solid var(--sep)}
+.ph select{width:auto;max-width:150px;padding:.3rem .5rem;font-size:13px;border-radius:8px}
+.ph .nb{background:var(--fill);color:var(--fg);padding:.28rem .5rem;border-radius:7px;font-size:13px;line-height:1}
+.ph .nb:disabled{opacity:.35;cursor:default}
+.crumbs{display:flex;flex-wrap:wrap;gap:.15rem;align-items:center;font-size:13px;flex:1;min-width:120px}
+.crumbs a{color:var(--fg);padding:.12rem .3rem;border-radius:6px;cursor:pointer}
+.crumbs a:hover,.crumbs a.drop{background:var(--acc-t);color:var(--acc)}
+.crumbs a:last-child{font-weight:600}
+.ph input.flt.flt{width:140px;padding:.3rem .55rem;font-size:13px;border-radius:8px}
+.cols,.fr{display:grid;grid-template-columns:24px 22px minmax(0,1fr) 84px 140px 140px 140px 70px;gap:.5rem;align-items:center;padding:0 .7rem}
+.cols{font-size:12px;color:var(--mut);border-bottom:.5px solid var(--sep);min-height:30px;user-select:none}
+.cols span{cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cols span:hover{color:var(--fg)}
+.cols span.on{color:var(--acc);font-weight:600}
+.cols .r,.fr .r{text-align:right}
+@container (max-width:860px){.cols,.fr{grid-template-columns:24px 22px minmax(0,1fr) 78px 132px 64px}.c-add,.c-acc{display:none}}
+@container (max-width:560px){.cols,.fr{grid-template-columns:24px 22px minmax(0,1fr) 72px}.c-mod,.c-kind{display:none}}
+.list2{flex:1;overflow:auto;max-height:calc(100vh - 290px);min-height:300px;outline:none;padding-bottom:1.5rem}
+.fr{min-height:32px;font-size:14px;cursor:default;user-select:none;border-radius:7px;margin:1px .3rem;padding:0 .4rem}
+.fr:hover{background:var(--fill)}
+.fr.sel{background:var(--acc-t)}
+.pane.act .fr.sel{background:var(--acc);color:#fff}
+.pane.act .fr.sel .mut{color:rgba(255,255,255,.8)}
+.fr.foc{box-shadow:inset 0 0 0 1.5px var(--acc)}
+.fr.cut{opacity:.45}
+.fr.drop{box-shadow:inset 0 0 0 2px var(--ok)}
+.fr .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fr .mut{font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fr input[type=checkbox],.cols input[type=checkbox]{width:16px;height:16px;margin:0;accent-color:var(--acc);cursor:pointer}
+.fi{width:20px;height:20px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;color:#fff;background:#8e8e93;overflow:hidden;letter-spacing:-.02em}
+.fi.d{background:#1a8cff}.fi.i{background:#ff9500}.fi.v{background:#af52de}.fi.a{background:#ff2d55}.fi.p{background:#ff3b30}.fi.t{background:#34c759}.fi.z{background:#a2845e}
+.fi svg{width:14px;height:14px}
+.tiles2{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:.5rem;padding:.6rem}
+.tl{border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:.3rem;align-items:center;cursor:default;user-select:none;position:relative}
+.tl:hover{background:var(--fill)}
+.tl.sel{background:var(--acc-t)}.pane.act .tl.sel{box-shadow:inset 0 0 0 2px var(--acc)}
+.tl.foc{box-shadow:inset 0 0 0 1.5px var(--acc)}.tl.cut{opacity:.45}.tl.drop{box-shadow:inset 0 0 0 2px var(--ok)}
+.tl .th{width:100%;aspect-ratio:1;border-radius:8px;background:var(--fill);display:flex;align-items:center;justify-content:center;overflow:hidden}
+.tl .th img{width:100%;height:100%;object-fit:cover}
+.tl .th .fi{width:46px;height:46px;border-radius:11px;font-size:12px}.tl .th .fi svg{width:28px;height:28px}
+.tl .nm{font-size:12.5px;text-align:center;word-break:break-word;line-height:1.25;max-height:2.5em;overflow:hidden}
+.tl input[type=checkbox]{position:absolute;top:10px;left:10px;width:16px;height:16px;margin:0;accent-color:var(--acc)}
+.empty{padding:2rem 1rem;color:var(--mut);text-align:center;font-size:14px}
+.fm-prev{background:var(--card);border-radius:12px;padding:12px;position:sticky;top:115px;max-height:calc(100vh - 140px);overflow:auto}
+.fm-prev .pv{border-radius:10px;background:var(--fill);display:flex;align-items:center;justify-content:center;overflow:hidden;min-height:160px;margin-bottom:.7rem}
+.fm-prev .pv img,.fm-prev .pv video{max-width:100%;max-height:55vh;display:block}
+.fm-prev .pv iframe{width:100%;height:55vh;border:0;background:#fff}
+.fm-prev .pv pre{margin:0;padding:.7rem;font:12px/1.45 ui-monospace,"SF Mono",Menlo,monospace;white-space:pre-wrap;word-break:break-word;max-height:55vh;overflow:auto;width:100%;align-self:stretch}
+.fm-prev h3{margin:.2rem 0 .5rem;font-size:15px;word-break:break-word}
+.fm-prev dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:.25rem .7rem;margin:0 0 .8rem;font-size:13px}
+.fm-prev dt{color:var(--mut)}.fm-prev dd{margin:0;word-break:break-word}
+.fm-status{display:flex;flex-wrap:wrap;gap:.3rem 1rem;justify-content:space-between;color:var(--mut);font-size:12.5px;padding:.5rem .3rem}
+.fm-jobs{position:fixed;right:16px;bottom:16px;display:flex;flex-direction:column;gap:.5rem;z-index:50;max-width:min(380px,calc(100vw - 32px))}
+.job{background:var(--card);border-radius:12px;padding:.65rem .85rem;box-shadow:0 8px 30px rgba(0,0,0,.2),0 0 0 .5px var(--sep);font-size:13px}
+.job .bar2{height:5px;border-radius:3px;background:var(--fill);overflow:hidden;margin-top:.4rem}.job .bar2 i{display:block;height:100%;background:var(--acc);width:0;transition:width .3s}
+.job .err{color:var(--bad);margin-top:.3rem;white-space:pre-line}
+.job button{font-size:12.5px;padding:.25rem .55rem;margin-top:.4rem}
+.fm-menu{position:fixed;z-index:60;background:var(--card);border-radius:10px;box-shadow:0 10px 34px rgba(0,0,0,.25),0 0 0 .5px var(--sep);padding:.3rem;min-width:210px}
+.fm-menu button{display:flex;width:100%;justify-content:space-between;gap:1.2rem;background:none;color:var(--fg);font-size:13.5px;font-weight:400;padding:.4rem .65rem;border-radius:6px}
+.fm-menu button:hover:not(:disabled){background:var(--acc);color:#fff}
+.fm-menu button:disabled{opacity:.4}
+.fm-menu kbd{font:12px -apple-system,system-ui;opacity:.6}
+.fm-menu hr{border:0;border-top:.5px solid var(--sep);margin:.25rem .3rem}
+.kbd-help{font-size:12.5px;color:var(--mut)}
+</style>{% endblock %}{% block body %}
+<div class="fm-head"><h1 class="title">{{ _('Files') }}</h1>
+<form class="fm-search" method="get" action="/files" role="search"><input type="search" name="q" placeholder="{{ _('Cerca nei file (nome, cartella)…') }}" aria-label="{{ _('Cerca nei file') }}"><input type="hidden" name="person" id="fm-sp"><button type="submit" class="tint">{{ icon('search', 16) }}</button></form></div>
+{% if not roots %}<div class="list"><div class="li"><span class="mut">{{ _('Nessuna cartella sul NAS per il tuo profilo.') }}</span></div></div>{% else %}
+<div class="fm-tools" role="toolbar" aria-label="{{ _('Strumenti') }}">
+<button data-act="newdir" title="{{ _('Nuova cartella') }} (F7)">＋ {{ _('Nuova cartella') }}</button>
+<span class="sp"></span>
+<button data-act="copy" title="{{ _('Copia') }} (⌘C)">⧉ {{ _('Copia') }}</button>
+<button data-act="cut" title="{{ _('Taglia') }} (⌘X)">✂︎ {{ _('Taglia') }}</button>
+<button data-act="paste" title="{{ _('Incolla') }} (⌘V)">📋 {{ _('Incolla') }}</button>
+<button data-act="rename" title="{{ _('Rinomina') }} (F2)">✎ {{ _('Rinomina') }}</button>
+<button data-act="delete" title="{{ _('Elimina') }} (⌫ / F8)">🗑 {{ _('Elimina') }}</button>
+<span class="sp"></span>
+<button data-act="undo" title="{{ _('Annulla') }} (⌘Z)">↶ {{ _('Annulla') }}</button>
+<button data-act="redo" title="{{ _('Ripeti') }} (⇧⌘Z)">↷ {{ _('Ripeti') }}</button>
+<span class="sp"></span>
+<button data-act="copyother" title="{{ _('Copia nell\'altro pannello') }} (F5)">⇉ {{ _('Copia di là') }}</button>
+<button data-act="moveother" title="{{ _('Sposta nell\'altro pannello') }} (F6)">➜ {{ _('Sposta di là') }}</button>
+<span class="grow"></span>
+<button data-act="selall" title="{{ _('Seleziona tutto') }} (⌘A)">☑︎ {{ _('Tutto') }}</button>
+<label class="mut" style="display:inline-flex;gap:.3rem;align-items:center">{{ _('Ordina') }} <select id="fm-sort" aria-label="{{ _('Ordina per') }}">
+<option value="name">{{ _('Nome') }}</option><option value="ext">{{ _('Tipo') }}</option><option value="size">{{ _('Dimensione') }}</option><option value="mtime">{{ _('Data di modifica') }}</option><option value="added">{{ _('Data aggiunta') }}</option><option value="atime">{{ _('Ultimo accesso') }}</option></select></label>
+<button data-act="dir" id="fm-dir" title="{{ _('Inverti l\'ordine') }}">A→Z</button>
+<button data-act="view" id="fm-view" title="{{ _('Elenco o icone') }}">▦ {{ _('Icone') }}</button>
+<button data-act="dual" id="fm-dual" title="{{ _('Due pannelli affiancati') }} (⌘\\)">◫ {{ _('Affianca') }}</button>
+<button data-act="preview" id="fm-prevb" title="{{ _('Anteprima') }} ({{ _('spazio') }})">👁 {{ _('Anteprima') }}</button>
+<button data-act="hidden" id="fm-hid" title="{{ _('Mostra i file nascosti') }}">.*</button>
+<button data-act="refresh" title="{{ _('Aggiorna') }}">⟳</button>
+</div>
+<div class="fm-warn" id="fm-warn" hidden>{{ icon('warn', 16) }}<span>{{ _("Questa è la copia di iCloud Drive scaricata sul NAS: le modifiche fatte qui non arrivano su iCloud né sugli altri dispositivi, e al giro successivo iclouddr può rimettere i file com'erano su iCloud.") }}</span></div>
+<div class="fm-body" id="fm-body"><div class="fm-panes" id="fm-panes"></div><aside class="fm-prev" id="fm-prev" hidden aria-label="{{ _('Anteprima') }}"></aside></div>
+<div class="fm-status"><span id="fm-st"></span><span class="kbd-help">{{ _('Clic: seleziona · ⌘/Ctrl-clic: aggiungi · ⇧-clic: intervallo · doppio clic: apri · trascina per spostare (⌥/Alt per copiare) · Tab: cambia pannello · F5 copia · F6 sposta · F7 nuova cartella') }}</span></div>
+<div class="fm-jobs" id="fm-jobs" aria-live="polite"></div>
+<div class="fm-menu" id="fm-menu" role="menu" hidden></div>
+{% set S = {
+ "folder": _('Cartella'), "items": _('{a0} elementi'), "item1": _('1 elemento'), "sel": _('{a0} selezionati'), "file": _('File {a0}'),
+ "name": _('Nome'), "size": _('Dimensione'), "mtime": _('Modificato'), "added": _('Aggiunto'), "atime": _('Ultimo accesso'), "kind": _('Tipo'),
+ "path": _('Percorso'), "open": _('Apri'), "download": _('Scarica'), "empty": _('Cartella vuota'), "nomatch": _('Nessun nome corrisponde al filtro'),
+ "filter": _('Filtra…'), "up": _('Cartella superiore'), "back": _('Indietro'), "fwd": _('Avanti'),
+ "newname": _('Nome della nuova cartella'), "newdef": _('nuova cartella'), "renameq": _('Nuovo nome'),
+ "copied": _('{a0} copiati negli appunti'), "cutd": _('{a0} tagliati: scegli la cartella e incolla'),
+ "j_copy": _('Copia di {a0}'), "j_move": _('Spostamento di {a0}'), "j_delete": _('{a0} nel cestino'), "j_mkdir": _('Nuova cartella {a0}'),
+ "j_rename": _('Rinomina {a0}'), "j_undo": _('Annullato: {a0}'), "j_redo": _('Ripetuto: {a0}'), "n_items": _('{a0} elementi'),
+ "done": _('fatto'), "errors": _('Non riuscito:'), "renamed": _('Rinominati per non sovrascrivere:'), "undo": _('Annulla'),
+ "nothing_undo": _('Niente da annullare'), "nothing_redo": _('Niente da ripetere'), "need_dual": _('Apri il secondo pannello con «Affianca»'),
+ "err_exists": _('Esiste già un elemento con questo nome'), "err_name": _('Nome non valido'), "err_into": _('Non si può mettere una cartella dentro se stessa'),
+ "err": _('Errore: {a0}'), "binary": _('Nessuna anteprima per questo tipo di file'), "cut_more": _('(troncato)'),
+ "selsize": _('{a0} selezionati · {a1}'), "loading": _('Caricamento…'), "m_open": _('Apri'), "m_dl": _('Scarica'),
+ "m_copy": _('Copia'), "m_cut": _('Taglia'), "m_paste": _('Incolla'), "m_rename": _('Rinomina'), "m_delete": _('Sposta nel cestino'),
+ "m_newdir": _('Nuova cartella'), "m_copyo": _('Copia nell\'altro pannello'), "m_moveo": _('Sposta nell\'altro pannello'), "m_selall": _('Seleziona tutto'),
+ "icons": _('Icone'), "content": _('Contenuto'), "list": _('Elenco'), "trash_note": _('Gli elementi eliminati restano 30 giorni nel cestino del NAS (/documents/.cestino-dashboard) e si recuperano con «Annulla».')
+} %}
+<script>
+(function(){
+"use strict";
+var S = {{ S|tojson }}, ROOTS = {{ roots|tojson }}, START = {{ start|tojson }}, START_PATH = {{ (start_path or "")|tojson }}, LANG = {{ cur_lang()|tojson }};
+var IMG = {jpg:1,jpeg:1,png:1,heic:1,heif:1,tif:1,tiff:1,webp:1,gif:1,bmp:1,dng:1,avif:1}, VID = {mov:1,mp4:1,m4v:1,avi:1,mkv:1,"3gp":1,webm:1},
+    AUD = {mp3:1,m4a:1,aac:1,wav:1,flac:1,ogg:1}, ZIP = {zip:1,rar:1,"7z":1,gz:1,tgz:1,tar:1,bz2:1,xz:1,dmg:1,iso:1},
+    TXT = {txt:1,md:1,csv:1,json:1,xml:1,yml:1,yaml:1,log:1,ini:1,conf:1,cfg:1,py:1,sh:1,js:1,css:1,html:1,htm:1,sql:1,swift:1,go:1,c:1,h:1,cpp:1,java:1,kt:1,ts:1,toml:1,env:1,srt:1,vtt:1,tex:1,plist:1},
+    WEBIMG = {jpg:1,jpeg:1,png:1,gif:1,webp:1,avif:1,bmp:1};
+var FOLDER_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2h7.5A2.5 2.5 0 0 1 21 9.5v7a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 16.5z"/></svg>';
+function $(id){ return document.getElementById(id); }
+function esc(s){ return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
+function fmt(s, a0, a1){ return s.replace("{a0}", a0).replace("{a1}", a1); }
+function store(k, v){ try { if (v === undefined) { var x = localStorage.getItem("fm:" + k); return x === null ? null : JSON.parse(x); } localStorage.setItem("fm:" + k, JSON.stringify(v)); } catch (e) { return null; } }
+var dfmt = new Intl.DateTimeFormat(LANG === "en" ? "en-GB" : "it-IT", {day:"2-digit", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit"});
+function fdate(t){ return t ? dfmt.format(new Date(t * 1000)) : ""; }
+function fsize(b){ if (b == null) return ""; if (b < 1000) return b + " B"; var u = ["KB","MB","GB","TB"], i = -1; do { b /= 1000; i++; } while (b >= 1000 && i < 3); return (b < 10 ? b.toFixed(1) : Math.round(b)).toString().replace(".", LANG === "en" ? "." : ",") + " " + u[i]; }
+function kindOf(e){ return e.dir ? S.folder : (e.ext ? fmt(S.file, e.ext.toUpperCase()) : S.file.replace(" {a0}", "")); }
+function ficon(e){ if (e.dir) return '<span class="fi d">' + FOLDER_SVG + '</span>';
+  var c = IMG[e.ext] ? "i" : VID[e.ext] ? "v" : AUD[e.ext] ? "a" : e.ext === "pdf" ? "p" : TXT[e.ext] ? "t" : ZIP[e.ext] ? "z" : "";
+  return '<span class="fi ' + c + '">' + esc((e.ext || "?").slice(0, 4).toUpperCase()) + '</span>'; }
+function thumbable(e){ return !e.dir && (IMG[e.ext] || VID[e.ext] || e.ext === "pdf"); }
+function q(o){ return Object.keys(o).map(function(k){ return encodeURIComponent(k) + "=" + encodeURIComponent(o[k]); }).join("&"); }
+function join(a, b){ return a ? (b ? a + "/" + b : a) : b; }
+function parent(p){ var i = p.lastIndexOf("/"); return i < 0 ? "" : p.slice(0, i); }
+function api(url, body){
+  return fetch(url, body === undefined ? {credentials:"same-origin"} : {method:"POST", credentials:"same-origin", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)})
+    .then(function(r){ return r.json().catch(function(){ return {}; }).then(function(j){ if (!r.ok) { j.status = r.status; throw j; } return j; }); }); }
+function errText(e){ var m = {esiste:S.err_exists, nome:S.err_name, dentro_se_stessa:S.err_into}; return (e && m[e.error]) || fmt(S.err, (e && (e.error || e.status)) || e); }
+
+// ---- stato ----
+var st = store("ui") || {}; var ui = {dual: !!st.dual, preview: st.preview !== false, view: st.view || "list", sort: st.sort || "name", dir: st.dir || "asc", hidden: !!st.hidden};
+var panes = [], act = 0, clip = null, hist = {undo:null, redo:null};
+function saveUi(){ store("ui", ui); store("panes", panes.map(function(p){ return {root:p.root, path:p.path}; })); }
+function Pane(i, root, path){ this.i = i; this.root = root; this.path = path || ""; this.entries = []; this.shown = []; this.sel = {}; this.anchor = null; this.focus = null; this.back = []; this.fwd = []; this.filter = ""; this.icloud = ""; }
+var saved = store("panes") || [];
+function rootOk(r){ return ROOTS.some(function(x){ return x.name === r; }); }
+for (var i = 0; i < 2; i++) {
+  var sv = saved[i] || {}; var r = (i === 0 && (START_PATH || {{ (request.args.get('person') or '')|tojson }})) ? START : (rootOk(sv.root) ? sv.root : START);
+  panes.push(new Pane(i, r, (i === 0 && START_PATH) ? START_PATH : (r === sv.root ? sv.path || "" : "")));
+}
+var cur = function(){ return panes[act]; }, other = function(){ return panes[1 - act]; };
+
+// ---- disegno ----
+var host = $("fm-panes");
+panes.forEach(function(p){
+  var el = document.createElement("section"); el.className = "pane"; el.dataset.i = p.i; p.el = el;
+  el.innerHTML = '<div class="ph"><select class="rsel" aria-label="' + esc(S.path) + '">' + ROOTS.map(function(r){ return '<option>' + esc(r.name) + '</option>'; }).join("") + '</select>' +
+    '<button class="nb" data-nav="back" title="' + esc(S.back) + '">‹</button><button class="nb" data-nav="fwd" title="' + esc(S.fwd) + '">›</button><button class="nb" data-nav="up" title="' + esc(S.up) + '">↑</button>' +
+    '<nav class="crumbs"></nav><input class="flt" type="search" placeholder="' + esc(S.filter) + '" aria-label="' + esc(S.filter) + '"></div>' +
+    '<div class="cols"><input type="checkbox" class="all" aria-label="' + esc(S.m_selall) + '"><span></span><span data-k="name">' + esc(S.name) + '</span><span data-k="size" class="r">' + esc(S.size) + '</span>' +
+    '<span data-k="mtime" class="c-mod">' + esc(S.mtime) + '</span><span data-k="added" class="c-add">' + esc(S.added) + '</span><span data-k="atime" class="c-acc">' + esc(S.atime) + '</span><span data-k="ext" class="c-kind">' + esc(S.kind) + '</span></div>' +
+    '<div class="list2" tabindex="0"></div>';
+  host.appendChild(el); p.list = el.querySelector(".list2");
+  el.querySelector(".rsel").value = p.root;
+  el.querySelector(".rsel").addEventListener("change", function(){ setAct(p.i); go(p, this.value, ""); });
+  el.querySelector(".flt").addEventListener("input", function(){ p.filter = this.value.toLowerCase(); render(p); });
+  el.querySelectorAll("[data-nav]").forEach(function(b){ b.addEventListener("click", function(){ setAct(p.i); nav(p, b.dataset.nav); }); });
+  el.querySelectorAll(".cols [data-k]").forEach(function(s){ s.addEventListener("click", function(){ if (ui.sort === s.dataset.k) ui.dir = ui.dir === "asc" ? "desc" : "asc"; else { ui.sort = s.dataset.k; ui.dir = (s.dataset.k === "name" || s.dataset.k === "ext") ? "asc" : "desc"; } saveUi(); syncTools(); panes.forEach(render); }); });
+  el.querySelector(".cols .all").addEventListener("change", function(){ setAct(p.i); p.sel = {}; if (this.checked) p.shown.forEach(function(e){ p.sel[e.name] = 1; }); paint(p); status(); preview(); });
+  el.addEventListener("mousedown", function(){ setAct(p.i); }, true);
+  dropTarget(el, function(){ return {root:p.root, path:p.path}; }, p);
+});
+
+function setAct(i){ if (act === i) return; act = i; panes.forEach(function(p){ p.el.classList.toggle("act", p.i === act); }); warn(); status(); preview(); }
+function go(p, root, path, keep){ if (!keep) { p.back.push({root:p.root, path:p.path}); p.fwd = []; } var from = p.path, sameRoot = root === p.root; p.root = root; p.path = path; p.sel = {}; p.filter = ""; p.el.querySelector(".flt").value = "";
+  p.focus = (sameRoot && from && parent(from) === path) ? from.split("/").pop() : null; load(p); saveUi(); }
+function nav(p, what){
+  if (what === "up") { if (p.path) go(p, p.root, parent(p.path)); }
+  else if (what === "back" && p.back.length) { p.fwd.push({root:p.root, path:p.path}); var b = p.back.pop(); go(p, b.root, b.path, true); }
+  else if (what === "fwd" && p.fwd.length) { p.back.push({root:p.root, path:p.path}); var f = p.fwd.pop(); go(p, f.root, f.path, true); } }
+function load(p){
+  p.list.innerHTML = '<div class="empty">' + esc(S.loading) + '</div>';
+  return api("/fm/api/list?" + q({root:p.root, path:p.path, hidden:ui.hidden ? 1 : 0})).then(function(d){ p.entries = d.entries; p.path = d.path; p.icloud = d.icloud || "";
+    var names = {}; p.entries.forEach(function(e){ names[e.name] = 1; }); Object.keys(p.sel).forEach(function(n){ if (!names[n]) delete p.sel[n]; });
+    render(p); if (p.i === act) { warn(); preview(); } status(); })
+  .catch(function(e){ if (p.path) { p.path = parent(p.path); return load(p); } p.list.innerHTML = '<div class="empty">' + esc(errText(e)) + '</div>'; }); }
+function sorted(p){
+  var k = ui.sort, m = ui.dir === "asc" ? 1 : -1, coll = new Intl.Collator(LANG, {numeric:true, sensitivity:"base"});
+  var a = p.entries.filter(function(e){ return !p.filter || e.name.toLowerCase().indexOf(p.filter) >= 0; });
+  a.sort(function(x, y){ if (x.dir !== y.dir) return x.dir ? -1 : 1;
+    var r = k === "name" ? coll.compare(x.name, y.name) : k === "ext" ? (coll.compare(x.ext || "", y.ext || "") || coll.compare(x.name, y.name)) :
+            k === "size" ? ((x.dir ? (x.n || 0) : x.size) - (y.dir ? (y.n || 0) : y.size)) : ((x[k] || 0) - (y[k] || 0));
+    return (r || coll.compare(x.name, y.name)) * m; });
+  return a; }
+function render(p){
+  var el = p.el; el.querySelector(".rsel").value = p.root;
+  var parts = p.path ? p.path.split("/") : [], acc = "", cr = ['<a data-p="">' + esc(p.root) + '</a>'];
+  parts.forEach(function(x){ acc = join(acc, x); cr.push('<span class="mut">›</span><a data-p="' + esc(acc) + '">' + esc(x) + '</a>'); });
+  var c = el.querySelector(".crumbs"); c.innerHTML = cr.join("");
+  c.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ setAct(p.i); go(p, p.root, a.dataset.p); }); dropTarget(a, function(){ return {root:p.root, path:a.dataset.p}; }, p); });
+  el.querySelector("[data-nav=back]").disabled = !p.back.length; el.querySelector("[data-nav=fwd]").disabled = !p.fwd.length; el.querySelector("[data-nav=up]").disabled = !p.path;
+  el.querySelectorAll(".cols [data-k]").forEach(function(s){ s.classList.toggle("on", s.dataset.k === ui.sort); s.textContent = S[s.dataset.k === "ext" ? "kind" : s.dataset.k] + (s.dataset.k === ui.sort ? (ui.dir === "asc" ? " ▲" : " ▼") : ""); });
+  el.querySelector(".cols").hidden = ui.view !== "list";
+  p.shown = sorted(p);
+  var cutset = {}; if (clip && clip.mode === "cut") clip.items.forEach(function(it){ if (it.root === p.root && parent(it.path) === p.path) cutset[it.path.split("/").pop()] = 1; });
+  var h;
+  if (!p.shown.length) h = '<div class="empty">' + esc(p.entries.length ? S.nomatch : S.empty) + '</div>';
+  else if (ui.view === "list") h = p.shown.map(function(e, i){ var s = p.sel[e.name];
+    return '<div class="fr' + (s ? " sel" : "") + (p.focus === e.name ? " foc" : "") + (cutset[e.name] ? " cut" : "") + '" data-i="' + i + '" draggable="true">' +
+      '<input type="checkbox" tabindex="-1"' + (s ? " checked" : "") + ' aria-label="' + esc(e.name) + '">' + ficon(e) + '<span class="nm" title="' + esc(e.name) + '">' + esc(e.name) + '</span>' +
+      '<span class="mut r">' + esc(e.dir ? (e.n == null ? "" : (e.n === 1 ? S.item1 : fmt(S.items, e.n))) : fsize(e.size)) + '</span><span class="mut c-mod">' + esc(fdate(e.mtime)) + '</span>' +
+      '<span class="mut c-add">' + esc(fdate(e.added)) + '</span><span class="mut c-acc">' + esc(fdate(e.atime)) + '</span><span class="mut c-kind">' + esc(e.dir ? S.folder : (e.ext || "").toUpperCase()) + '</span></div>'; }).join("");
+  else h = '<div class="tiles2">' + p.shown.map(function(e, i){ var s = p.sel[e.name];
+    return '<div class="tl' + (s ? " sel" : "") + (p.focus === e.name ? " foc" : "") + (cutset[e.name] ? " cut" : "") + '" data-i="' + i + '" draggable="true"><input type="checkbox" tabindex="-1"' + (s ? " checked" : "") + ' aria-label="' + esc(e.name) + '">' +
+      '<span class="th">' + (thumbable(e) ? '<img loading="lazy" alt="" src="/fm/thumb?' + q({root:p.root, path:join(p.path, e.name)}) + '" onerror="this.outerHTML=\'' + ficon(e).replace(/'/g, "\\'").replace(/"/g, "&quot;") + '\'">' : ficon(e)) + '</span>' +
+      '<span class="nm" title="' + esc(e.name) + '">' + esc(e.name) + '</span></div>'; }).join("") + '</div>';
+  p.list.innerHTML = h;
+  var all = el.querySelector(".cols .all"), ns = Object.keys(p.sel).length; all.checked = ns > 0 && ns === p.shown.length; all.indeterminate = ns > 0 && ns < p.shown.length;
+  p.list.querySelectorAll("[data-i]").forEach(function(r){ var e = p.shown[+r.dataset.i]; bindItem(p, r, e); });
+}
+function paint(p){   // solo selezione e fuoco: ridisegnare l'elenco a ogni clic romperebbe doppio clic e trascinamento
+  p.list.querySelectorAll("[data-i]").forEach(function(r){ var e = p.shown[+r.dataset.i], s = !!p.sel[e.name]; r.classList.toggle("sel", s); r.classList.toggle("foc", p.focus === e.name); var cb = r.querySelector("input"); if (cb) cb.checked = s; });
+  var all = p.el.querySelector(".cols .all"), ns = Object.keys(p.sel).length; all.checked = ns > 0 && ns === p.shown.length; all.indeterminate = ns > 0 && ns < p.shown.length; }
+function bindItem(p, r, e){
+  r.addEventListener("click", function(ev){ setAct(p.i);
+    if (ev.target.type === "checkbox") { toggle(p, e.name); p.anchor = e.name; p.focus = e.name; paint(p); status(); preview(); return; }
+    if (ev.shiftKey && p.anchor) { var a = idx(p, p.anchor), b = idx(p, e.name); if (!(ev.metaKey || ev.ctrlKey)) p.sel = {}; for (var k = Math.min(a, b); k <= Math.max(a, b); k++) p.sel[p.shown[k].name] = 1; }
+    else if (ev.metaKey || ev.ctrlKey) { toggle(p, e.name); p.anchor = e.name; }
+    else { p.sel = {}; p.sel[e.name] = 1; p.anchor = e.name; }
+    p.focus = e.name; paint(p); status(); preview(); });
+  r.addEventListener("dblclick", function(ev){ if (ev.target.type !== "checkbox") open(p, e); });
+  r.addEventListener("contextmenu", function(ev){ ev.preventDefault(); setAct(p.i); if (!p.sel[e.name]) { p.sel = {}; p.sel[e.name] = 1; p.anchor = e.name; } p.focus = e.name; paint(p); status(); preview(); menu(ev.clientX, ev.clientY, e); });
+  r.addEventListener("dragstart", function(ev){ setAct(p.i); if (!p.sel[e.name]) { p.sel = {}; p.sel[e.name] = 1; p.focus = e.name; paint(p); status(); }
+    var items = selItems(p); ev.dataTransfer.setData("application/x-fm", JSON.stringify(items)); ev.dataTransfer.effectAllowed = "copyMove"; drag = items; });
+  r.addEventListener("dragend", function(){ drag = null; });
+  if (e.dir) dropTarget(r, function(){ return {root:p.root, path:join(p.path, e.name)}; }, p, e.name);
+}
+var drag = null;
+function dropTarget(el, dst, p, selfName){
+  el.addEventListener("dragover", function(ev){ if (!drag) return; var d = dst(); if (drag.some(function(it){ return it.root === d.root && (it.path === d.path || d.path.indexOf(it.path + "/") === 0); })) return;
+    ev.preventDefault(); ev.stopPropagation(); ev.dataTransfer.dropEffect = (ev.altKey || ev.ctrlKey) ? "copy" : "move"; el.classList.add("drop"); });
+  el.addEventListener("dragleave", function(){ el.classList.remove("drop"); });
+  el.addEventListener("drop", function(ev){ el.classList.remove("drop"); if (!drag) return; ev.preventDefault(); ev.stopPropagation(); var items = drag, d = dst(); drag = null;
+    if (!(ev.altKey || ev.ctrlKey) && items.every(function(it){ return it.root === d.root && parent(it.path) === d.path; })) return;
+    op(ev.altKey || ev.ctrlKey ? "copy" : "move", {items:items, dst:d}, items.length); });
+}
+function idx(p, name){ for (var k = 0; k < p.shown.length; k++) if (p.shown[k].name === name) return k; return 0; }
+function toggle(p, n){ if (p.sel[n]) delete p.sel[n]; else p.sel[n] = 1; }
+function selItems(p){ return Object.keys(p.sel).map(function(n){ return {root:p.root, path:join(p.path, n)}; }); }
+function selEntries(p){ return p.shown.filter(function(e){ return p.sel[e.name]; }); }
+function open(p, e){ if (e.dir) go(p, p.root, join(p.path, e.name)); else window.open("/fm/raw?" + q({root:p.root, path:join(p.path, e.name)}), "_blank", "noopener"); }
+
+// ---- barra, stato, avviso ----
+function syncTools(){
+  $("fm-sort").value = ui.sort; $("fm-dir").textContent = ui.dir === "asc" ? (ui.sort === "name" || ui.sort === "ext" ? "A→Z" : "↑") : (ui.sort === "name" || ui.sort === "ext" ? "Z→A" : "↓");
+  $("fm-view").innerHTML = ui.view === "list" ? "▦ " + esc(S.icons) : "☰ " + esc(S.list);
+  $("fm-dual").classList.toggle("on", ui.dual); $("fm-prevb").classList.toggle("on", ui.preview); $("fm-hid").classList.toggle("on", ui.hidden);
+  $("fm-panes").classList.toggle("dual", ui.dual); panes[1].el.hidden = !ui.dual; if (!ui.dual && act === 1) setAct(0);
+  $("fm-body").classList.toggle("prev", ui.preview); $("fm-prev").hidden = !ui.preview;
+  var n = Object.keys(cur().sel).length;
+  [["copy",n],["cut",n],["rename",n === 1],["delete",n],["copyother",n && ui.dual],["moveother",n && ui.dual],["paste",!!clip]].forEach(function(x){ var b = document.querySelector('[data-act=' + x[0] + ']'); if (b) b.disabled = !x[1]; });
+  var u = document.querySelector("[data-act=undo]"), r = document.querySelector("[data-act=redo]");
+  u.disabled = !hist.undo; r.disabled = !hist.redo; u.title = S.undo + (hist.undo ? ": " + hist.undo.label : "") + " (⌘Z)"; r.title = (hist.redo ? hist.redo.label : "") + " (⇧⌘Z)";
+  $("fm-sp").value = cur().root;
+}
+function status(){
+  var p = cur(), es = selEntries(p), tot = 0; es.forEach(function(e){ tot += e.size || 0; });
+  $("fm-st").textContent = (p.shown.length === 1 ? S.item1 : fmt(S.items, p.shown.length)) + (es.length ? " · " + fmt(S.selsize, es.length, fsize(tot)) : "") + (clip ? " · " + (clip.mode === "cut" ? "✂︎ " : "⧉ ") + clip.items.length : "");
+  syncTools(); }
+function warn(){ var p = cur(); $("fm-warn").hidden = !(p.icloud && (p.path === p.icloud || p.path.indexOf(p.icloud + "/") === 0)); }
+
+// ---- anteprima ----
+var pvKey = "";
+function preview(){
+  if (!ui.preview) return; var p = cur(), box = $("fm-prev"), es = selEntries(p);
+  var e = (p.focus && p.sel[p.focus]) ? p.shown[idx(p, p.focus)] : (es.length === 1 ? es[0] : null);
+  if (es.length > 1) { var t = 0; es.forEach(function(x){ t += x.size || 0; }); pvKey = ""; box.innerHTML = '<h3>' + esc(fmt(S.sel, es.length)) + '</h3><dl><dt>' + esc(S.size) + '</dt><dd>' + esc(fsize(t)) + '</dd></dl><p class="mut">' + esc(S.trash_note) + '</p>'; return; }
+  if (!e) { pvKey = ""; box.innerHTML = '<h3>' + esc(p.root + (p.path ? " › " + p.path.split("/").join(" › ") : "")) + '</h3><dl><dt>' + esc(S.kind) + '</dt><dd>' + esc(S.folder) + '</dd><dt>' + esc(S.content) + '</dt><dd>' + (p.entries.length === 1 ? S.item1 : fmt(S.items, p.entries.length)) + '</dd></dl><p class="mut">' + esc(S.trash_note) + '</p>'; return; }
+  var rel = join(p.path, e.name), key = p.root + "|" + rel + "|" + e.mtime; if (key === pvKey) return; pvKey = key;
+  var src = "/fm/raw?" + q({root:p.root, path:rel}), pv = "";
+  if (e.dir) pv = '<span class="fi d" style="width:72px;height:72px;border-radius:16px">' + FOLDER_SVG.replace('<svg', '<svg style="width:44px;height:44px"') + '</span>';
+  else if (IMG[e.ext]) pv = '<img alt="" src="/fm/thumb?' + q({root:p.root, path:rel, s:"big"}) + '" onerror="this.src=\'' + (WEBIMG[e.ext] ? src : '') + '\'">';
+  else if (VID[e.ext]) pv = '<video controls preload="metadata" src="' + esc(src) + '"></video>';
+  else if (AUD[e.ext]) pv = '<audio controls preload="metadata" src="' + esc(src) + '" style="width:100%;margin:2rem .5rem"></audio>';
+  else if (e.ext === "pdf") pv = '<iframe title="PDF" src="' + esc(src) + '"></iframe>';
+  else if (TXT[e.ext] || e.size < 4000 && !e.ext) pv = '<pre>' + esc(S.loading) + '</pre>';
+  else pv = '<span class="fi" style="width:72px;height:72px;border-radius:16px;font-size:16px">' + esc((e.ext || "?").slice(0, 4).toUpperCase()) + '</span>';
+  box.innerHTML = '<div class="pv">' + pv + '</div><h3>' + esc(e.name) + '</h3><dl>' +
+    '<dt>' + esc(S.kind) + '</dt><dd>' + esc(kindOf(e)) + '</dd>' +
+    '<dt>' + esc(S.size) + '</dt><dd>' + esc(e.dir ? (e.n === 1 ? S.item1 : fmt(S.items, e.n || 0)) : fsize(e.size) + " (" + (e.size || 0).toLocaleString(LANG) + " byte)") + '</dd>' +
+    '<dt>' + esc(S.mtime) + '</dt><dd>' + esc(fdate(e.mtime)) + '</dd><dt>' + esc(S.added) + '</dt><dd>' + esc(fdate(e.added)) + '</dd>' +
+    '<dt>' + esc(S.atime) + '</dt><dd>' + esc(fdate(e.atime)) + '</dd><dt>' + esc(S.path) + '</dt><dd>' + esc(p.root + "/" + rel) + '</dd></dl>' +
+    '<div class="row" style="display:flex;gap:.4rem;padding:0;margin:0"><button class="tint small" id="pv-open">' + esc(S.open) + '</button>' + (e.dir ? "" : '<a class="btn tint" style="font-size:13px;padding:.32rem .65rem;border-radius:8px" href="' + esc(src + "&dl=1") + '">' + esc(S.download) + '</a>') + '</div>';
+  $("pv-open").addEventListener("click", function(){ open(p, e); });
+  var pre = box.querySelector("pre");
+  if (pre) api("/fm/api/text?" + q({root:p.root, path:rel})).then(function(d){ if (pvKey !== key) return; pre.textContent = d.binary ? S.binary : d.text + (d.cut ? "\n… " + S.cut_more : ""); }).catch(function(){ pre.textContent = S.binary; });
+}
+
+// ---- operazioni ----
+function toast(html, ms){ var d = document.createElement("div"); d.className = "job"; d.innerHTML = html; $("fm-jobs").appendChild(d); if (ms) setTimeout(function(){ d.remove(); }, ms); return d; }
+function refreshAll(){ panes.forEach(function(p){ if (p.i === 0 || ui.dual) load(p); }); loadHist(); }
+function loadHist(){ return api("/fm/api/history").then(function(h){ hist = h; syncTools(); }).catch(function(){}); }
+function watch(jid, label, onDone){
+  var d = toast('<div><b>' + esc(label) + '</b> <span class="mut pr"></span></div><div class="bar2"><i></i></div>');
+  (function poll(){ api("/fm/api/job/" + jid).then(function(j){
+      var pct = j.total ? Math.min(100, Math.round(100 * j.done / j.total)) : 0; d.querySelector(".bar2 i").style.width = pct + "%";
+      d.querySelector(".pr").textContent = j.state === "run" ? (j.total > 1 ? j.done + "/" + j.total : "") + (j.bytes ? " · " + fsize(j.bytes) : "") : S.done;
+      if (j.state === "run") return setTimeout(poll, 400);
+      var extra = "";
+      if (j.renamed && j.renamed.length) extra += '<div class="mut" style="margin-top:.3rem">' + esc(S.renamed) + " " + j.renamed.map(function(x){ return esc(x[0]) + " → " + esc(x[1]); }).join(", ") + '</div>';
+      if (j.errors && j.errors.length) extra += '<div class="err">' + esc(S.errors) + "\n" + j.errors.map(esc).join("\n") + '</div>';
+      if (extra) d.insertAdjacentHTML("beforeend", extra);
+      if (j.kind !== "undo" && j.kind !== "redo" && j.done) { var b = document.createElement("button"); b.className = "tint"; b.textContent = S.undo; b.addEventListener("click", function(){ d.remove(); history("undo"); }); d.appendChild(b); }
+      setTimeout(function(){ d.remove(); }, j.errors && j.errors.length ? 15000 : 6000);
+      refreshAll(); if (onDone) onDone(j); }).catch(function(){ setTimeout(poll, 1500); }); })();
+}
+function op(kind, body, n, label){
+  body.op = kind; var name = label || (n === 1 ? (body.items ? body.items[0].path.split("/").pop() : body.name) : fmt(S.n_items, n));
+  return api("/fm/api/op", body).then(function(r){ if (r.job) watch(r.job, fmt(S["j_" + kind], name)); return r; }).catch(function(e){ toast('<div class="err">' + esc(errText(e)) + '</div>', 6000); throw e; }); }
+function history(what){
+  if (!hist[what]) { toast(esc(what === "undo" ? S.nothing_undo : S.nothing_redo), 2500); return; }
+  api("/fm/api/history/" + what, {}).then(function(r){ if (r.job) watch(r.job, fmt(S["j_" + what], r.label)); }).catch(function(e){ toast('<div class="err">' + esc(errText(e)) + '</div>', 6000); }); }
+var A = {
+  newdir: function(){ var p = cur(), n = prompt(S.newname, S.newdef); if (n && n.trim()) op("mkdir", {root:p.root, path:p.path, name:n.trim()}, 1, n.trim()).then(function(r){ p.sel = {}; if (r.name) { p.sel[r.name] = 1; p.focus = r.name; } }); },
+  copy: function(){ var it = selItems(cur()); if (!it.length) return; clip = {mode:"copy", items:it}; toast(esc(fmt(S.copied, it.length)), 2500); panes.forEach(render); status(); },
+  cut: function(){ var it = selItems(cur()); if (!it.length) return; clip = {mode:"cut", items:it}; toast(esc(fmt(S.cutd, it.length)), 3000); panes.forEach(render); status(); },
+  paste: function(){ if (!clip) return; var p = cur(), c = clip; op(c.mode === "cut" ? "move" : "copy", {items:c.items, dst:{root:p.root, path:p.path}}, c.items.length); if (c.mode === "cut") clip = null; status(); },
+  rename: function(){ var p = cur(), es = selEntries(p); if (es.length !== 1) return; var n = prompt(S.renameq, es[0].name); if (n && n.trim() && n.trim() !== es[0].name) op("rename", {root:p.root, path:join(p.path, es[0].name), name:n.trim()}, 1, es[0].name + " → " + n.trim()).then(function(){ p.sel = {}; p.sel[n.trim()] = 1; p.focus = n.trim(); }); },
+  "delete": function(){ var p = cur(), it = selItems(p); if (it.length) op("delete", {items:it}, it.length); },
+  undo: function(){ history("undo"); }, redo: function(){ history("redo"); },
+  copyother: function(){ if (!ui.dual) return toast(esc(S.need_dual), 3000); var it = selItems(cur()), o = other(); if (it.length) op("copy", {items:it, dst:{root:o.root, path:o.path}}, it.length); },
+  moveother: function(){ if (!ui.dual) return toast(esc(S.need_dual), 3000); var it = selItems(cur()), o = other(); if (it.length) op("move", {items:it, dst:{root:o.root, path:o.path}}, it.length); },
+  selall: function(){ var p = cur(); p.sel = {}; p.shown.forEach(function(e){ p.sel[e.name] = 1; }); paint(p); status(); preview(); },
+  dir: function(){ ui.dir = ui.dir === "asc" ? "desc" : "asc"; saveUi(); syncTools(); panes.forEach(render); },
+  view: function(){ ui.view = ui.view === "list" ? "icons" : "list"; saveUi(); syncTools(); panes.forEach(render); },
+  dual: function(){ ui.dual = !ui.dual; saveUi(); syncTools(); if (ui.dual) load(panes[1]); status(); },
+  preview: function(){ ui.preview = !ui.preview; pvKey = ""; saveUi(); syncTools(); preview(); },
+  hidden: function(){ ui.hidden = !ui.hidden; saveUi(); syncTools(); refreshAll(); },
+  refresh: function(){ refreshAll(); },
+  open: function(){ var p = cur(), e = p.focus ? p.shown[idx(p, p.focus)] : selEntries(p)[0]; if (e) open(p, e); },
+  dl: function(){ var p = cur(), e = selEntries(p)[0]; if (e && !e.dir) location.href = "/fm/raw?" + q({root:p.root, path:join(p.path, e.name), dl:1}); }
+};
+document.querySelectorAll(".fm-tools [data-act]").forEach(function(b){ b.addEventListener("click", function(){ A[b.dataset.act](); }); });
+$("fm-sort").addEventListener("change", function(){ ui.sort = this.value; ui.dir = (ui.sort === "name" || ui.sort === "ext") ? "asc" : "desc"; saveUi(); syncTools(); panes.forEach(render); });
+
+// ---- menu contestuale ----
+function menu(x, y, e){
+  var m = $("fm-menu"), p = cur(), n = Object.keys(p.sel).length;
+  var items = [["open", S.m_open, "↩", true], ["dl", S.m_dl, "", e && !e.dir && n === 1], null, ["copy", S.m_copy, "⌘C", n], ["cut", S.m_cut, "⌘X", n], ["paste", S.m_paste, "⌘V", !!clip],
+               null, ["rename", S.m_rename, "F2", n === 1], ["delete", S.m_delete, "⌫", n], null, ["copyother", S.m_copyo, "F5", n && ui.dual], ["moveother", S.m_moveo, "F6", n && ui.dual], null,
+               ["newdir", S.m_newdir, "F7", true], ["selall", S.m_selall, "⌘A", true]];
+  m.innerHTML = items.map(function(it){ return it ? '<button role="menuitem" data-a="' + it[0] + '"' + (it[3] ? "" : " disabled") + '><span>' + esc(it[1]) + '</span><kbd>' + esc(it[2]) + '</kbd></button>' : "<hr>"; }).join("");
+  m.hidden = false; var w = m.offsetWidth, h = m.offsetHeight; m.style.left = Math.min(x, innerWidth - w - 8) + "px"; m.style.top = Math.min(y, innerHeight - h - 8) + "px";
+  m.querySelectorAll("[data-a]").forEach(function(b){ b.addEventListener("click", function(){ m.hidden = true; A[b.dataset.a](); }); });
+}
+document.addEventListener("click", function(ev){ if (!$("fm-menu").contains(ev.target)) $("fm-menu").hidden = true; });
+panes.forEach(function(p){ p.list.addEventListener("contextmenu", function(ev){ if (ev.target.closest("[data-i]")) return; ev.preventDefault(); setAct(p.i); p.sel = {}; paint(p); status(); menu(ev.clientX, ev.clientY, null); });
+  p.list.addEventListener("click", function(ev){ if (!ev.target.closest("[data-i]")) { p.sel = {}; paint(p); status(); preview(); } }); });
+
+// ---- tastiera ----
+document.addEventListener("keydown", function(ev){
+  var t = ev.target; if (t.closest && (t.closest("input,select,textarea") && t.type !== "checkbox")) return;
+  if (!$("fm-menu").hidden && ev.key === "Escape") { $("fm-menu").hidden = true; return; }
+  var p = cur(), mod = ev.metaKey || ev.ctrlKey, k = ev.key;
+  var keys = {"F2":"rename", "F5":"copyother", "F6":"moveother", "F7":"newdir", "F8":"delete", "Delete":"delete"};
+  if (keys[k] && !mod) { ev.preventDefault(); return A[keys[k]](); }
+  if (mod && !ev.altKey) {
+    var lk = k.toLowerCase();
+    if (lk === "a") { ev.preventDefault(); return A.selall(); }
+    if (lk === "c") { ev.preventDefault(); return A.copy(); }
+    if (lk === "x") { ev.preventDefault(); return A.cut(); }
+    if (lk === "v") { ev.preventDefault(); return A.paste(); }
+    if (lk === "z") { ev.preventDefault(); return ev.shiftKey ? A.redo() : A.undo(); }
+    if (lk === "y") { ev.preventDefault(); return A.redo(); }
+    if (k === "Backspace") { ev.preventDefault(); return A["delete"](); }
+    if (k === "\\") { ev.preventDefault(); return A.dual(); }
+    if (k === "ArrowUp") { ev.preventDefault(); return nav(p, "up"); }
+    if (k === "ArrowDown") { ev.preventDefault(); return A.open(); }
+    if (k === "[") { ev.preventDefault(); return nav(p, "back"); }
+    if (k === "]") { ev.preventDefault(); return nav(p, "fwd"); }
+    return;
+  }
+  if (k === "Tab" && ui.dual) { ev.preventDefault(); setAct(1 - act); cur().list.focus(); return; }
+  if (k === "Escape") { p.sel = {}; paint(p); status(); preview(); return; }
+  if (k === "Backspace" || (ev.altKey && k === "ArrowUp")) { ev.preventDefault(); return nav(p, "up"); }
+  if (k === "Enter") { ev.preventDefault(); return A.open(); }
+  if (k === " ") { ev.preventDefault(); return A.preview(); }
+  if (k === "ArrowDown" || k === "ArrowUp" || k === "Home" || k === "End") {
+    if (!p.shown.length) return; ev.preventDefault();
+    var cols = ui.view === "list" ? 1 : Math.max(1, Math.round(p.list.clientWidth / 126));
+    var i0 = p.focus ? idx(p, p.focus) : -1, i1 = k === "Home" ? 0 : k === "End" ? p.shown.length - 1 : Math.max(0, Math.min(p.shown.length - 1, i0 + (k === "ArrowDown" ? cols : -cols)));
+    var name = p.shown[i1].name;
+    if (ev.shiftKey && p.anchor) { var a = idx(p, p.anchor); p.sel = {}; for (var j = Math.min(a, i1); j <= Math.max(a, i1); j++) p.sel[p.shown[j].name] = 1; } else { p.sel = {}; p.sel[name] = 1; p.anchor = name; }
+    p.focus = name; paint(p); status(); preview(); var r = p.list.querySelector(".foc"); if (r) r.scrollIntoView({block:"nearest"}); return; }
+  if ((k === "ArrowRight" || k === "ArrowLeft") && ui.view !== "list") { ev.preventDefault(); var ii = p.focus ? idx(p, p.focus) : -1, i2 = Math.max(0, Math.min(p.shown.length - 1, ii + (k === "ArrowRight" ? 1 : -1))); if (!p.shown.length) return; p.sel = {}; p.sel[p.shown[i2].name] = 1; p.focus = p.anchor = p.shown[i2].name; paint(p); status(); preview(); return; }
+  if (k.length === 1 && /\S/.test(k) && !ev.altKey) {   // salta al primo nome che inizia con la lettera
+    var f = p.shown.filter(function(e){ return e.name.toLowerCase().indexOf(k.toLowerCase()) === 0; })[0];
+    if (f) { p.sel = {}; p.sel[f.name] = 1; p.focus = p.anchor = f.name; paint(p); status(); preview(); var rr = p.list.querySelector(".foc"); if (rr) rr.scrollIntoView({block:"nearest"}); } }
+});
+
+// ---- avvio ----
+panes[0].el.classList.add("act"); syncTools(); load(panes[0]); if (ui.dual) load(panes[1]); loadHist();
+})();
+</script>
+{% endif %}
+{% endblock %}

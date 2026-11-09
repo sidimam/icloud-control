@@ -125,6 +125,35 @@ della GUI non passano dalle ore silenziose: arrivano sempre subito alla chat che
   la lettura diretta dell'analisi di Immich; i risultati si alternano. Anche con una sola chiave si cerca sempre in tutte le foto.
 - In Amministrazione resta l'indirizzo di Immich e il riepilogo di quali librerie hanno la chiave.
 
+### File manager nella scheda Files (dalla 3.20)
+
+La scheda **Files** è un file manager sulle cartelle di ogni persona sul NAS, `/documents/<persona>`: la copia di iCloud Drive
+(`iCloud/`) e le altre cartelle (`Lavoro`, `iPhone`, `Pictures`…). Lavora sul disco, non sull'indice; la ricerca resta quella di
+sempre (campo Cerca → risultati dall'indice, con filtri). Ogni utente vede solo le proprie cartelle, l'amministratore tutte.
+
+- **Uno o due pannelli** (◫ Affianca, ⌘\) in stile commander, ciascuno con persona, percorso cliccabile, ‹ › indietro/avanti,
+  ↑ cartella superiore e filtro sui nomi. Tab passa da un pannello all'altro.
+- **Selezione** singola (clic), multipla (⌘/Ctrl-clic, caselle), a intervallo (⇧-clic, ⇧-frecce), tutto (⌘A); frecce, Invio
+  per aprire, ⌫ per salire, una lettera salta al primo nome che inizia così.
+- **Operazioni**: nuova cartella (F7), rinomina (F2), copia/taglia/incolla (⌘C/⌘X/⌘V, anche fra pannelli e fra persone),
+  copia e sposta nell'altro pannello (F5/F6), trascinamento (sposta; con ⌥/Alt copia) su una cartella, sul percorso o
+  sull'altro pannello, elimina (⌫ con ⌘, F8, Canc). Menu con il tasto destro. Mai sovrascrivere: un nome già usato diventa
+  «nome 2» (spostando) o «nome copia» (copiando nella stessa cartella).
+- **Annulla / Ripeti** (⌘Z, ⇧⌘Z) per le ultime 50 operazioni di ogni utente (in memoria: si azzerano al riavvio del container).
+  Eliminare **sposta nel cestino** `/documents/.cestino-dashboard/<data>-<lavoro>/`, svuotato dopo 30 giorni (`FM_TRASH_DAYS`);
+  annullare una copia o una nuova cartella le rimanda lì, ripetere le rimette a posto.
+- Le operazioni girano in background con avanzamento (copie grandi comprese) e un pulsante Annulla nell'avviso.
+- **Ordina** per nome, tipo, dimensione, data di modifica, data aggiunta, ultimo accesso, A→Z / Z→A (o clic sulle colonne);
+  cartelle sempre in cima. Vista **Elenco** o **Icone** con miniature (foto, HEIC, video, PDF), file nascosti a richiesta (.*).
+- **Anteprima** (spazio) a destra: foto, video, audio, PDF, testo, con tipo, dimensione, date (modifica, aggiunta, ultimo
+  accesso), percorso, Apri e Scarica. Su Linux la «data aggiunta» è il cambio di stato del file (ctime).
+- I file nuovi diventano `nobody:users` (99:100, `FM_UID`/`FM_GID`) come il resto delle share.
+- **Nella copia di iCloud le modifiche restano sul NAS**: la sincronizzazione è a senso unico (iCloud → NAS), quindi non arrivano
+  su iCloud né sugli altri dispositivi, e al giro successivo iclouddr può rimettere i file com'erano su iCloud. La pagina lo
+  ricorda con un avviso quando si è lì dentro (scelta dell'utente del 9/11/2026: tutto modificabile).
+- Sicurezza: percorsi risolti e confinati nella cartella della persona (niente `..`, niente collegamenti simbolici verso fuori),
+  la radice non si elimina, le operazioni accettano solo richieste JSON dalla pagina, i file HTML/SVG si aprono in sandbox.
+
 ### Files, viste, ordine delle schede, ora e meteo (dalla 3.18)
 
 - Schede nell'ordine **Riepilogo, Files, Posta, Calendario, Contatti, Promemoria, Note, Foto, Utenti, 🔍**.
