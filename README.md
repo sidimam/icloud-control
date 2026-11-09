@@ -125,6 +125,26 @@ della GUI non passano dalle ore silenziose: arrivano sempre subito alla chat che
   la lettura diretta dell'analisi di Immich; i risultati si alternano. Anche con una sola chiave si cerca sempre in tutte le foto.
 - In Amministrazione resta l'indirizzo di Immich e il riepilogo di quali librerie hanno la chiave.
 
+### Su iCloud o solo sul NAS (dalla 3.21)
+
+Accanto a ogni elemento di Files (file manager e ricerca), Foto, Note, Promemoria, Posta, Calendario, Cerca e nella scheda del
+singolo elemento c'è un'icona, con la spiegazione al passaggio del mouse:
+
+| Icona | Significato |
+|---|---|
+| nuvola blu | **su iCloud** |
+| nuvola tratteggiata | su iCloud? non ancora verificato (iclouddr non ha ancora scritto l'elenco) |
+| disco arancione barrato | **solo sul NAS, non più su iCloud**: cancellato là, la copia qui è rimasta (o un messaggio cancellato dal server) |
+| disco grigio | **solo sul NAS**: non è mai stato su iCloud (Lavoro, iPhone, Archivio delle foto…) |
+| nuvola grigia | su un altro servizio (Gmail, Outlook…), non su iCloud |
+
+Come si decide: iclouddr ≥ 0.2.9 scrive a fine giro l'elenco dei file di Drive e delle foto presenti su iCloud
+(`/config/elenco-icloud-{drive,foto}.json.gz`). Un file in una cartella sincronizzata è su iCloud se compare nell'elenco,
+altrimenti è rimasto solo sul NAS (con `remove_obsolete` spento iclouddr non cancella le copie). Le cartelle fuori da quelle
+sincronizzate sono solo sul NAS. Note e promemoria vengono riesportati per intero a ogni giro, quindi sono sempre su iCloud;
+posta, calendari e contatti seguono l'account (iCloud o un altro servizio); un messaggio con il flag `T` nel Maildir è stato
+cancellato dal server (mbsync: `Sync Pull`, `Expunge None`). L'elenco si rilegge quando cambia, i dati dei container ogni minuto.
+
 ### File manager nella scheda Files (dalla 3.20)
 
 La scheda **Files** è un file manager sulle cartelle di ogni persona sul NAS, `/documents/<persona>`: la copia di iCloud Drive

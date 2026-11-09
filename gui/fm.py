@@ -31,8 +31,8 @@ _hist = {}           # utente → {"undo": [voci], "redo": [voci]}
 _lock = threading.Lock()
 
 
-def init(app, roots, icloud_sub, thumb, user):
-    _cfg.update(roots=roots, icloud=icloud_sub, thumb=thumb, user=user)
+def init(app, roots, icloud_sub, thumb, user, cloud=None):
+    _cfg.update(roots=roots, icloud=icloud_sub, thumb=thumb, user=user, cloud=cloud)
     app.register_blueprint(bp)
     threading.Thread(target=_purge_loop, daemon=True).start()
 
@@ -125,7 +125,11 @@ def api_list():
     for n in names:
         if not hidden and (n.startswith(".") or n in ("@eaDir", "#recycle")): continue
         e = _entry(os.path.join(p, n), n)
-        if e: out.append(e)
+        if e:
+            if _cfg.get("cloud"):   # 3.21: su iCloud o solo sul NAS
+                try: e["cloud"], e["cloud_t"] = _cfg["cloud"](os.path.join(p, n), e["dir"])
+                except Exception: pass
+            out.append(e)
     return jsonify({"root": person, "path": _rel(person, p), "entries": out, "icloud": _cfg["icloud"](person)})
 
 

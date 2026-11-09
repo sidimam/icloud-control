@@ -146,6 +146,13 @@ var IMG = {jpg:1,jpeg:1,png:1,heic:1,heif:1,tif:1,tiff:1,webp:1,gif:1,bmp:1,dng:
     AUD = {mp3:1,m4a:1,aac:1,wav:1,flac:1,ogg:1}, ZIP = {zip:1,rar:1,"7z":1,gz:1,tgz:1,tar:1,bz2:1,xz:1,dmg:1,iso:1},
     TXT = {txt:1,md:1,csv:1,json:1,xml:1,yml:1,yaml:1,log:1,ini:1,conf:1,cfg:1,py:1,sh:1,js:1,css:1,html:1,htm:1,sql:1,swift:1,go:1,c:1,h:1,cpp:1,java:1,kt:1,ts:1,toml:1,env:1,srt:1,vtt:1,tex:1,plist:1},
     WEBIMG = {jpg:1,jpeg:1,png:1,gif:1,webp:1,avif:1,bmp:1};
+var CLOUD = {   // 3.21: stesso disegno delle altre schede (app.py, _CLOUD_SVG)
+  icloud: ['var(--acc)', '<path d="M7 18h10a4 4 0 0 0 .7-7.94A6 6 0 0 0 6.3 9.3 4.4 4.4 0 0 0 7 18z" fill="currentColor" fill-opacity=".18"/>'],
+  unknown: ['var(--mut)', '<path d="M7 18h10a4 4 0 0 0 .7-7.94A6 6 0 0 0 6.3 9.3 4.4 4.4 0 0 0 7 18z" stroke-dasharray="2.5 2.2"/>'],
+  gone: ['var(--warn)', '<rect x="3.5" y="6" width="17" height="12" rx="2.5"/><path d="M7 14.5h4"/><circle cx="16.5" cy="14.5" r=".9" fill="currentColor"/><path d="M4 4l16 16"/>'],
+  local: ['var(--mut)', '<rect x="3.5" y="6" width="17" height="12" rx="2.5"/><path d="M7 14.5h4"/><circle cx="16.5" cy="14.5" r=".9" fill="currentColor"/>']};
+function cloudIcon(e){ var c = CLOUD[e.cloud]; if (!c) return "";
+  return '<svg class="cl" width="1.05em" height="1.05em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="color:' + c[0] + ';flex:none;vertical-align:-.18em" role="img" aria-label="' + esc(e.cloud_t) + '"><title>' + esc(e.cloud_t) + '</title>' + c[1] + '</svg>'; }
 var FOLDER_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2h7.5A2.5 2.5 0 0 1 21 9.5v7a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 16.5z"/></svg>';
 function $(id){ return document.getElementById(id); }
 function esc(s){ return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
@@ -237,13 +244,13 @@ function render(p){
   if (!p.shown.length) h = '<div class="empty">' + esc(p.entries.length ? S.nomatch : S.empty) + '</div>';
   else if (ui.view === "list") h = p.shown.map(function(e, i){ var s = p.sel[e.name];
     return '<div class="fr' + (s ? " sel" : "") + (p.focus === e.name ? " foc" : "") + (cutset[e.name] ? " cut" : "") + '" data-i="' + i + '" draggable="true">' +
-      '<input type="checkbox" tabindex="-1"' + (s ? " checked" : "") + ' aria-label="' + esc(e.name) + '">' + ficon(e) + '<span class="nm" title="' + esc(e.name) + '">' + esc(e.name) + '</span>' +
+      '<input type="checkbox" tabindex="-1"' + (s ? " checked" : "") + ' aria-label="' + esc(e.name) + '">' + ficon(e) + '<span class="nm" title="' + esc(e.name) + '">' + esc(e.name) + " " + cloudIcon(e) + '</span>' +
       '<span class="mut r">' + esc(e.dir ? (e.n == null ? "" : (e.n === 1 ? S.item1 : fmt(S.items, e.n))) : fsize(e.size)) + '</span><span class="mut c-mod">' + esc(fdate(e.mtime)) + '</span>' +
       '<span class="mut c-add">' + esc(fdate(e.added)) + '</span><span class="mut c-acc">' + esc(fdate(e.atime)) + '</span><span class="mut c-kind">' + esc(e.dir ? S.folder : (e.ext || "").toUpperCase()) + '</span></div>'; }).join("");
   else h = '<div class="tiles2">' + p.shown.map(function(e, i){ var s = p.sel[e.name];
     return '<div class="tl' + (s ? " sel" : "") + (p.focus === e.name ? " foc" : "") + (cutset[e.name] ? " cut" : "") + '" data-i="' + i + '" draggable="true"><input type="checkbox" tabindex="-1"' + (s ? " checked" : "") + ' aria-label="' + esc(e.name) + '">' +
       '<span class="th">' + (thumbable(e) ? '<img loading="lazy" alt="" src="/fm/thumb?' + q({root:p.root, path:join(p.path, e.name)}) + '" onerror="this.outerHTML=\'' + ficon(e).replace(/'/g, "\\'").replace(/"/g, "&quot;") + '\'">' : ficon(e)) + '</span>' +
-      '<span class="nm" title="' + esc(e.name) + '">' + esc(e.name) + '</span></div>'; }).join("") + '</div>';
+      '<span class="nm" title="' + esc(e.name) + '">' + esc(e.name) + " " + cloudIcon(e) + '</span></div>'; }).join("") + '</div>';
   p.list.innerHTML = h;
   var all = el.querySelector(".cols .all"), ns = Object.keys(p.sel).length; all.checked = ns > 0 && ns === p.shown.length; all.indeterminate = ns > 0 && ns < p.shown.length;
   p.list.querySelectorAll("[data-i]").forEach(function(r){ var e = p.shown[+r.dataset.i]; bindItem(p, r, e); });
@@ -317,6 +324,7 @@ function preview(){
   else pv = '<span class="fi" style="width:72px;height:72px;border-radius:16px;font-size:16px">' + esc((e.ext || "?").slice(0, 4).toUpperCase()) + '</span>';
   box.innerHTML = '<div class="pv">' + pv + '</div><h3>' + esc(e.name) + '</h3><dl>' +
     '<dt>' + esc(S.kind) + '</dt><dd>' + esc(kindOf(e)) + '</dd>' +
+    (e.cloud ? '<dt>iCloud</dt><dd>' + cloudIcon(e) + " " + esc(e.cloud_t) + '</dd>' : "") +
     '<dt>' + esc(S.size) + '</dt><dd>' + esc(e.dir ? (e.n === 1 ? S.item1 : fmt(S.items, e.n || 0)) : fsize(e.size) + " (" + (e.size || 0).toLocaleString(LANG) + " byte)") + '</dd>' +
     '<dt>' + esc(S.mtime) + '</dt><dd>' + esc(fdate(e.mtime)) + '</dd><dt>' + esc(S.added) + '</dt><dd>' + esc(fdate(e.added)) + '</dd>' +
     '<dt>' + esc(S.atime) + '</dt><dd>' + esc(fdate(e.atime)) + '</dd><dt>' + esc(S.path) + '</dt><dd>' + esc(p.root + "/" + rel) + '</dd></dl>' +

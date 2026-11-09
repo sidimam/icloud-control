@@ -57,7 +57,8 @@
   var cal = new FullCalendar.Calendar(document.getElementById("cal"), {
     locale: lang, timeZone: tz, initialView: view, firstDay: 1, height: "auto", nowIndicator: true, navLinks: true, dayMaxEvents: true,
     eventDidMount: function(i){ var p = i.event.extendedProps; var t = [i.event.title, p.calendar, p.location].filter(Boolean).join(" · ");
-      if (p.tz && p.tz !== tz && !i.event.allDay) t += " · " + {{ _('creato nel fuso')|tojson }} + " " + p.tz; i.el.title = t; },
+      if (p.tz && p.tz !== tz && !i.event.allDay) t += " · " + {{ _('creato nel fuso')|tojson }} + " " + p.tz; i.el.title = t;
+      if (p.cloud) { var tt = i.el.querySelector(".fc-event-title, .fc-list-event-title a, .fc-list-event-title"); if (tt) tt.insertAdjacentHTML("afterbegin", p.cloud + " "); } },   // 3.21: su iCloud o no
     headerToolbar: {left: "prev,next today", center: "title", right: "multiMonthYear,dayGridMonth,timeGridWeek,timeGridDay,listMonth"},
     views: {multiMonthYear: {multiMonthMaxColumns: 3}},
     events: function(info, ok, ko){ fetch("/api/events?start=" + encodeURIComponent(info.startStr) + "&end=" + encodeURIComponent(info.endStr) + "&person=" + encodeURIComponent(person) + "&fq=" + encodeURIComponent(new URLSearchParams(location.search).get("fq") || "")).then(function(r){return r.json();}).then(function(d){ ok(d.events.filter(function(e){ return !hidden.has(e.extendedProps.cal_id); })); }).catch(ko); },

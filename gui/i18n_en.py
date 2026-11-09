@@ -689,4 +689,12 @@ EN = {
     'Caricamento…': 'Loading…',
     'Sposta nel cestino': 'Move to trash',
     'Gli elementi eliminati restano 30 giorni nel cestino del NAS (/documents/.cestino-dashboard) e si recuperano con «Annulla».': 'Deleted items stay 30 days in the NAS trash (/documents/.cestino-dashboard) and come back with «Undo».',
+    # su iCloud o solo sul NAS (3.21)
+    'Su iCloud': 'On iCloud',
+    'Su {a0}, non su iCloud': 'On {a0}, not on iCloud',
+    'un altro servizio': 'another service',
+    "Su iCloud? Da verificare: iclouddr scrive l'elenco a fine giro": 'On iCloud? Not checked yet: iclouddr writes the list at the end of its run',
+    'Solo sul NAS: non è più su iCloud (cancellato là, la copia qui è rimasta)': 'Only on the NAS: no longer on iCloud (deleted there, the copy here stayed)',
+    'Solo sul NAS: cancellato dal server ({a0})': 'Only on the NAS: deleted from the server ({a0})',
+    'Solo sul NAS: non è su iCloud': 'Only on the NAS: not on iCloud',
 }

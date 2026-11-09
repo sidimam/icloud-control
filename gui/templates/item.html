@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% block body %}
 <p><a href="javascript:history.back()">← {{ _('Indietro') }}</a></p>
 <div class="split" style="grid-template-columns:minmax(0,1fr) minmax(260px,360px)"><div style="min-width:0">
-<div class="uhead" style="padding-left:0"><span class="badge {{ kind_icons[d.kind][1] }}">{{ icon(kind_icons[d.kind][0], 17) }}</span><div><h1 class="title{{ ' shr' if is_shared(d) }}" style="margin:0;font-size:24px">{{ d.title or '—' }}</h1><span class="mut">{{ _(kind_names[d.kind]) }}{% if is_shared(d) %} · <span class="shr">{{ _('condiviso') }}</span>{% endif %} · {{ d.person }}{% if d.account %} · {{ d.account }}{% endif %}</span></div></div>
+<div class="uhead" style="padding-left:0"><span class="badge {{ kind_icons[d.kind][1] }}">{{ icon(kind_icons[d.kind][0], 17) }}</span><div><h1 class="title{{ ' shr' if is_shared(d) }}" style="margin:0;font-size:24px">{{ d.title or '—' }}</h1><span class="mut">{{ cloud_icon(d) }} {{ cloud_label(d) }} · {{ _(kind_names[d.kind]) }}{% if is_shared(d) %} · <span class="shr">{{ _('condiviso') }}</span>{% endif %} · {{ d.person }}{% if d.account %} · {{ d.account }}{% endif %}</span></div></div>
 <div class="list" style="margin-bottom:1rem">
 {% if d.kind in ('file', 'photo') %}
 <div class="li"><span class="k">{{ _('Cartella') }}</span><span class="v">{{ d.x.rel }}</span></div><div class="li"><span class="k">{{ _('Dimensione') }}</span><span class="v">{{ fmt_size(d.size) }}</span></div><div class="li"><span class="k">{{ _('Modificato') }}</span><span class="v">{{ fmt_date(d.mtime) }}</span></div>
