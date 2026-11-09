@@ -135,6 +135,7 @@ singolo elemento c'è un'icona, con la spiegazione al passaggio del mouse:
 | nuvola blu | **su iCloud** |
 | nuvola tratteggiata | su iCloud? non ancora verificato (iclouddr non ha ancora scritto l'elenco) |
 | disco arancione barrato | **solo sul NAS, non più su iCloud**: cancellato là, la copia qui è rimasta (o un messaggio cancellato dal server) |
+| nuvola arancione con + | **copia in più sul NAS**: su iCloud lo stesso elemento c'è con un altro nome (es. `IMG_3903__original__….HEIC` rimasta da un vecchio schema di nomi, su iCloud `IMG_3903.HEIC`) |
 | disco grigio | **solo sul NAS**: non è mai stato su iCloud (Lavoro, iPhone, Archivio delle foto…) |
 | nuvola grigia | su un altro servizio (Gmail, Outlook…), non su iCloud |
 

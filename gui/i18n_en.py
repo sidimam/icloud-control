@@ -690,6 +690,7 @@ EN = {
     'Sposta nel cestino': 'Move to trash',
     'Gli elementi eliminati restano 30 giorni nel cestino del NAS (/documents/.cestino-dashboard) e si recuperano con «Annulla».': 'Deleted items stay 30 days in the NAS trash (/documents/.cestino-dashboard) and come back with «Undo».',
     # su iCloud o solo sul NAS (3.21)
+    "Copia in più sul NAS: su iCloud c'è con un altro nome ({a0})": 'Extra copy on the NAS: on iCloud it has another name ({a0})',
     'Su iCloud': 'On iCloud',
     'Su {a0}, non su iCloud': 'On {a0}, not on iCloud',
     'un altro servizio': 'another service',

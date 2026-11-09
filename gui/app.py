@@ -946,11 +946,15 @@ def _load_elenco(f, m):
     import gzip
     with gzip.open(f, "rt", encoding="utf-8") as fh: d = json.load(fh)
     files = {h for h in (_host_of(m, x) for x in d.get("files") or []) if h}
-    dirs = set()
+    dirs, alt = set(), {}
     for h in files:
+        alt[(os.path.dirname(h), _stem(h))] = os.path.basename(h)
         p = os.path.dirname(h)
         while p and p not in dirs and p != "/": dirs.add(p); p = os.path.dirname(p)
-    return files, dirs, d.get("when")
+    return files, dirs, d.get("when"), alt
+def _stem(h):
+    """«IMG_3903__original__….HEIC» e «IMG_3903.HEIC» → «IMG_3903»: stessa foto con un altro schema di nomi."""
+    return os.path.basename(h).split("__")[0].split(".")[0]
 def icloud_roots():
     """[(radice host, (file, cartelle, quando) | None)] delle cartelle che iclouddr sincronizza da iCloud, dalla più lunga."""
     if time.time() - _ICL["t"] < 60: return _ICL["roots"]
@@ -972,16 +976,19 @@ def icloud_roots():
             for dst, src in m.items():
                 if dst == pre or dst.startswith(pre + "/"): roots.append((src.rstrip("/"), data))
     roots.sort(key=lambda r: -len(r[0])); _ICL.update(t=time.time(), roots=roots); return roots
-def cloud_of_host(h, is_dir=False):
-    """«icloud», «gone» (in una cartella sincronizzata ma non più su iCloud), «local» (fuori da iCloud) o «unknown»."""
+def cloud_of_host(h, is_dir=False, detail=False):
+    """«icloud», «gone» (in una cartella sincronizzata ma non più su iCloud), «extra» (copia in più: su iCloud c'è con un altro
+    nome), «local» (fuori da iCloud) o «unknown». Con detail=True restituisce (stato, nome su iCloud o "")."""
+    out = lambda st, n="": (st, n) if detail else st
     for root, data in icloud_roots():
         if h == root or h.startswith(root + "/"):
-            if data is None: return "unknown"
-            files, dirs, _w = data
-            ok = (h in dirs or h == root) if is_dir else (h in files)
-            return "icloud" if ok else "gone"
-    if is_dir and any(root.startswith(h.rstrip("/") + "/") for root, _d in icloud_roots()): return "icloud"   # contiene la copia di iCloud
-    return "local"
+            if data is None: return out("unknown")
+            files, dirs, _w, alt = data
+            if (h in dirs or h == root) if is_dir else (h in files): return out("icloud")
+            other = None if is_dir or "__" not in os.path.basename(h) else alt.get((os.path.dirname(h), _stem(h)))   # solo varianti «nome__…»
+            return out("extra", other) if other else out("gone")
+    if is_dir and any(root.startswith(h.rstrip("/") + "/") for root, _d in icloud_roots()): return out("icloud")   # contiene la copia di iCloud
+    return out("local")
 def _local_to_host(p):
     pp = cfg()["paths"]
     for host, loc in (("/mnt/user/appdata", pp["appdata"]), ("/mnt/user/media/photos", pp["photos"]), ("/mnt/user/documents", pp.get("documents", "/documents"))):
@@ -999,7 +1006,8 @@ def _acc_types():
 def cloud_state(r):
     """Stato «su iCloud» di una riga dell'indice: (stato, servizio)."""
     kind = r.get("kind"); x = r.get("x") or {}
-    if kind in ("file", "photo"): return cloud_of_host(r.get("path") or ""), "iCloud"
+    if kind in ("file", "photo"):
+        st, other = cloud_of_host(r.get("path") or "", detail=True); return st, (other or "iCloud")
     if kind in ("note", "reminder"): return "icloud", "iCloud"
     acc = r.get("account") or ""; t = _acc_types().get((r.get("person"), acc))
     is_icloud = t == "icloud" or (t is None and acc.lower() == "icloud")
@@ -1011,13 +1019,15 @@ _CLOUD_SVG = {"icloud": '<path d="M7 18h10a4 4 0 0 0 .7-7.94A6 6 0 0 0 6.3 9.3 4
               "other": '<path d="M7 18h10a4 4 0 0 0 .7-7.94A6 6 0 0 0 6.3 9.3 4.4 4.4 0 0 0 7 18z"/>',
               "unknown": '<path d="M7 18h10a4 4 0 0 0 .7-7.94A6 6 0 0 0 6.3 9.3 4.4 4.4 0 0 0 7 18z" stroke-dasharray="2.5 2.2"/>',
               "gone": '<rect x="3.5" y="6" width="17" height="12" rx="2.5"/><path d="M7 14.5h4"/><circle cx="16.5" cy="14.5" r=".9" fill="currentColor"/><path d="M4 4l16 16"/>',
-              "local": '<rect x="3.5" y="6" width="17" height="12" rx="2.5"/><path d="M7 14.5h4"/><circle cx="16.5" cy="14.5" r=".9" fill="currentColor"/>'}
-_CLOUD_COLOR = {"icloud": "var(--acc)", "other": "var(--mut)", "unknown": "var(--mut)", "gone": "var(--warn)", "local": "var(--mut)"}
+              "local": '<rect x="3.5" y="6" width="17" height="12" rx="2.5"/><path d="M7 14.5h4"/><circle cx="16.5" cy="14.5" r=".9" fill="currentColor"/>',
+              "extra": '<path d="M7 18h10a4 4 0 0 0 .7-7.94A6 6 0 0 0 6.3 9.3 4.4 4.4 0 0 0 7 18z"/><path d="M12 10.5v5M9.5 13h5"/>'}
+_CLOUD_COLOR = {"icloud": "var(--acc)", "other": "var(--mut)", "unknown": "var(--mut)", "gone": "var(--warn)", "local": "var(--mut)", "extra": "var(--warn)"}
 def cloud_text(st, svc):
     return {"icloud": _("Su iCloud"), "other": _("Su {a0}, non su iCloud", a0=svc or _("un altro servizio")),
             "unknown": _("Su iCloud? Da verificare: iclouddr scrive l'elenco a fine giro"),
             "gone": _("Solo sul NAS: non è più su iCloud (cancellato là, la copia qui è rimasta)") if svc == "iCloud" or not svc else _("Solo sul NAS: cancellato dal server ({a0})", a0=svc),
-            "local": _("Solo sul NAS: non è su iCloud")}[st]
+            "local": _("Solo sul NAS: non è su iCloud"),
+            "extra": _("Copia in più sul NAS: su iCloud c'è con un altro nome ({a0})", a0=svc)}[st]
 def cloud_svg(st, title):
     return Markup(f'<svg class="ic cloud c-{st}" width="1.05em" height="1.05em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" '
                   f'stroke-linecap="round" stroke-linejoin="round" style="color:{_CLOUD_COLOR[st]};vertical-align:-.18em;flex:none" role="img" aria-label="{html.escape(title)}">'
@@ -1497,7 +1507,7 @@ def fm_thumb(p, size):
             if not os.path.exists(out) and not _make_jpeg(p, out, size, ext): return None
     return out
 def fm_cloud(local_path, is_dir):
-    st = cloud_of_host(_local_to_host(local_path), is_dir); return st, cloud_text(st, "iCloud")
+    st, other = cloud_of_host(_local_to_host(local_path), is_dir, detail=True); return st, cloud_text(st, other or "iCloud")
 fm.init(app, fm_roots, fm_icloud, fm_thumb, lambda: me() or "anon", fm_cloud)
 # ---- Files (3.18): ricerca nell'indice di iCloud Drive (con ?q= o i filtri); senza, la scheda è il file manager
 @app.route("/files")
