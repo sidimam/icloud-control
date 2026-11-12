@@ -1,10 +1,12 @@
 {% extends "base.html" %}{% block body %}
-<h1 class="title">{{ _('Il mio profilo') }}</h1>
+<h1 class="title">{{ _('Profilo e amministrazione') if is_admin_page else _('Il mio profilo') }}</h1>
 <details class="grp" data-k="acc-info" open><summary>{{ icon('person', 15) }}{{ name }}{{ icon('chevron', 15, 'ic chev') }}</summary><div class="list">
 <div class="li"><span class="badge b-gray">{{ icon('shield', 17) }}</span><span class="k">{{ _('Ruolo') }}</span><span class="v">{{ _('Amministratore') if p.role == 'admin' else _('Utente') }}</span></div>
 <div class="li"><span class="badge b-teal">{{ icon('cloud', 17) }}</span><span class="k">{{ _('Utente iCloud') }}</span><span class="v">{{ icloud or "—" }}</span></div>
 <div class="li"><span class="badge b-gray">{{ icon('doc', 17) }}</span><span class="k">{{ _('Ultimo accesso') }}</span><span class="v">{{ fmt_ts(p.last_login) }}</span></div></div></details>
 
+{% for u in links %}{% include "_accounts_section.html" %}
+{% endfor %}
 <details class="grp" data-k="acc-look" open><summary>{{ icon('theme', 15) }}{{ _('Aspetto e lingua') }}{{ icon('chevron', 15, 'ic chev') }}</summary><div class="list">{% include "prefs.html" %}</div></details>
 
 <details class="grp" data-k="acc-pw"><summary>{{ icon('key', 15) }}{{ _('Password') }}{{ icon('chevron', 15, 'ic chev') }}</summary>
@@ -37,5 +39,6 @@
 {% elif tg_pending %}<form method="post"><input type="hidden" name="action" value="tg_confirm"><div class="li col"><label class="f" for="tgc">{{ _('Codice arrivato su Telegram') }}</label><input id="tgc" name="code" inputmode="numeric" maxlength="6" required><div><button>{{ _('Collega') }}</button></div></div></form>
 {% else %}<form method="post"><input type="hidden" name="action" value="tg_send"><div class="li col"><label class="f" for="tg">{{ _('ID della chat privata con il bot di casa (un numero, non il gruppo)') }}</label><input id="tg" name="chat" inputmode="numeric" required><div><button>{{ icon('send') }}{{ _('Mandami un codice di verifica') }}</button></div></div></form>{% endif %}
 </div></details>
+{% if is_admin_page %}{% include "_admin_sections.html" %}{% endif %}
 <form method="post" action="/logout" style="margin-top:1rem"><button class="red">{{ icon('logout') }}{{ _('Esci') }}</button></form>
 {% endblock %}

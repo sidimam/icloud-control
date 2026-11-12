@@ -149,8 +149,7 @@ table.t td a{color:var(--acc)}
 <a href="/users" class="{{ 'on' if request.endpoint in ('index','u_logs') }}">{{ icon('users') }}{{ _('Utenti') }}</a>
 <a href="/search" class="{{ 'on' if request.endpoint in ('search','item') }}" title="{{ _('Cerca') }}" aria-label="{{ _('Cerca') }}">{{ icon('search') }}</a>
 {% if me_admin or not me %}<a href="/new" class="{{ 'on' if request.endpoint == 'new' }}">{{ icon('plus') }}{{ _('Nuovo utente') }}</a>{% endif %}
-<a href="/account" class="{{ 'on' if request.endpoint == 'account' }}">{{ icon('person') }}{{ _('Il mio profilo') }}</a>
-{% if me_admin %}<a href="/admin" class="{{ 'on' if request.endpoint == 'admin' }}">{{ icon('gear') }}{{ _('Amministrazione') }}</a>{% endif %}
+<a href="/account" class="{{ 'on' if request.endpoint in ('account', 'admin') }}">{{ icon('gear' if (me_admin or not me) else 'person') }}{{ _('Profilo e amministrazione') if (me_admin or not me) else _('Il mio profilo') }}</a>
 {% if me %}<span class="who">{{ me }}</span><form class="inline" method="post" action="/logout"><button type="submit" title="{{ _('Esci') }}">{{ icon('logout') }}{{ _('Esci') }}</button></form>{% endif %}
 {% endif %}</nav></div></header>
 <main>

@@ -338,17 +338,23 @@ sempre (campo Cerca → risultati dall'indice, con filtri). Ogni utente vede sol
   dagli allegati della nota). **Promemoria**: liste per persona, da fare/fatti/tutti, scadenze passate in rosso.
 - Un utente con ruolo «Utente» vede solo i propri dati anche qui.
 
-### Account collegati (dalla 3.5)
+### Account collegati (dalla 3.5, in «Il mio profilo» dalla 3.23)
 
-Nella scheda di ogni utente iclouddr (immagine `ghcr.io/sidimam/iclouddr` ≥ 0.2) la sezione **Account collegati** aggiunge uno o
-più account di posta, calendari e contatti: iCloud, Gmail, Outlook o un altro IMAP. Ognuno scrive in
-`documents/<Persona>/<etichetta>/{Posta,Calendario,Contatti}`, in sola lettura. Il file è `/config/pim-accounts.json` del container
-(600, utente 99:100): la GUI non mostra mai le password e le sostituisce solo se ne viene scritta una nuova. «Sincronizza ora» crea
-`/config/pim-run-now`. La sezione «Cosa scarica» riassume lo stato di ogni servizio per tutti gli account.
+Gli account si aggiungono, modificano e tolgono da **«Il mio profilo»**: ogni utente vede la sezione **Account collegati** del suo
+container iclouddr (immagine `ghcr.io/sidimam/iclouddr` ≥ 0.2), l'amministratore una sezione per ogni persona. Nella scheda Utenti
+resta solo l'elenco con lo stato e il pulsante «Gestisci». Tipi: iCloud, Gmail, Outlook o un altro IMAP; ognuno scrive in sola
+lettura in `documents/<Persona>/<account>/{Posta,Calendario,Contatti}` (la cartella è il nome del servizio, o l'etichetta se è
+già usata). I dati iCloud della persona restano dove sono: file, note e promemoria in `documents/<Persona>/iCloud`, foto in
+`media/photos/<Persona>/iCloud/<libreria>`. Il modulo ha etichette brevi: esempi (con il nome della persona, es. «Gmail di Simone»)
+e spiegazioni stanno dietro la «i». Con Gmail e Outlook oggi si copiano la posta (Gmail, con password per app) e i calendari
+pubblicati con un link ICS; contatti, Drive/OneDrive, Google Foto e Keep chiedono l'accesso OAuth e non ci sono ancora.
+Il file è `/config/pim-accounts.json` del container (600, utente 99:100): la GUI non mostra mai le password e le sostituisce solo
+se ne viene scritta una nuova. «Sincronizza ora» crea `/config/pim-run-now`. La sezione «Cosa scarica» riassume lo stato di ogni
+servizio per tutti gli account.
 
 ### Ruoli (dalla 3.4)
 
-Ogni profilo è **Amministratore** (vede tutti i container, «Nuovo utente» e «Amministrazione») oppure **Utente** (vede e gestisce
+Ogni profilo è **Amministratore** (vede tutti i container, «Nuovo utente» e le sezioni di amministrazione) oppure **Utente** (vede e gestisce
 solo il proprio container, quello che si chiama `iclouddr-<profilo>`, più il proprio profilo; le altre pagine rispondono 403).
 Il ruolo si sceglie dalla scheda Amministrazione; il profilo `admin` resta sempre amministratore e deve restarne almeno uno.
 
@@ -370,7 +376,8 @@ Stanno in `/app/state/profiles.json` (permessi 600): hash scrypt della password,
   personali nascono senza password e non entrano finché un amministratore non gliela imposta dalla scheda **Amministrazione**.
 - **Il mio profilo**: cambio password e verifica in due passaggi TOTP (QR da inquadrare con l'app Password dell'iPhone, Google
   Authenticator, Bitwarden o 1Password, oppure chiave da inserire a mano; per spegnerla serve la password).
-- **Amministrazione** (solo amministratori): elenco dei profili con stato di password e 2FA, impostazione o reimpostazione della
+- **Amministrazione** (solo amministratori; dalla 3.23 sta in fondo a «Il mio profilo», che per loro si chiama «Profilo e
+  amministrazione»; `/admin` porta lì): elenco dei profili con stato di password e 2FA, impostazione o reimpostazione della
   password, spegnimento del 2FA di un profilo, nuovi profili, eliminazione (non di sé stessi né dell'admin); notifiche Telegram
   (chat, avvisi di riavvio e di blocco, ore silenziose) salvate in `/app/state/settings.json` con precedenza sulle variabili del
   template, e un messaggio di prova.

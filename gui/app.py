@@ -132,7 +132,12 @@ def account():
         elif act == "tg_remove": accounts.update(name, telegram=""); flash(_("Chat Telegram scollegata"))
         return redirect(url_for("account"))
     sec = session.get("totp_new"); qr = accounts.totp_qr_svg(accounts.totp_uri(name, sec)) if sec else ""
-    return render_template("account.html", name=name, p=accounts.get(name) or {}, totp_new=sec, qr=qr, icloud=_icloud_of(name), tg_pending=bool(session.get("tg_new")))
+    admin = accounts.is_admin(name) if me() else not accounts.any_password()
+    users = cfg()["users"]
+    targets = [n for n, u in users.items() if utype(u) == "iclouddrive"] if admin else [x for x in [_icloud_of(name)] if x]
+    links = [drive_view(n, users[n]) for n in targets]
+    return render_template("account.html", name=name, p=accounts.get(name) or {}, totp_new=sec, qr=qr, icloud=_icloud_of(name), tg_pending=bool(session.get("tg_new")),
+                           links=links, is_admin_page=admin, **(_admin_ctx() if admin else {}))
 # ---- recupero accesso (3.0): codice a 6 cifre alla chat Telegram privata del profilo, valido 10 minuti, 5 tentativi.
 # La risposta al primo passo è sempre la stessa, così dalla pagina non si capisce quali profili esistono.
 RECOVER = {}   # profilo -> {"code": hash, "exp": ts, "tries": n}
@@ -173,7 +178,7 @@ def _icloud_of(profile):
 @app.context_processor
 def page_ctx():
     from urllib.parse import urlencode
-    n = me(); return {"qs": lambda **kw: request.path + "?" + urlencode({**request.args.to_dict(), **{k: v for k, v in kw.items()}}), "reset_set": bool(GUI_RESET), "me": n, "me_admin": bool(n and accounts.is_admin(n)), "local_tz": os.environ.get("TZ", "Europe/Rome"), "fmt_ts": lambda t: datetime.datetime.fromtimestamp(t).strftime("%d/%m/%Y %H:%M") if t else "mai"}
+    n = me(); return {"qs": lambda **kw: request.path + "?" + urlencode({**request.args.to_dict(), **{k: v for k, v in kw.items()}}), "reset_set": bool(GUI_RESET), "me": n, "me_admin": bool(n and accounts.is_admin(n)), "own_icloud": _own_icloud(), "local_tz": os.environ.get("TZ", "Europe/Rome"), "fmt_ts": lambda t: datetime.datetime.fromtimestamp(t).strftime("%d/%m/%Y %H:%M") if t else "mai"}
 
 def cfg(): return json.load(open(CFG))
 def save(c): json.dump(c, open(CFG, "w"), indent=2, ensure_ascii=False)
@@ -595,20 +600,20 @@ def u_acc_add(name):
     # cartella: il nome del servizio (iCloud, Gmail, Outlook); se è già usata da un altro account della persona, l'etichetta
     used = {acc_folder(x).lower() for x in accs}
     a["folder"] = ACC_FOLDERS.get(a["type"]) if ACC_FOLDERS.get(a["type"], "").lower() not in used and a["type"] in ACC_FOLDERS else a["label"]
-    if a["folder"].lower() in used: flash(_("Esiste già un account con la cartella {a0}: scegli un'altra etichetta", a0=a["folder"])); return redirect(url_for("index"))
+    if a["folder"].lower() in used: flash(_("Esiste già un account con la cartella {a0}: scegli un'altra etichetta", a0=a["folder"])); return redirect(url_for("account") + f"#acc-{name}")
     accs.append(a); acc_save(u, accs); _pim_kick(u)
-    flash(_("Account {a0} aggiunto: la prima sincronizzazione parte entro un minuto", a0=a["label"])); return redirect(url_for("index"))
+    flash(_("Account {a0} aggiunto: la prima sincronizzazione parte entro un minuto", a0=a["label"])); return redirect(url_for("account") + f"#acc-{name}")
 @app.post("/u/<name>/accounts/<aid>/save")
 def u_acc_save(name, aid):
     u = cfg()["users"].get(name) or abort(404); accs = acc_load(u)
     for i, x in enumerate(accs):
         if x["id"] == aid: accs[i] = _acc_from_form(request.form, x); break
     else: abort(404)
-    acc_save(u, accs); _pim_kick(u); flash(_("Account {a0} salvato", a0=accs[i]["label"])); return redirect(url_for("index"))
+    acc_save(u, accs); _pim_kick(u); flash(_("Account {a0} salvato", a0=accs[i]["label"])); return redirect(url_for("account") + f"#acc-{name}")
 @app.post("/u/<name>/accounts/<aid>/delete")
 def u_acc_delete(name, aid):
     u = cfg()["users"].get(name) or abort(404); accs = acc_load(u)
-    acc_save(u, [x for x in accs if x["id"] != aid]); flash(_("Account tolto: i file già scaricati restano nella cartella")); return redirect(url_for("index"))
+    acc_save(u, [x for x in accs if x["id"] != aid]); flash(_("Account tolto: i file già scaricati restano nella cartella")); return redirect(url_for("account") + f"#acc-{name}")
 def _pim_kick(u):
     """Chiede al modulo PIM di ripartire subito (file /config/pim-run-now, lo controlla ogni 30 s)."""
     p = os.path.join(os.path.dirname(_acc_path(u)), "pim-run-now")
@@ -617,7 +622,7 @@ def _pim_kick(u):
     except OSError: pass
 @app.post("/u/<name>/sync")
 def u_sync(name):
-    u = cfg()["users"].get(name) or abort(404); _pim_kick(u); flash(_("Sincronizzazione chiesta: parte entro un minuto")); return redirect(url_for("index"))
+    u = cfg()["users"].get(name) or abort(404); _pim_kick(u); flash(_("Sincronizzazione chiesta: parte entro un minuto")); back = request.form.get("back", ""); return redirect(back if back.startswith("/") and not back.startswith("//") else url_for("index"))
 @app.post("/u/<name>/settings")
 def u_settings(name):
     c = cfg(); u = c["users"].get(name) or abort(404); f = request.form; info = inspect(u["container"]) or abort(404)
@@ -789,9 +794,8 @@ def ah_view(ct):
 # ---- scheda Amministrazione (3.0): profili, password, 2FA, notifiche. Riservata ai profili con ruolo admin.
 def _admin_only():
     if not (me() and accounts.is_admin(me())) and accounts.any_password(): abort(403)
-@app.route("/admin")
-def admin():
-    _admin_only()
+def _admin_ctx():
+    """Dati delle sezioni di amministrazione, mostrate dalla 3.23 dentro «Il mio profilo» per i profili admin."""
     ps = accounts.profiles()
     rows = [{"name": n, "p": p, "icloud": _icloud_of(n), "role": accounts.ROLES.get(p.get("role"), p.get("role"))} for n, p in sorted(ps.items(), key=lambda x: (x[0] != accounts.ADMIN, x[0]))]
     try: idx_by, idx_runs = SI.stats()
@@ -802,8 +806,11 @@ def admin():
     immich = {"url": imm.get("url"), "libs": [(hosts[h][0], hosts[h][1], bool((imm.get("libs") or {}).get(h, {}).get("key"))) for h in hosts]}
     immich["on"] = any(k for _p, _a, k in immich["libs"]); immich["n"] = sum(1 for _p, _a, k in immich["libs"] if k)
     log_srcs = [("dashboard", "iCloud Control")] + [(n, f"{u.get('label', n)} · {u['container']}") for n, u in cfg()["users"].items()]
-    return render_template("admin.html", immich=immich, log_srcs=log_srcs, rows=rows, n=nset(), default_chat=cfg().get("default_chat_id", ""), roles=accounts.ROLES, geocode=_settings().get("geocode", False),
+    return dict(immich=immich, log_srcs=log_srcs, rows=rows, n=nset(), default_chat=cfg().get("default_chat_id", ""), roles=accounts.ROLES, geocode=_settings().get("geocode", False),
                            idx=idx, idx_last=ago(datetime.datetime.fromtimestamp(last)) if last else "", idx_errs=errs, idx_db=os.path.getsize(SI.DB) if os.path.exists(SI.DB) else 0, fmt_size=_fmt_size)
+@app.route("/admin")
+def admin():
+    _admin_only(); return redirect(url_for("account") + "#amministrazione")
 # Log (3.12): ricerca e filtri sui log della dashboard e dei container iCloud, dalla scheda Amministrazione
 LOG_PARTS = {"drive": r"drive|Drive", "photos": r"photo|Photo|foto", "pim": r" PIM ::|pim", "accounts": r"posta|calendario|contatti|mbsync|vdirsyncer|IMAP",
              "index": r"indice|index", "autoheal": r"autoheal|riavvio|restart", "auth": r"2FA|auth|sessione|session|login"}
@@ -854,7 +861,7 @@ def admin_profile(name, action):
         if name == me() or name == accounts.ADMIN: flash(_("Non puoi eliminare questo profilo"))
         else: accounts.remove(name); flash(_("Profilo {a0} eliminato", a0=name))
     else: abort(404)
-    return redirect(url_for("admin"))
+    return redirect(url_for("account") + "#amministrazione")
 @app.post("/admin/profile/new")
 def admin_profile_new():
     _admin_only(); f = request.form; name = f.get("name", "").strip().lower()
@@ -862,19 +869,19 @@ def admin_profile_new():
     elif f.get("new") and len(f["new"]) < 8: flash(_("La password deve avere almeno 8 caratteri"))
     elif not accounts.add(name, "admin", f.get("new", "")): flash(_("Il profilo {a0} esiste già", a0=name))
     else: flash(_("Profilo {a0} creato", a0=name) if f.get("new") else _("Profilo {a0} creato: impostagli una password per farlo entrare", a0=name))
-    return redirect(url_for("admin"))
+    return redirect(url_for("account") + "#amministrazione")
 @app.post("/admin/notify")
 def admin_notify():
     _admin_only(); f = request.form; q = f.get("quiet", "").strip()
-    if q and not re.fullmatch(r"\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}", q): flash(_("Ore silenziose: usa il formato 23:00-07:30, oppure lascia vuoto")); return redirect(url_for("admin"))
+    if q and not re.fullmatch(r"\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}", q): flash(_("Ore silenziose: usa il formato 23:00-07:30, oppure lascia vuoto")); return redirect(url_for("account") + "#amministrazione")
     save_nset({"chat": f.get("chat", "").strip(), "restart": f.get("restart") == "on", "gave_up": f.get("gave_up") == "on", "quiet": q}); flash(_("Notifiche salvate"))
-    return redirect(url_for("admin"))
+    return redirect(url_for("account") + "#amministrazione")
 @app.post("/admin/notify/test")
 def admin_notify_test():
     _admin_only(); chat = notify_chat(cfg())
-    if not TOKEN or not chat: flash(_("Manca il token del bot o la chat")); return redirect(url_for("admin"))
+    if not TOKEN or not chat: flash(_("Manca il token del bot o la chat")); return redirect(url_for("account") + "#amministrazione")
     telegram(chat, f"🧪 Prova di iCloud Control da {me() or 'admin'}: le notifiche arrivano qui."); flash(_("Messaggio di prova inviato"))
-    return redirect(url_for("admin"))
+    return redirect(url_for("account") + "#amministrazione")
 
 # ---- ricerca e schede dei dati (3.6): database «iclouddb» (SQLite FTS5) in /app/state/iclouddb.db, vedi search_index.py
 import search_index as SI
@@ -1441,7 +1448,7 @@ def admin_immich():
     _admin_only(); c = immich_cfg(); c["url"] = (request.form.get("url") or c["url"]).strip().rstrip("/"); c.pop("key", None); c.pop("keys", None); immich_save(c)
     try: n = len(immich_smart("persone", 20) or []); flash(_("Ricerca nelle foto pronta: la prova ha trovato {a0} foto", a0=n))
     except Exception as e: flash(_("Immich non risponde: {a0}", a0=str(e)[:200]))
-    return redirect(url_for("admin"))
+    return redirect(url_for("account") + "#amministrazione")
 @app.route("/photos")
 def photos():
     a = request.args; persons, shared, person, where, args = _photo_scope(a)
@@ -1816,7 +1823,7 @@ def api_geocode():
 @app.post("/admin/geocode")
 def admin_geocode():
     _admin_only(); st = _settings(); st["geocode"] = request.form.get("geocode") == "on"; _save_settings(st)
-    flash(_("Ricerca delle coordinate con OpenStreetMap: {a0}", a0=_("attiva") if st["geocode"] else _("spenta"))); return redirect(url_for("admin"))
+    flash(_("Ricerca delle coordinate con OpenStreetMap: {a0}", a0=_("attiva") if st["geocode"] else _("spenta"))); return redirect(url_for("account") + "#amministrazione")
 @app.route("/mail")
 def mail():
     persons = allowed_persons(); person = request.args.get("person", ""); sel = [person] if person in persons else persons
@@ -1868,7 +1875,7 @@ def contacts():
 @app.post("/admin/reindex")
 def admin_reindex():
     _admin_only(); threading.Thread(target=lambda: SI.run(idx_sources(), log=lambda x: print(x, flush=True)), daemon=True).start()
-    flash(_("Indicizzazione avviata: dura qualche minuto")); return redirect(url_for("admin"))
+    flash(_("Indicizzazione avviata: dura qualche minuto")); return redirect(url_for("account") + "#amministrazione")
 
 # ---- Riepilogo (3.12): pagina iniziale con numeri, spazio su disco e stato di ogni persona
 import viz

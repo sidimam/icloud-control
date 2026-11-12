@@ -38,7 +38,7 @@
 <details class="grp" data-k="home-index"><summary>{{ icon('search', 15) }}{{ _('Indice di ricerca') }}{{ icon('chevron', 15, 'ic chev') }}</summary>
 <div class="list wide-scroll"><table class="t"><thead><tr><th>{{ _('Sorgente') }}</th><th>{{ _('Ultimo giro') }}</th><th style="text-align:right">{{ _('Elementi') }}</th><th style="text-align:right">{{ _('Durata') }}</th><th>{{ _('Esito') }}</th></tr></thead><tbody>
 {% for r in runs %}{% set p, k = (r.source.split(':') + [''])[:2] %}<tr><td><a href="{{ kind_tab.get(k, '/search') }}{{ '&' if '?' in kind_tab.get(k, '/search') else '?' }}person={{ p|urlencode }}">{{ p }} · {{ _(kind_names.get(k, k)) }}</a></td><td>{{ fmt_date(r.finished) }}</td><td style="text-align:right">{{ fmt_n(r.count or 0) }}</td><td style="text-align:right">{{ r.seconds }} s</td><td>{% if r.error %}<span class="bad" style="font-size:13px">{{ r.error }}</span>{% else %}<span class="ok">✓</span>{% endif %}</td></tr>{% endfor %}
-</tbody></table></div><p class="note">{% if me_admin or not me %}<a href="/admin">{{ _('Reindicizza o vedi i log in Amministrazione') }}</a>{% endif %}</p></details>
+</tbody></table></div><p class="note">{% if me_admin or not me %}<a href="/account#amministrazione">{{ _('Reindicizza o vedi i log in Amministrazione') }}</a>{% endif %}</p></details>
 <script>
 // legenda ↔ fetta: passando su una si evidenzia l'altra
 document.querySelectorAll(".viz").forEach(function(v){

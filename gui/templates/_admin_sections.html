@@ -1,5 +1,5 @@
-{% extends "base.html" %}{% block body %}
-<h1 class="title">{{ _('Amministrazione') }}</h1>
+{# Sezioni di amministrazione (3.23): dentro «Il mio profilo» per i profili admin. #}
+<h2 class="title" id="amministrazione" style="font-size:22px;margin-top:1.6rem">{{ _('Amministrazione') }}</h2>
 <details class="grp" data-k="adm-profiles" open><summary>{{ icon('users', 15) }}{{ _('Profili') }}{{ icon('chevron', 15, 'ic chev') }}</summary><div class="list">
 {% for r in rows %}<details class="li col" style="display:block"><summary style="list-style:none;display:flex;align-items:center;gap:.7rem;cursor:pointer">
 <span class="badge {{ 'b-blue' if r.name == 'admin' else 'b-gray' }}">{{ icon('person', 17) }}</span>
@@ -74,4 +74,3 @@ var logT=null; document.getElementById("logauto").addEventListener("change",func
 document.querySelector('details[data-k="adm-logs"]').addEventListener("toggle",function(){if(this.open&&document.getElementById("logout").hidden) loadLogs()});
 if(document.querySelector('details[data-k="adm-logs"]').open) loadLogs();
 </script>
-{% endblock %}
