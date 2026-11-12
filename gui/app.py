@@ -426,11 +426,11 @@ def drive_view(name, u):
             "info": "" if photo_paths else _("non attivo")}]
     note_dir = (m.get("/icloud/pim", "") + "/Note") if pim_on else ""
     svc += [{"name": _("Note"), "icon": "doc", "badge": "b-orange", "on": bool(pim_on and pim), "paths": [note_dir] if pim_on else [],
-             "freq": every(env_of(info).get("PIM_INTERVAL", "21600")) if pim_on else "", "last": _("ultimo giro {a0}", a0=pim["when"]) if pim else "",
+             "freq": every(env_of(info).get("PIM_INTERVAL", "86400")) if pim_on else "", "last": _("ultimo giro {a0}", a0=pim["when"]) if pim else "",
              "info": (_("{a0} note", a0=pim["note"]) if pim and pim.get("ok") else (pim or {}).get("error") or "") if pim_on else _("non attivo: serve l'immagine sidimam/iclouddr"),
              "err": bool(pim and not pim.get("ok"))},
             {"name": _("Promemoria"), "icon": "check", "badge": "b-red", "on": bool(pim_on and pim), "paths": [m.get("/icloud/pim", "") + "/Promemoria"] if pim_on else [],
-             "freq": every(env_of(info).get("PIM_INTERVAL", "21600")) if pim_on else "", "last": _("ultimo giro {a0}", a0=pim["when"]) if pim else "",
+             "freq": every(env_of(info).get("PIM_INTERVAL", "86400")) if pim_on else "", "last": _("ultimo giro {a0}", a0=pim["when"]) if pim else "",
              "info": (_("{a0} promemoria in {a1} liste", a0=pim["promemoria"], a1=pim["liste"]) if pim and pim.get("ok") else "") if pim_on else _("non attivo: serve l'immagine sidimam/iclouddr"),
              "err": bool(pim and not pim.get("ok"))}]
     # account collegati e loro stato
@@ -468,7 +468,7 @@ def drive_view(name, u):
     for key, flag, folder, name, icon_, badge, freq, fmt in (
             ("mail", "mail", "Posta", _("Posta"), "send", "b-blue", env_of(info).get("PIM_MAIL_INTERVAL", "900"), lambda r: _("{a0} messaggi", a0=r.get("messaggi", 0))),
             ("calendar", "calendar", "Calendario", _("Calendario"), "doc", "b-red", env_of(info).get("PIM_DAV_INTERVAL", "3600"), lambda r: _("{a0} eventi", a0=r.get("eventi", 0)) + (f' + {r["link_ics"]} ICS' if r.get("link_ics") else "")),
-            ("contacts", "contacts", "Contatti", _("Contatti"), "users", "b-gray", env_of(info).get("PIM_DAV_INTERVAL", "3600"), lambda r: _("{a0} contatti", a0=r.get("contatti", 0)))):
+            ("contacts", "contacts", "Contatti", _("Contatti"), "users", "b-gray", env_of(info).get("PIM_CONTACTS_INTERVAL", "86400"), lambda r: _("{a0} contatti", a0=r.get("contatti", 0)))):
         on, paths, last, txt = agg(key, flag, folder, fmt)
         svc.append({"name": name, "icon": icon_, "badge": badge, "on": on, "paths": paths, "freq": every(freq) if on else "", "last": last, "info": txt,
                     "err": any(a["error"] and not a.get("running") for a in v["accounts"] if a.get(flag))})
@@ -485,7 +485,7 @@ def drive_view(name, u):
                     a["error"] if a.get("error") and not r else unit(r) if r else _("in attesa del primo giro") if on else _("non attivo"))
             rows.append({"name": name_, "icon": icon_, "badge": badge, "on": on, "paths": [a["dir"] + "/" + sub] if a.get("dir") and on else [],
                          "last": _("ultimo giro {a0}", a0=ago(datetime.datetime.fromtimestamp(r["when"]))) if r.get("when") else "", "info": info,
-                         "freq": every(env_of(info_ct).get("PIM_MAIL_INTERVAL" if key == "mail" else "PIM_DAV_INTERVAL", "900" if key == "mail" else "3600")) if on else "",
+                         "freq": every(env_of(info_ct).get(*{"mail": ("PIM_MAIL_INTERVAL", "900"), "contacts": ("PIM_CONTACTS_INTERVAL", "86400")}.get(key, ("PIM_DAV_INTERVAL", "3600")))) if on else "",
                          "err": bool(a.get("error") and not a.get("running"))})
         return rows
     info_ct = info; groups = []
@@ -668,7 +668,7 @@ def new_drive(c, f, name, short):
     p = c["paths"]; d = c["defaults"]; cont = f"iclouddr-{short.lower()}"; host_appdata = f"/mnt/user/appdata/{cont}"
     # Dalla 3.8 i container nuovi usano l'immagine con il modulo PIM, come quelli di famiglia: note e promemoria in
     # <persona>/iCloud, account collegati nella cartella della persona (la cartella che contiene «iCloud Drive»).
-    image = os.environ.get("ICLOUDDR_IMAGE", "ghcr.io/sidimam/iclouddr:0.2.9")
+    image = os.environ.get("ICLOUDDR_IMAGE", "ghcr.io/sidimam/iclouddr:0.2.10")
     # struttura (5/11/2026): documents/<Persona>/iCloud/{iCloud Drive, Note, Promemoria, Posta, Calendario, Contatti}
     person_host = f"/mnt/user/documents/{label}"; pim_host = person_host + "/iCloud"
     appdata = host_to_local(host_appdata); dest = host_to_local(dest_host)
@@ -707,7 +707,8 @@ def new_drive(c, f, name, short):
   <Config Name="Note, promemoria (PIM)" Target="/icloud/pim" Default="{html.escape(pim_host)}" Mode="rw" Description="Modulo PIM: Note/ (HTML) e Promemoria/ (JSON e testo), sola lettura da iCloud" Type="Path" Display="always" Required="false" Mask="false">{html.escape(pim_host)}</Config>
   <Config Name="Cartella della persona (account collegati)" Target="/icloud/persona" Default="{html.escape(person_host)}" Mode="rw" Description="Posta, calendari e contatti degli account collegati: una sottocartella per account" Type="Path" Display="always" Required="false" Mask="false">{html.escape(person_host)}</Config>
   <Config Name="PIM attivo" Target="PIM_ENABLED" Default="1" Mode="" Description="0 = solo iclouddr originale" Type="Variable" Display="always" Required="false" Mask="false">1</Config>
-  <Config Name="PIM ogni (secondi)" Target="PIM_INTERVAL" Default="21600" Mode="" Description="intervallo fra un giro e l altro di note e promemoria" Type="Variable" Display="advanced" Required="false" Mask="false">21600</Config>
+  <Config Name="PIM ogni (secondi)" Target="PIM_INTERVAL" Default="86400" Mode="" Description="intervallo fra un giro e l altro di note e promemoria" Type="Variable" Display="advanced" Required="false" Mask="false">86400</Config>
+  <Config Name="Contatti ogni (secondi)" Target="PIM_CONTACTS_INTERVAL" Default="86400" Mode="" Description="intervallo fra un giro e l altro dei contatti" Type="Variable" Display="advanced" Required="false" Mask="false">86400</Config>
 """ + (f'''  <Config Name="Foto personali" Target="/icloud/photos/personale/all" Default="{html.escape(photos_host)}" Mode="rw" Description="Libreria PrimarySync, cartelle %Y/%m" Type="Path" Display="always" Required="false" Mask="false">{html.escape(photos_host)}</Config>
 ''' if photos else "") + """</Container>
 """)
