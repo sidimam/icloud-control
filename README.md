@@ -91,10 +91,16 @@ Utenti e alias stanno in `/app/config.json`, condiviso con il bot; ogni utente h
   - **File e Foto**: *Doppioni da eliminare* (non più su iCloud, ma con una copia identica che resta: su iCloud o in un'altra cartella /
     in Archivio; preselezionati), *Esistono solo qui* (non più su iCloud e nessun'altra copia), *Copie in altre cartelle* / *Copie in
     Archivio* (identiche a un file o a una foto ancora su iCloud). Servono gli elenchi di iclouddr ≥ 0.2.9.
-  - **Posta**: *Messaggi doppi* (stesso Message-ID nello stesso account: si toglie la copia in più) e *Cancellati dal server* (flag T del
-    Maildir: esistono solo qui).
+  - **Posta** (dalla 3.25.3 guarda lo stato di mbsync in `<appdata>/pim-state/<account>/mbsync`, che dice quale file del NAS corrisponde
+    a un messaggio sul server): *Doppi solo sul NAS* (stesso Message-ID nella stessa cartella, ma la copia in più non è legata a nessun
+    messaggio del server, per esempio una cartella scaricata due volte: resta quella che è su iCloud; preselezionati), *Cancellati dal
+    server* (flag T del Maildir: esistono solo qui) e *Doppi anche su iCloud* (solo elenco: il messaggio è due volte sul server, si toglie
+    da Mail e al giro dopo la copia del NAS passa in *Cancellati dal server*). Una copia che sta sul server non viene mai proposta: il
+    NAS è uno specchio in sola lettura (mbsync `Sync Pull`).
   - **Note, Promemoria, Calendario, Contatti**: sono copie esatte di iCloud (ciò che si cancella su iCloud sparisce anche qui; cancellarlo
     solo qui lo farebbe tornare), quindi la pulizia elenca i doppioni che stanno su iCloud, da sistemare dall'iPhone o da iCloud.com.
+    Niente pulsante di eliminazione: il sync è a senso unico. Gli eventi contano come doppi solo nello stesso calendario (dalla 3.25.3,
+    mostrato per nome).
   - Si elimina solo ciò che l'analisi ha trovato (il server accetta solo gli indici dei risultati), sempre nel cestino della share
     (`documents/.cestino-dashboard` o `media/photos/.cestino-dashboard`), con Annulla.
   - **Cestino**: elenco dei lavori (data, elementi, file, spazio, da dove venivano, quando scade), *Ripristina* nel posto originale (dalla

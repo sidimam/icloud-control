@@ -9,20 +9,22 @@
  "del": _('Sposta nel cestino ({a0}, {a1})'), "undo": _('Annulla'), "moved": _('{a0} elementi nel cestino'), "extra": _('copia in più con un altro nome'),
  "noel": _("Manca ancora l'elenco di cosa c'è su iCloud per questa persona: arriva a fine giro di iclouddr."), "nomail": _('Nessuna casella di posta sul NAS per questa persona.'),
  "intro_files": _('Cerca nella cartella di {a0} i file rimasti solo sul NAS e i doppioni.'), "intro_photos": _('Cerca fra le foto di {a0} quelle rimaste solo sul NAS e i doppioni.'),
- "intro_mail": _('Cerca nella posta di {a0} i messaggi cancellati dal server e i doppioni.'),
+ "intro_mail": _('Cerca nella posta di {a0} i messaggi cancellati dal server e le copie doppie che esistono solo sul NAS.'),
  "intro_rep": _("Qui le note, i promemoria, i calendari e i contatti sono una copia esatta di iCloud: ciò che si cancella su iCloud sparisce anche qui, e cancellarlo solo qui lo farebbe tornare al giro dopo. La pulizia mostra quindi i doppioni che stanno su iCloud: si sistemano dall'iPhone, dal Mac o da iCloud.com."),
- "rep_groups": _('{a0} gruppi di doppioni'), "rep_note": _('Note con lo stesso titolo e la stessa lunghezza'), "rep_reminder": _('Promemoria con lo stesso titolo e la stessa scadenza'),
- "rep_event": _('Eventi con lo stesso titolo alla stessa ora'), "rep_contact": _('Contatti con lo stesso nome'),
+ "rep_groups": _('{a0} gruppi di doppioni'), "rep_short": _("Sono doppioni su iCloud: si eliminano dall'iPhone, dal Mac o da iCloud.com e al giro dopo spariscono anche qui."), "copy_n": _('copia {a0}'), "rep_note": _('Note con lo stesso titolo e la stessa lunghezza'), "rep_reminder": _('Promemoria con lo stesso titolo e la stessa scadenza'),
+ "rep_event": _('Eventi con lo stesso titolo alla stessa ora nello stesso calendario'), "rep_contact": _('Contatti con lo stesso nome'),
  "files_A": _('Doppioni da eliminare'), "files_Ai": _("Su iCloud non ci sono più, ma ne esiste un'altra copia identica che resta: su iCloud o in un'altra cartella del NAS. Eliminarli non perde niente."),
  "files_B": _('Esistono solo qui'), "files_Bi": _("Su iCloud sono stati cancellati o spostati e non ne esiste un'altra copia: questa sul NAS è l'unica. Eliminali solo se non ti servono più. Se per sbaglio un file fosse ancora su iCloud, iclouddr lo riscarica al giro dopo."),
  "files_C": _('Copie in altre cartelle'), "files_Ci": _("Sono fuori dalla copia di iCloud Drive (per esempio in iPhone o Lavoro) e sono identici a un file che è ancora su iCloud: l'originale resta su iCloud e nella sua copia sul NAS."),
  "photos_A": _('Doppioni da eliminare'), "photos_Ai": _("Foto che su iCloud non ci sono più, ma con una copia identica che resta (su iCloud o in Archivio). Eliminarle non perde niente."),
  "photos_B": _('Esistono solo qui'), "photos_Bi": _("Foto e video che non risultano più su iCloud e sono rimasti solo sul NAS (comprese le copie in più con un altro nome). Eliminali solo se non ti servono più: Immich li toglie al giro dopo. Se per sbaglio una foto fosse ancora su iCloud, iclouddr la riscarica al giro dopo."),
  "photos_C": _('Copie in Archivio'), "photos_Ci": _("Foto nell'Archivio identiche a una foto che è ancora su iCloud."),
- "mail_A": _('Messaggi doppi'), "mail_Ai": _("Lo stesso messaggio (stesso Message-ID) salvato due volte nella stessa cartella: si elimina la copia in più, l'altra resta. Lo stesso messaggio in due cartelle diverse non è un doppione."),
- "mail_B": _('Cancellati dal server'), "mail_Bi": _("Messaggi che su iCloud, Gmail o Outlook sono stati cancellati: il NAS li tiene (con il segno «cestinato»). Eliminali solo se non ti servono più."),
- "mail_C": "", "mail_Ci": "",
- "t_empty": _('Il cestino è vuoto'), "t_info": _('Le cose eliminate da File, Foto e Pulizia restano qui {a0} giorni, poi si cancellano da sole.'),
+ "mail_A": _('Doppi solo sul NAS'), "mail_Ai": _("Copie in più dello stesso messaggio (stesso Message-ID, stessa cartella) che esistono solo sul NAS: iCloud non le ha, per esempio perché una cartella è stata scaricata due volte. Resta la copia che è su iCloud, quindi eliminarle non perde niente e il giro dopo non le riscarica."),
+ "mail_Ac": _("l'altra copia, che è su iCloud, resta"), "mail_Acn": _("una copia resta (la cartella non è più sul server)"),
+ "mail_B": _('Cancellati dal server'), "mail_Bi": _("Messaggi che su iCloud, Gmail o Outlook sono stati cancellati: il NAS li tiene (con il segno «cestinato»). Non ci sono più sul server, quindi il giro dopo non li riscarica. Eliminali solo se non ti servono più."),
+ "mail_C": _('Doppi anche su iCloud'), "mail_Ci": _("Il messaggio è due volte anche sul server: il NAS ne tiene lo specchio, quindi qui non si elimina. Toglilo da Mail (iPhone, Mac o iCloud.com): al giro dopo la copia sul NAS passa in «Cancellati dal server»."), "mail_Cro": 1,
+ "mail_Cc": _("è due volte su iCloud: da togliere in Mail"),
+ "first": _('i primi {a0} di {a1}'), "t_empty": _('Il cestino è vuoto'), "t_info": _('Le cose eliminate da File, Foto e Pulizia restano qui {a0} giorni, poi si cancellano da sole.'),
  "t_restore": _('Ripristina'), "t_empty_one": _('Elimina per sempre'), "t_q": _('Eliminare per sempre? Non si potrà più recuperare.'), "t_from": _('da'),
  "t_unknown": _('origine non registrata: si ripristina in «Ripristinati dal cestino»'), "t_exp": _('si cancella il {a0}'), "t_ok": _('Ripristinati {a0} elementi'),
  "t_items": _('{a0} elementi'), "t_files": _('{a0} file')} %}
@@ -52,9 +54,9 @@ function clean(){
   bindPicker(); $("cl-go").onclick = rep ? report : run; }
 function report(){ var p = who();
   api("/cleanup/dups?" + new URLSearchParams({kind: KIND, person: p})).then(function(r){
-    var h = '<div class="row" style="justify-content:space-between;align-items:center">' + picker() + '</div><p class="mut">' + esc(T.intro_rep) + '</p><h3 style="font-size:15px">' + esc(T["rep_" + KIND]) + ' <span class="mut">(' + esc(fmt(T.rep_groups, r.groups.length)) + ')</span></h3>';
+    var h = '<div class="row" style="justify-content:space-between;align-items:center">' + picker() + '</div><p class="mut row" style="gap:.4rem;align-items:center">' + esc(T.rep_short) + info(T.intro_rep) + '</p><h3 style="font-size:15px">' + esc(T["rep_" + KIND]) + ' <span class="mut">(' + esc(fmt(T.rep_groups, r.groups.length)) + ')</span></h3>';
     if (!r.groups.length) h += '<p class="mut">' + esc(T.none) + '</p>';
-    r.groups.forEach(function(g){ h += '<div class="cl-r" style="grid-template-columns:minmax(0,1fr) auto"><span class="p"><b style="font-weight:500">' + esc(g.title || "—") + '</b> <span class="mut">' + esc(g.sub || "") + '</span></span><span class="mut">×' + g.items.length + '</span><span class="c">' + g.items.map(function(it){ return '<a href="/item/' + it.id + '">' + esc(it.label) + '</a>'; }).join(" · ") + '</span></div>'; });
+    r.groups.forEach(function(g){ h += '<div class="cl-r" style="grid-template-columns:minmax(0,1fr) auto"><span class="p"><b style="font-weight:500">' + esc(g.title || "—") + '</b> <span class="mut">' + esc(g.sub || "") + '</span></span><span class="mut">×' + g.items.length + '</span><span class="c">' + g.items.map(function(it, n){ return '<a href="/item/' + it.id + '">' + esc(fmt(T.copy_n, n + 1)) + '</a>'; }).join(" · ") + '</span></div>'; });
     $("cl-body").innerHTML = h; bindPicker(); }).catch(function(e){ $("cl-body").innerHTML = '<p class="err">' + esc(e.error || e.status) + '</p>'; }); }
 function run(){ var p = who();
   $("cl-body").innerHTML = '<p class="mut" id="cl-pr">' + esc(T.scan) + '</p><div class="bar2"><i id="cl-bar"></i></div>';
@@ -65,13 +67,15 @@ function run(){ var p = who();
   .catch(function(e){ $("cl-body").innerHTML = '<div class="row">' + picker() + '</div><p class="mut">' + esc(e && e.error === "elenco" ? T.noel : e && e.error === "posta" ? T.nomail : (e.error || e.status)) + '</p>'; bindPicker(); }); }
 function show(res){ ST.res = res; var k = res.kind, h = '<div class="row" style="justify-content:space-between;align-items:center">' + picker() + '<span class="mut">' + esc(fmt(T.files, res.files)) + '</span></div>';
   ["A", "B", "C"].forEach(function(g){ if (!T[k + "_" + g]) return; var rows = res[g] || [], tot = 0; rows.forEach(function(r){ tot += r.size; });
-    h += '<details class="cl-g" ' + (rows.length && g === "A" ? "open" : "") + '><summary><input type="checkbox" data-all="' + g + '" ' + (g === "A" ? "checked" : "") + '>' + esc(T[k + "_" + g]) + ' <span class="mut">(' + rows.length + ' · ' + fsize(tot) + ')</span>' + info(T[k + "_" + g + "i"]) + '</summary>';
+    var ro = !!T[k + "_" + g + "ro"];
+    h += '<details class="cl-g" ' + (rows.length && g === "A" ? "open" : "") + '><summary>' + (ro ? '' : '<input type="checkbox" data-all="' + g + '" ' + (g === "A" ? "checked" : "") + '>') + esc(T[k + "_" + g]) + ' <span class="mut">(' + (res["n" + g] > rows.length ? esc(fmt(T.first, rows.length, res["n" + g])) : rows.length + ' · ' + fsize(tot)) + ')</span>' + info(T[k + "_" + g + "i"]) + '</summary>';
     if (!rows.length) h += '<p class="mut">' + esc(T.none) + '</p>';
     rows.forEach(function(r, i){ var dir = r.path.split("/").slice(0, -1).join("/"), name = k === "mail" ? (r.subject || r.path.split("/").pop()) : r.path.split("/").pop();
-      var where = k === "mail" ? r.account : dir;
-      h += '<div class="cl-r"><input type="checkbox" data-g="' + g + '" data-i="' + i + '" ' + (g === "A" ? "checked" : "") + '><span class="p" title="' + esc(r.path) + '">' + esc(name) + ' <span class="mut">' + esc(where) + (r.state === "extra" ? " · " + esc(T.extra) : "") + '</span></span><span class="row" style="gap:.4rem"><span class="mut">' + fsize(r.size) + '</span>' +
+      var where = k === "mail" ? r.account + (r.folder && r.folder !== "." ? "/" + r.folder : "") : dir;
+      var cl = k === "mail" ? (T["mail_" + g + (g === "A" && r.kept === "nas" ? "cn" : "c")] || T.same) : T.copy;
+      h += '<div class="cl-r"' + (ro ? ' style="grid-template-columns:minmax(0,1fr) auto"' : '') + '>' + (ro ? '' : '<input type="checkbox" data-g="' + g + '" data-i="' + i + '" ' + (g === "A" ? "checked" : "") + '>') + '<span class="p" title="' + esc(r.path) + '">' + esc(name) + ' <span class="mut">' + esc(where) + (r.state === "extra" ? " · " + esc(T.extra) : "") + '</span></span><span class="row" style="gap:.4rem"><span class="mut">' + fsize(r.size) + '</span>' +
         (k === "files" && window.fmGo ? '<button class="tint small" data-show="' + esc(dir) + '">' + esc(T.show) + '</button>' : '') + '</span>' +
-        (r.copies ? '<span class="c">' + esc(k === "mail" ? T.same : T.copy) + ' ' + r.copies.map(esc).join(" · ") + '</span>' : '') + '</div>'; });
+        (r.copies ? '<span class="c">' + esc(cl) + (k === "mail" ? '' : ' ' + r.copies.map(esc).join(" · ")) + '</span>' : '') + '</div>'; });
     h += '</details>'; });
   h += '<div class="row" style="margin-top:1rem;justify-content:space-between"><button class="tint" id="cl-again">' + esc(T.again) + '</button><button class="red" id="cl-del"></button></div>';
   $("cl-body").innerHTML = h; bindPicker(); count();

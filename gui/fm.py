@@ -361,13 +361,30 @@ _MSGID = re.compile(rb"^message-id:\s*(<[^>\r\n]+>|\S+)", re.I | re.M)
 _SUBJ = re.compile(rb"^subject:\s*(.*)$", re.I | re.M)
 
 
+_UID = re.compile(r",U=(\d+)")
+
+
+def _mbsync_pairs(state_dir, box):
+    """UID dei messaggi del NAS che mbsync tiene accoppiati a un messaggio sul server (righe «far near flag» dello stato).
+    None se lo stato della cartella non c'è: allora non si sa e nessuna copia viene proposta."""
+    if not state_dir: return None
+    try:
+        with open(os.path.join(state_dir, box), errors="replace") as fh:
+            return {int(p[1]) for p in (ln.split() for ln in fh) if len(p) >= 2 and p[0].isdigit() and p[1].isdigit() and int(p[0]) > 0}
+    except OSError: return None
+
+
 def _scan_mail(ctx, j, rel):
+    """A = copie in più che esistono solo sul NAS (mbsync non le lega a nessun messaggio del server: per esempio una cartella
+    scaricata due volte); C = messaggi doppi anche sul server (si tolgono da Mail, poi il NAS li segna cancellati: solo elenco);
+    B = cancellati dal server. Mai proporre una copia che sta sul server: sarebbe solo uno specchio che si rompe."""
     files = []
-    for acc, d in ctx["maildirs"]:
+    for md in ctx["maildirs"]:
+        acc, d, sd = md if len(md) == 3 else (md[0], md[1], None)
         for dp, _dns, fns in os.walk(d):
-            if os.path.basename(dp) in ("cur", "new"): files += [(acc, os.path.join(dp, n)) for n in fns if not n.startswith(".")]
-    j["total"] = len(files); out = {"A": [], "B": [], "C": []}; seen = {}
-    for acc, f in sorted(files, key=lambda x: x[1]):
+            if os.path.basename(dp) in ("cur", "new"): files += [(acc, d, sd, os.path.join(dp, n)) for n in fns if not n.startswith(".")]
+    j["total"] = len(files); out = {"A": [], "B": [], "C": []}; groups = {}; pairs = {}
+    for acc, d, sd, f in sorted(files, key=lambda x: x[3]):
         j["done"] += 1
         try: st = os.stat(f)
         except OSError: continue
@@ -381,12 +398,25 @@ def _scan_mail(ctx, j, rel):
             from email.header import decode_header, make_header
             subj = str(make_header(decode_header(subj)))[:120]
         except Exception: pass
-        row = {"path": rel(f), "size": st.st_size, "subject": subj, "account": acc, "_abs": f}
+        folder = os.path.relpath(os.path.dirname(os.path.dirname(f)), d)
+        row = {"path": rel(f), "size": st.st_size, "subject": subj, "account": acc, "folder": folder, "_abs": f}
         if "T" in flags: out["B"].append(row); continue
-        if m:
-            k = (acc, os.path.dirname(os.path.dirname(f)), m.group(1).strip().lower())   # stessa cartella: lo stesso messaggio in due cartelle non è un doppione
-            if k in seen: row["copies"] = [seen[k]]; out["A"].append(row)
-            else: seen[k] = rel(f)
+        if not m: continue
+        box = folder.replace("/", "!")
+        if (sd, box) not in pairs: pairs[(sd, box)] = _mbsync_pairs(sd, box)
+        pr = pairs[(sd, box)]; u = _UID.search(os.path.basename(f))
+        row["_srv"] = None if pr is None else bool(u and int(u.group(1)) in pr)
+        groups.setdefault((acc, folder, m.group(1).strip().lower()), []).append(row)   # stessa cartella: in due cartelle non è un doppione
+    for rows in groups.values():
+        if len(rows) < 2: continue
+        srv = [r for r in rows if r["_srv"]]; loc = [r for r in rows if r["_srv"] is False]; unk = [r for r in rows if r["_srv"] is None]
+        keep = srv[0] if srv else (loc[0] if loc else unk[0])
+        where = f"{keep['account']}/{keep['folder']}"
+        for r in loc:
+            if r is not keep: r["copies"] = [where]; r["kept"] = "server" if srv else "nas"; out["A"].append(r)
+        for r in srv[1:] + [x for x in unk if x is not keep]: r["copies"] = [where]; out["C"].append(r)
+    for g in out.values():
+        for r in g: r.pop("_srv", None)
     return out, len(files)
 
 
@@ -404,6 +434,7 @@ def api_cleanup():
         j["_abs"] = {g: [r.pop("_abs") for r in rows] for g, rows in out.items()}
         j["result"] = {g: rows for g, rows in out.items()}
         for g in ("A", "B", "C"):   # dal più grande; l'ordine di _abs segue quello dei risultati
+            j["result"]["n" + g] = len(j["result"][g])
             order = sorted(range(len(j["result"][g])), key=lambda i: -j["result"][g][i]["size"])[:5000]
             j["result"][g] = [j["result"][g][i] for i in order]; j["_abs"][g] = [j["_abs"][g][i] for i in order]
         j["result"].update(when=ctx.get("when"), files=n, kind=kind)

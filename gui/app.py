@@ -1556,7 +1556,9 @@ def fm_scan(person, kind="files"):
     if kind == "mail":
         pd = (src.get("person_dir") or (None, ""))[0]
         if not pd: return None
-        md = [(a, os.path.join(pd, a, "Posta")) for a in sorted(set(src.get("accounts") or []) | {"iCloud"}) if os.path.isdir(os.path.join(pd, a, "Posta"))]
+        u = cfg()["users"].get(src["user"], {}); conf = host_to_local(mounts(inspect(u.get("container", "")) or {}).get("/config", "") or "")
+        sdir = {acc_folder(a): os.path.join(conf, "pim-state", a["id"], "mbsync") for a in acc_load(u) if a.get("id") and conf}   # stato di mbsync: quali messaggi sono sul server
+        md = [(a, os.path.join(pd, a, "Posta"), sdir.get(a)) for a in sorted(set(src.get("accounts") or []) | {"iCloud"}) if os.path.isdir(os.path.join(pd, a, "Posta"))]
         return {"base": pd, "maildirs": md, "trash": docs_trash} if md else None
     return None
 def fm_person_roots():
@@ -2089,10 +2091,10 @@ def cleanup_dups():
     if kind not in ("note", "reminder", "event", "contact"): abort(400)
     if person not in allowed_persons(): abort(403)
     key = {"note": "lower(trim(title)), size", "reminder": "lower(trim(title)), coalesce(date, 0), account",
-           "event": "lower(trim(title)), date, account", "contact": "lower(trim(title)), account"}[kind]
+           "event": "lower(trim(title)), date, account, json_extract(extra, '$.cal_id')", "contact": "lower(trim(title)), account"}[kind]
     con = SI.connect()
     try:
-        rows = con.execute(f"""select id, title, account, date, size, path from items where id in (
+        rows = con.execute(f"""select id, title, account, date, size, path, json_extract(extra, '$.calendar') cal, json_extract(extra, '$.cal_id') cid from items where id in (
               select min(id) from items where kind=? and person=? and coalesce(trim(title), '') <> ''
               group by case when instr(path, '#') > 0 then substr(path, 1, instr(path, '#') - 1) else path end)
             and ({key}) in (select {key} from items where kind=? and person=? and coalesce(trim(title), '') <> ''
@@ -2102,9 +2104,11 @@ def cleanup_dups():
     finally: con.close()
     groups = {}
     for r in rows:
-        k = (r["title"] or "").strip().lower(), r["size"] if kind == "note" else None, r["date"] if kind in ("reminder", "event") else None, r["account"] if kind != "note" else None
-        g = groups.setdefault(k, {"title": r["title"], "sub": " · ".join(x for x in (r["account"] or "", _fmt_date(r["date"]) if r["date"] else "") if x), "items": []})
-        g["items"].append({"id": r["id"], "label": os.path.basename(os.path.dirname(r["path"])) or r["account"] or str(r["id"])})
+        k = (r["title"] or "").strip().lower(), r["size"] if kind == "note" else None, r["date"] if kind in ("reminder", "event") else None, r["account"] if kind != "note" else None, r["cid"] if kind == "event" else None
+        folder = os.path.basename(os.path.dirname(r["path"]))
+        where = (r["cal"] or folder) if kind == "event" else folder   # nome del calendario, non il suo identificativo
+        g = groups.setdefault(k, {"title": r["title"], "sub": " · ".join(x for x in (r["account"] or "", where if kind == "event" else "", _fmt_date(r["date"]) if r["date"] else "") if x), "items": []})
+        g["items"].append({"id": r["id"], "label": where or r["account"] or str(r["id"])})
     return {"groups": [g for g in groups.values() if len(g["items"]) > 1][:400]}
 @app.route("/healthz")
 def healthz(): return "ok"
