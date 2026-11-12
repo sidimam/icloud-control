@@ -326,7 +326,7 @@ sempre (campo Cerca → risultati dall'indice, con filtri). Ogni utente vede sol
 - **Archivio** (dalla 3.19.3): le foto che non vengono da iCloud stanno in `media/photos/<Persona>/Archivio/<cartella>` (es.
   `Simone/Archivio/Scuola`). L'indice le legge come foto personali della persona (album «Archivio», come «Personale»), quindi
   non diventano una libreria condivisa; in Immich la cartella è un secondo percorso della libreria personale della persona.
-- Le nuove persone create da qui usano `ghcr.io/sidimam/iclouddr:0.2.10` (`ICLOUDDR_IMAGE`).
+- Le nuove persone create da qui usano `ghcr.io/sidimam/iclouddr:0.2.11` (`ICLOUDDR_IMAGE`).
 
 ### Foto, mappa, miniature e metadati (dalla 3.9)
 
