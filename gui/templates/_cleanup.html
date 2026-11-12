@@ -1,0 +1,107 @@
+{# Pulizia e Cestino (3.25), comuni a tutte le schede: si aprono dalla colonna a sinistra (e in Files anche dalla barra).
+   File, Foto e Posta: gruppi di elementi eliminabili (nel cestino della dashboard, con Annulla). Note, Promemoria, Calendario e
+   Contatti sono copie esatte di iCloud: qui la pulizia elenca i doppioni che stanno su iCloud, da sistemare sull'iPhone. #}
+{% set CK = {'files': 'files', 'photos': 'photos', 'mail': 'mail', 'notes': 'note', 'reminders': 'reminder', 'calendar': 'event', 'contacts': 'contact'} %}
+{% set ck = CK.get(request.endpoint, 'files') %}
+{% set CLT = {
+ "title": _('Pulizia'), "trash": _('Cestino'), "close": _('Chiudi'), "start": _('Analizza'), "again": _('Analizza di nuovo'), "scan": _('Analisi in corso…'),
+ "who": _('Persona'), "files": _('{a0} elementi controllati'), "none": _('Niente da segnalare'), "show": _('Mostra'), "copy": _('copia in'), "same": _('uguale a'),
+ "del": _('Sposta nel cestino ({a0}, {a1})'), "undo": _('Annulla'), "moved": _('{a0} elementi nel cestino'), "extra": _('copia in più con un altro nome'),
+ "noel": _("Manca ancora l'elenco di cosa c'è su iCloud per questa persona: arriva a fine giro di iclouddr."), "nomail": _('Nessuna casella di posta sul NAS per questa persona.'),
+ "intro_files": _('Cerca nella cartella di {a0} i file rimasti solo sul NAS e i doppioni.'), "intro_photos": _('Cerca fra le foto di {a0} quelle rimaste solo sul NAS e i doppioni.'),
+ "intro_mail": _('Cerca nella posta di {a0} i messaggi cancellati dal server e i doppioni.'),
+ "intro_rep": _("Qui le note, i promemoria, i calendari e i contatti sono una copia esatta di iCloud: ciò che si cancella su iCloud sparisce anche qui, e cancellarlo solo qui lo farebbe tornare al giro dopo. La pulizia mostra quindi i doppioni che stanno su iCloud: si sistemano dall'iPhone, dal Mac o da iCloud.com."),
+ "rep_groups": _('{a0} gruppi di doppioni'), "rep_note": _('Note con lo stesso titolo e la stessa lunghezza'), "rep_reminder": _('Promemoria con lo stesso titolo e la stessa scadenza'),
+ "rep_event": _('Eventi con lo stesso titolo alla stessa ora'), "rep_contact": _('Contatti con lo stesso nome'),
+ "files_A": _('Doppioni da eliminare'), "files_Ai": _("Su iCloud non ci sono più, ma ne esiste un'altra copia identica che resta: su iCloud o in un'altra cartella del NAS. Eliminarli non perde niente."),
+ "files_B": _('Esistono solo qui'), "files_Bi": _("Su iCloud sono stati cancellati o spostati e non ne esiste un'altra copia: questa sul NAS è l'unica. Eliminali solo se non ti servono più."),
+ "files_C": _('Copie in altre cartelle'), "files_Ci": _("Sono fuori dalla copia di iCloud Drive (per esempio in iPhone o Lavoro) e sono identici a un file che è ancora su iCloud: l'originale resta su iCloud e nella sua copia sul NAS."),
+ "photos_A": _('Doppioni da eliminare'), "photos_Ai": _("Foto che su iCloud non ci sono più, ma con una copia identica che resta (su iCloud o in Archivio). Eliminarle non perde niente."),
+ "photos_B": _('Esistono solo qui'), "photos_Bi": _("Foto e video cancellati da iCloud che sono rimasti solo sul NAS (comprese le copie in più con un altro nome). Eliminali solo se non ti servono più: Immich li toglie al giro dopo."),
+ "photos_C": _('Copie in Archivio'), "photos_Ci": _("Foto nell'Archivio identiche a una foto che è ancora su iCloud."),
+ "mail_A": _('Messaggi doppi'), "mail_Ai": _("Lo stesso messaggio (stesso Message-ID) salvato due volte nello stesso account: si elimina la copia in più, l'altra resta."),
+ "mail_B": _('Cancellati dal server'), "mail_Bi": _("Messaggi che su iCloud, Gmail o Outlook sono stati cancellati: il NAS li tiene (con il segno «cestinato»). Eliminali solo se non ti servono più."),
+ "mail_C": "", "mail_Ci": "",
+ "t_empty": _('Il cestino è vuoto'), "t_info": _('Le cose eliminate da File, Foto e Pulizia restano qui {a0} giorni, poi si cancellano da sole.'),
+ "t_restore": _('Ripristina'), "t_empty_one": _('Elimina per sempre'), "t_q": _('Eliminare per sempre? Non si potrà più recuperare.'), "t_from": _('da'),
+ "t_unknown": _('origine non registrata: si ripristina in «Ripristinati dal cestino»'), "t_exp": _('si cancella il {a0}'), "t_ok": _('Ripristinati {a0} elementi'),
+ "t_items": _('{a0} elementi'), "t_files": _('{a0} file')} %}
+<div class="fm-modal" id="cl-modal" hidden role="dialog" aria-modal="true" aria-labelledby="cl-t"><div class="fm-mbox">
+<div class="row" style="justify-content:space-between;align-items:center;gap:.6rem"><span class="seg" role="tablist"><label><input type="radio" name="clmode" value="clean" checked><span>🧹 {{ _('Pulizia') }}</span></label><label><input type="radio" name="clmode" value="trash"><span>🗑 {{ _('Cestino') }}</span></label></span>
+<h2 id="cl-t" class="sr-only">{{ _('Pulizia') }}</h2><button class="tint small" id="cl-x" aria-label="{{ _('Chiudi') }}">✕</button></div>
+<div id="cl-body" style="margin-top:.9rem"></div></div></div>
+<script>
+(function(){
+var T = {{ CLT|tojson }}, KIND = {{ ck|tojson }}, PERSONS = {{ (side_persons or [])|tojson }}, CUR = {{ ((person if person is defined and person is not none else request.args.get('person', '')) or '')|tojson }}, ST = null;
+function $(i){ return document.getElementById(i); }
+function esc(s){ return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
+function fmt(s, a, b){ return String(s).replace("{a0}", a).replace("{a1}", b); }
+function fsize(b){ if (b == null) return ""; if (b < 1000) return b + " B"; var u = ["KB","MB","GB","TB"], i = -1; do { b /= 1000; i++; } while (b >= 1000 && i < 3); return b.toFixed(b < 10 ? 1 : 0) + " " + u[i]; }
+function api(url, body){ return fetch(url, body === undefined ? {credentials:"same-origin"} : {method:"POST", credentials:"same-origin", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)})
+  .then(function(r){ return r.json().catch(function(){ return {}; }).then(function(j){ if (!r.ok) { j.status = r.status; throw j; } return j; }); }); }
+function info(t){ return '<button type="button" class="ibtn" aria-label="i" data-info="' + esc(t) + '">i</button>'; }
+function who(){ return (ST && ST.who) || CUR || (PERSONS.length === 1 ? PERSONS[0] : ""); }
+function picker(){ if (PERSONS.length < 2) return ""; return '<label class="row" style="gap:.4rem"><span class="mut">' + esc(T.who) + '</span><select id="cl-who">' + PERSONS.map(function(p){ return '<option ' + (p === who() ? "selected" : "") + '>' + esc(p) + '</option>'; }).join("") + '</select></label>'; }
+function bindPicker(){ var w = $("cl-who"); if (w) w.onchange = function(){ ST.who = w.value; clean(); }; }
+function open(mode){ ST = ST || {}; ST.who = who() || PERSONS[0] || ""; $("cl-modal").hidden = false; document.querySelectorAll('input[name=clmode]').forEach(function(r){ r.checked = r.value === mode; }); mode === "trash" ? trash() : clean(); }
+window.cleanupOpen = open;
+function clean(){
+  var rep = ["note", "reminder", "event", "contact"].indexOf(KIND) >= 0, p = who();
+  var intro = rep ? T.intro_rep : fmt(T["intro_" + KIND] || T.intro_files, p);
+  $("cl-body").innerHTML = '<div class="row" style="justify-content:space-between;align-items:center">' + picker() + '</div><p>' + esc(intro) + '</p><button id="cl-go">' + esc(T.start) + '</button>';
+  bindPicker(); $("cl-go").onclick = rep ? report : run; }
+function report(){ var p = who();
+  api("/cleanup/dups?" + new URLSearchParams({kind: KIND, person: p})).then(function(r){
+    var h = '<div class="row" style="justify-content:space-between;align-items:center">' + picker() + '</div><p class="mut">' + esc(T.intro_rep) + '</p><h3 style="font-size:15px">' + esc(T["rep_" + KIND]) + ' <span class="mut">(' + esc(fmt(T.rep_groups, r.groups.length)) + ')</span></h3>';
+    if (!r.groups.length) h += '<p class="mut">' + esc(T.none) + '</p>';
+    r.groups.forEach(function(g){ h += '<div class="cl-r" style="grid-template-columns:minmax(0,1fr) auto"><span class="p"><b style="font-weight:500">' + esc(g.title || "—") + '</b> <span class="mut">' + esc(g.sub || "") + '</span></span><span class="mut">×' + g.items.length + '</span><span class="c">' + g.items.map(function(it){ return '<a href="/item/' + it.id + '">' + esc(it.label) + '</a>'; }).join(" · ") + '</span></div>'; });
+    $("cl-body").innerHTML = h; bindPicker(); }).catch(function(e){ $("cl-body").innerHTML = '<p class="err">' + esc(e.error || e.status) + '</p>'; }); }
+function run(){ var p = who();
+  $("cl-body").innerHTML = '<p class="mut" id="cl-pr">' + esc(T.scan) + '</p><div class="bar2"><i id="cl-bar"></i></div>';
+  api("/fm/api/cleanup", {root: p, kind: KIND}).then(function(r){ (function poll(){ api("/fm/api/job/" + r.job).then(function(j){
+      if (j.state === "run") { $("cl-bar").style.width = (j.total ? Math.round(100 * j.done / j.total) : 3) + "%"; $("cl-pr").textContent = T.scan + (j.total ? " " + j.done + "/" + j.total : ""); return setTimeout(poll, 700); }
+      if (!j.result) { $("cl-body").innerHTML = '<div class="err">' + esc((j.errors || []).join("\n") || "?") + '</div>'; return; }
+      ST.job = r.job; show(j.result); }).catch(function(){ setTimeout(poll, 1500); }); })(); })
+  .catch(function(e){ $("cl-body").innerHTML = '<div class="row">' + picker() + '</div><p class="mut">' + esc(e && e.error === "elenco" ? T.noel : e && e.error === "posta" ? T.nomail : (e.error || e.status)) + '</p>'; bindPicker(); }); }
+function show(res){ ST.res = res; var k = res.kind, h = '<div class="row" style="justify-content:space-between;align-items:center">' + picker() + '<span class="mut">' + esc(fmt(T.files, res.files)) + '</span></div>';
+  ["A", "B", "C"].forEach(function(g){ if (!T[k + "_" + g]) return; var rows = res[g] || [], tot = 0; rows.forEach(function(r){ tot += r.size; });
+    h += '<details class="cl-g" ' + (rows.length && g === "A" ? "open" : "") + '><summary><input type="checkbox" data-all="' + g + '" ' + (g === "A" ? "checked" : "") + '>' + esc(T[k + "_" + g]) + ' <span class="mut">(' + rows.length + ' · ' + fsize(tot) + ')</span>' + info(T[k + "_" + g + "i"]) + '</summary>';
+    if (!rows.length) h += '<p class="mut">' + esc(T.none) + '</p>';
+    rows.forEach(function(r, i){ var dir = r.path.split("/").slice(0, -1).join("/"), name = k === "mail" ? (r.subject || r.path.split("/").pop()) : r.path.split("/").pop();
+      var where = k === "mail" ? r.account : dir;
+      h += '<div class="cl-r"><input type="checkbox" data-g="' + g + '" data-i="' + i + '" ' + (g === "A" ? "checked" : "") + '><span class="p" title="' + esc(r.path) + '">' + esc(name) + ' <span class="mut">' + esc(where) + (r.state === "extra" ? " · " + esc(T.extra) : "") + '</span></span><span class="row" style="gap:.4rem"><span class="mut">' + fsize(r.size) + '</span>' +
+        (k === "files" && window.fmGo ? '<button class="tint small" data-show="' + esc(dir) + '">' + esc(T.show) + '</button>' : '') + '</span>' +
+        (r.copies ? '<span class="c">' + esc(k === "mail" ? T.same : T.copy) + ' ' + r.copies.map(esc).join(" · ") + '</span>' : '') + '</div>'; });
+    h += '</details>'; });
+  h += '<div class="row" style="margin-top:1rem;justify-content:space-between"><button class="tint" id="cl-again">' + esc(T.again) + '</button><button class="red" id="cl-del"></button></div>';
+  $("cl-body").innerHTML = h; bindPicker(); count();
+  $("cl-body").querySelectorAll("[data-all]").forEach(function(c){ c.addEventListener("click", function(ev){ ev.stopPropagation(); }); c.addEventListener("change", function(){ $("cl-body").querySelectorAll('[data-g="' + c.dataset.all + '"]').forEach(function(x){ x.checked = c.checked; }); count(); }); });
+  $("cl-body").querySelectorAll("[data-g]").forEach(function(c){ c.addEventListener("change", count); });
+  $("cl-body").querySelectorAll("[data-show]").forEach(function(b){ b.addEventListener("click", function(){ $("cl-modal").hidden = true; window.fmGo(who(), b.dataset.show); }); });
+  $("cl-again").onclick = run; $("cl-del").onclick = del; }
+function sel(){ var out = []; $("cl-body").querySelectorAll("[data-g]:checked").forEach(function(c){ out.push([c.dataset.g, +c.dataset.i]); }); return out; }
+function count(){ var s = sel(), t = 0; s.forEach(function(x){ t += ST.res[x[0]][x[1]].size; }); var b = $("cl-del"); b.textContent = fmt(T.del, s.length, fsize(t)); b.disabled = !s.length; }
+function del(){ var s = sel(); if (!s.length) return; $("cl-del").disabled = true;
+  api("/fm/api/cleanup/delete", {job: ST.job, items: s}).then(function(r){ if (!r.job) return run();
+    (function poll(){ api("/fm/api/job/" + r.job).then(function(j){ if (j.state === "run") return setTimeout(poll, 500);
+      $("cl-body").innerHTML = '<p>' + esc(fmt(T.moved, j.done)) + (j.errors && j.errors.length ? '</p><div class="err">' + j.errors.map(esc).join("<br>") + '</div><p>' : '') + '</p><div class="row"><button class="tint" id="cl-undo">↶ ' + esc(T.undo) + '</button><button class="tint" id="cl-again">' + esc(T.again) + '</button><button class="tint" id="cl-tr">🗑 ' + esc(T.trash) + '</button></div>';
+      $("cl-undo").onclick = function(){ api("/fm/api/history/undo", {}).then(function(){ setTimeout(run, 800); }); }; $("cl-again").onclick = run; $("cl-tr").onclick = function(){ open("trash"); };
+      if (window.fmRefresh) window.fmRefresh(); }).catch(function(){ setTimeout(poll, 1000); }); })(); }); }
+function trash(){ $("cl-body").innerHTML = '<p class="mut">…</p>';
+  api("/fm/api/trash").then(function(r){ var h = '<p class="mut">' + esc(fmt(T.t_info, r.days)) + '</p>';
+    if (!r.jobs.length) h += '<p>' + esc(T.t_empty) + '</p>';
+    r.jobs.forEach(function(x){ var d = new Date(x.when * 1000), e = new Date(x.expires * 1000);
+      h += '<div class="cl-r" style="grid-template-columns:minmax(0,1fr) auto"><span class="p"><b style="font-weight:500">' + esc(d.toLocaleString()) + '</b> <span class="mut">' + esc(fmt(T.t_items, x.n)) + ' · ' + esc(fmt(T.t_files, x.files)) + ' · ' + fsize(x.size) + '</span></span>' +
+        '<span class="row" style="gap:.4rem"><button class="tint small" data-rs="' + esc(x.id) + '">' + esc(T.t_restore) + '</button><button class="red small" data-em="' + esc(x.id) + '">' + esc(T.t_empty_one) + '</button></span>' +
+        '<span class="c">' + x.names.map(esc).join(" · ") + (x.n > x.names.length ? " …" : "") + (x.known ? (x.orig.length ? ' · ' + esc(T.t_from) + ' ' + x.orig.map(esc).join(", ") : "") : ' · ' + esc(T.t_unknown)) + (x.expires ? ' · ' + esc(fmt(T.t_exp, e.toLocaleDateString())) : '') + '</span></div>'; });
+    $("cl-body").innerHTML = h;
+    $("cl-body").querySelectorAll("[data-rs]").forEach(function(b){ b.onclick = function(){ b.disabled = true; api("/fm/api/trash/restore", {id: b.dataset.rs}).then(function(x){ if (window.fmRefresh) window.fmRefresh(); trash(); }); }; });
+    $("cl-body").querySelectorAll("[data-em]").forEach(function(b){ b.onclick = function(){ if (!confirm(T.t_q)) return; b.disabled = true; api("/fm/api/trash/empty", {id: b.dataset.em}).then(trash); }; }); })
+  .catch(function(e){ $("cl-body").innerHTML = '<p class="err">' + esc(e.error || e.status) + '</p>'; }); }
+document.querySelectorAll('input[name=clmode]').forEach(function(r){ r.addEventListener("change", function(){ r.value === "trash" ? trash() : clean(); }); });
+$("cl-x").addEventListener("click", function(){ $("cl-modal").hidden = true; });
+$("cl-modal").addEventListener("click", function(e){ if (e.target === this) this.hidden = true; });
+document.addEventListener("keydown", function(e){ if (e.key === "Escape" && !$("cl-modal").hidden) { $("cl-modal").hidden = true; e.stopImmediatePropagation(); } }, true);
+document.querySelectorAll("[data-cleanup]").forEach(function(a){ a.addEventListener("click", function(e){ e.preventDefault(); open(a.dataset.cleanup); }); });
+})();
+</script>

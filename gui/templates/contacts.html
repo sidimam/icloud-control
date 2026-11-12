@@ -12,7 +12,7 @@
 <div style="padding-top:.3rem">{% for t in p.tels %}<div class="row" style="justify-content:flex-end;padding:.2rem 0"><span class="mut" style="font-size:14px">{{ t }}</span></div>{% endfor %}</div></details>
 {% else %}{% for t in p.tels %}<div class="li"><span class="k">{{ _('Telefono') }}</span><span class="v">{{ t }}</span></div>{% endfor %}{% endif %}
 <div class="li"><span class="mut">{{ _('presente in: {a0}', a0=p.who|join(', ')) }}</span><span class="v">{% for i in p.ids %}<a href="/item/{{ i }}">{{ _('scheda') }} {{ loop.index }}</a>{% if not loop.last %} · {% endif %}{% endfor %}</span></div></div>
-{% else %}<div class="list"><div class="li"><span class="mut">{{ _('Nessun contatto ancora: collega un account iCloud con password per app dalla scheda dell\'utente.') }}</span></div></div>{% endfor %}</div>
+{% else %}<div class="list"><div class="li"><span class="mut">{{ _('Nessun contatto ancora: collega un account iCloud con password per app da «Profilo e amministrazione».') }}</span></div></div>{% endfor %}</div>
 {% endif %}{% if unnamed %}<details class="grp" data-k="contacts-unnamed" style="margin-top:1.4rem"><summary>{{ icon('person', 15) }}{{ _('Numeri senza nome') }} <span class="mut" style="text-transform:none">({{ unnamed|length }})</span>{{ icon('chevron', 15, 'ic chev') }}</summary>
 <div class="list">{% for p in unnamed %}<div class="li"><span class="k">{{ (p.tels + p.emails)|join(' · ') or '—' }}</span><span class="v">{{ p.who|join(', ') }} · {% for i in p.ids %}<a href="/item/{{ i }}">{{ _('scheda') }}{% if p.ids|length > 1 %} {{ loop.index }}{% endif %}</a>{% if not loop.last %} · {% endif %}{% endfor %}</span></div>{% endfor %}</div></details>{% endif %}
 {% endblock %}

@@ -31,8 +31,9 @@ _hist = {}           # utente → {"undo": [voci], "redo": [voci]}
 _lock = threading.Lock()
 
 
-def init(app, roots, icloud_sub, thumb, user, cloud=None, scan=None):
-    _cfg.update(roots=roots, icloud=icloud_sub, thumb=thumb, user=user, cloud=cloud, scan=scan)
+def init(app, roots, icloud_sub, thumb, user, cloud=None, scan=None, persons=None, person_roots=None, trash_bases=None, is_admin=None, display=None):
+    _cfg.update(roots=roots, icloud=icloud_sub, thumb=thumb, user=user, cloud=cloud, scan=scan, persons=persons or (lambda: list(roots())),
+                person_roots=person_roots or (lambda: list(roots().values())), trash_bases=trash_bases or (lambda: []), is_admin=is_admin or (lambda: False), display=display or (lambda p: p))
     app.register_blueprint(bp)
     threading.Thread(target=_purge_loop, daemon=True).start()
 
@@ -208,10 +209,10 @@ def _count(p):
     return 1
 
 
-def _trash_slot(p, j, name):
+def _trash_slot(p, j, name, base=None):
     """Posto nel cestino per un elemento del lavoro j: <cestino>/<data>-<lavoro>/<n>/<nome> (n evita i nomi uguali)."""
     j["slots"] = j.get("slots", 0) + 1
-    return os.path.join(_trash_base(p), time.strftime("%Y%m%d-%H%M%S", time.localtime(j["started"])) + "-" + j["id"], str(j["slots"]), name)
+    return os.path.join(base or _trash_base(p), time.strftime("%Y%m%d-%H%M%S", time.localtime(j["started"])) + "-" + j["id"], str(j["slots"]), name)
 
 
 def _run(j, fn):
@@ -284,17 +285,18 @@ def api_op():
             moves = []
             for s in srcs:
                 try:
-                    t = _trash_slot(s, j, os.path.basename(s)); _move(s, t); moves.append((s, t)); j["done"] += 1
+                    t = _trash_slot(s, j, os.path.basename(s)); _move(s, t); _manifest(t, s, j); moves.append((s, t)); j["done"] += 1
                 except Exception as e: j["errors"].append(f"{os.path.basename(s)}: {str(e)[:200]}")
             _record(j, moves)
         _run(j, rm); return jsonify({"job": j["id"]})
     abort(400)
 
 
-# ---- pulizia (3.24): doppioni e file solo sul NAS --------------------------------------------------------------------
-# A = nella copia di iCloud ma non più su iCloud, con una copia identica altrove sul NAS (spostati): eliminabili.
-# B = non più su iCloud e senza altre copie: vivono solo sul NAS. C = fuori dalla copia di iCloud, identici a un file che è su iCloud.
-# Stesso contenuto = stessa dimensione e stesso SHA-1; si calcola solo per i file con la stessa dimensione di un altro.
+# ---- pulizia (3.24, generalizzata nella 3.25): File, Foto, Posta ----------------------------------------------------------
+# File e Foto. A = doppioni: non più su iCloud, con una copia identica che RESTA (su iCloud o fuori dalla copia di iCloud) → eliminabili.
+# B = esistono solo qui: non più su iCloud e nessun'altra copia. C = copie in altre cartelle di file che sono ancora su iCloud.
+# Stesso contenuto = stessa dimensione e stesso SHA-1, calcolato solo per i file con la stessa dimensione di un altro.
+# Posta. B = messaggi cancellati dal server (flag T del Maildir): esistono solo qui. A = doppioni (stesso Message-ID nello stesso account).
 SKIP = {".cestino-dashboard", "@eaDir", "#recycle", "#snapshot", ".Trash", ".Trashes", ".Spotlight-V100", ".fseventsd"}
 PIM = {"Posta", "Note", "Promemoria", "Calendario", "Contatti"}   # cartelle del modulo PIM dentro <persona>/<account>/
 _hash = {}
@@ -314,10 +316,10 @@ def _sha1(p):
     _hash[k] = h.hexdigest(); return _hash[k]
 
 
-def _walk(base, skip_dir=None):
+def _walk(base, skip=()):
     for dp, dns, fns in os.walk(base):
         rel = dp[len(base):].strip("/"); parts = rel.split("/") if rel else []
-        dns[:] = [d for d in dns if d not in SKIP and not d.startswith(".") and os.path.join(dp, d) != skip_dir
+        dns[:] = [d for d in dns if d not in SKIP and not d.startswith(".") and os.path.join(dp, d) not in skip
                   and not (len(parts) == 1 and d in PIM)]
         for n in fns:
             if n.startswith("."): continue
@@ -327,52 +329,206 @@ def _walk(base, skip_dir=None):
             if stat.S_ISREG(st.st_mode) and st.st_size > 0: yield f, st.st_size
 
 
+def _scan_files(ctx, j, rel):
+    inside = [x for d in ctx["inside"] if os.path.isdir(d) for x in _walk(d)]
+    outside = list(_walk(ctx["base"], skip=set(ctx["inside"])))
+    j["total"] = len(inside) + len(outside)
+    present = ctx["present"]; by_size = {}
+    for f, sz in inside + outside: by_size.setdefault(sz, []).append(f)
+    gone = [(f, sz) for f, sz in inside if f not in present]; gone_set = {f for f, _sz in gone}
+    out = {"A": [], "B": [], "C": []}
+    for f, sz in gone:
+        j["done"] += 1
+        # una copia vale solo se resta: su iCloud o fuori dalla copia di iCloud (mai un altro file «non più su iCloud»,
+        # altrimenti eliminando il gruppo sparirebbero tutte le copie)
+        same = [o for o in by_size.get(sz, []) if o != f and o not in gone_set]
+        h = _sha1(f) if same else None
+        copies = [o for o in same if h and _sha1(o) == h]
+        row = {"path": rel(f), "size": sz, "state": ctx["state"](f) if ctx.get("state") else "gone", "_abs": f}
+        if copies: row["copies"] = [rel(o) for o in copies[:3]]; out["A"].append(row)
+        else: out["B"].append(row)
+    for f, sz in outside:
+        j["done"] += 1
+        on_cloud = [o for o in by_size.get(sz, []) if o in present]
+        if not on_cloud: continue
+        h = _sha1(f); copies = [o for o in on_cloud if h and _sha1(o) == h]
+        if copies: out["C"].append({"path": rel(f), "size": sz, "copies": [rel(o) for o in copies[:3]], "_abs": f})
+    j["done"] += len(inside) - len(gone)
+    return out, len(inside) + len(outside)
+
+
+_MSGID = re.compile(rb"^message-id:\s*(<[^>\r\n]+>|\S+)", re.I | re.M)
+_SUBJ = re.compile(rb"^subject:\s*(.*)$", re.I | re.M)
+
+
+def _scan_mail(ctx, j, rel):
+    files = []
+    for acc, d in ctx["maildirs"]:
+        for dp, _dns, fns in os.walk(d):
+            if os.path.basename(dp) in ("cur", "new"): files += [(acc, os.path.join(dp, n)) for n in fns if not n.startswith(".")]
+    j["total"] = len(files); out = {"A": [], "B": [], "C": []}; seen = {}
+    for acc, f in sorted(files, key=lambda x: x[1]):
+        j["done"] += 1
+        try: st = os.stat(f)
+        except OSError: continue
+        flags = f.rsplit(":2,", 1)[1] if ":2," in f else ""
+        try:
+            with open(f, "rb") as fh: head = fh.read(16384).split(b"\r\n\r\n", 1)[0].split(b"\n\n", 1)[0]
+        except OSError: continue
+        m = _MSGID.search(head); sj = _SUBJ.search(head)
+        subj = sj.group(1).decode("utf-8", "replace").strip()[:120] if sj else ""
+        try:
+            from email.header import decode_header, make_header
+            subj = str(make_header(decode_header(subj)))[:120]
+        except Exception: pass
+        row = {"path": rel(f), "size": st.st_size, "subject": subj, "account": acc, "_abs": f}
+        if "T" in flags: out["B"].append(row); continue
+        if m:
+            k = (acc, m.group(1).strip().lower())
+            if k in seen: row["copies"] = [seen[k]]; out["A"].append(row)
+            else: seen[k] = rel(f)
+    return out, len(files)
+
+
 @bp.post("/fm/api/cleanup")
 def api_cleanup():
     if not request.is_json: abort(415)
-    person = (request.get_json(silent=True) or {}).get("root", ""); base = resolve(person, "")
-    ctx = _cfg["scan"](person) if _cfg.get("scan") else None
-    if not ctx or not ctx.get("drive"): return jsonify({"error": "elenco"}), 409
-    drive = os.path.realpath(ctx["drive"]); present = ctx["present"]
-    j = _job("scan", person, 0)
-    base = os.path.realpath(base); rel = lambda f: "" if f == base else f[len(base) + 1:]   # il thread non può leggere la sessione
+    d = request.get_json(silent=True) or {}; kind = d.get("kind", "files"); person = d.get("root", "")
+    if person not in _cfg["persons"](): abort(403)
+    ctx = _cfg["scan"](person, kind) if _cfg.get("scan") else None
+    if not ctx: return jsonify({"error": "elenco" if kind != "mail" else "posta"}), 409
+    base = os.path.realpath(ctx["base"]); rel = lambda f: "" if f == base else f[len(base) + 1:]   # il thread non può leggere la sessione
+    j = _job("scan", person, 0); j.update(_kind=kind, _trash=ctx["trash"], _person=person)
     def scan():
-        inside = list(_walk(drive)) if os.path.isdir(drive) else []
-        outside = list(_walk(base, skip_dir=drive))
-        j["total"] = len(inside) + len(outside)
-        by_size = {}
-        for f, sz in inside + outside: by_size.setdefault(sz, []).append(f)
-        gone = [(f, sz) for f, sz in inside if f not in present]
-        gone_set = {f for f, _sz in gone}
-        A, B, C = [], [], []
-        for f, sz in gone:
-            j["done"] += 1
-            # una copia vale solo se resta: su iCloud o fuori dalla copia di iCloud Drive (mai un altro file «non più su iCloud»,
-            # altrimenti eliminando il gruppo sparirebbero tutte le copie)
-            same = [o for o in by_size.get(sz, []) if o != f and o not in gone_set]
-            h = _sha1(f) if same else None
-            copies = [o for o in same if h and _sha1(o) == h]
-            st_ = ctx["state"](f) if ctx.get("state") else "gone"   # «gone» o «extra» (copia in più con un altro nome)
-            row = {"path": rel(f), "size": sz, "state": st_}
-            if copies: row["copies"] = [rel(o) for o in copies[:3]]; A.append(row)
-            else: B.append(row)
-        for f, sz in outside:
-            j["done"] += 1
-            on_cloud = [o for o in by_size.get(sz, []) if o in present]
-            if not on_cloud: continue
-            h = _sha1(f); copies = [o for o in on_cloud if h and _sha1(o) == h]
-            if copies: C.append({"path": rel(f), "size": sz, "copies": [rel(o) for o in copies[:3]]})
-        j["done"] += len(inside) - len(gone)
-        j["result"] = {k: sorted(v, key=lambda r: -r["size"])[:5000] for k, v in (("A", A), ("B", B), ("C", C))}
-        j["result"].update(when=ctx.get("when"), files=len(inside) + len(outside))
+        out, n = (_scan_mail if kind == "mail" else _scan_files)(ctx, j, rel)
+        j["_abs"] = {g: [r.pop("_abs") for r in rows] for g, rows in out.items()}
+        j["result"] = {g: rows for g, rows in out.items()}
+        for g in ("A", "B", "C"):   # dal più grande; l'ordine di _abs segue quello dei risultati
+            order = sorted(range(len(j["result"][g])), key=lambda i: -j["result"][g][i]["size"])[:5000]
+            j["result"][g] = [j["result"][g][i] for i in order]; j["_abs"][g] = [j["_abs"][g][i] for i in order]
+        j["result"].update(when=ctx.get("when"), files=n, kind=kind)
     _run(j, scan); return jsonify({"job": j["id"]})
+
+
+@bp.post("/fm/api/cleanup/delete")
+def api_cleanup_delete():
+    """Sposta nel cestino gli elementi scelti fra i risultati di un'analisi (mai percorsi arbitrari: solo quelli trovati)."""
+    if not request.is_json: abort(415)
+    d = request.get_json(silent=True) or {}; s = _jobs.get(d.get("job", ""))
+    if not s or s["user"] != _cfg["user"]() or s["kind"] != "scan" or "_abs" not in s: abort(404)
+    if s["_person"] not in _cfg["persons"](): abort(403)
+    srcs = []
+    for g, i in d.get("items") or []:
+        try: p = s["_abs"][g][int(i)]
+        except (KeyError, IndexError, ValueError, TypeError): abort(400)
+        if os.path.lexists(p) and p not in srcs: srcs.append(p)
+    if not srcs: return jsonify({"job": None})
+    j = _job("delete", os.path.basename(srcs[0]) if len(srcs) == 1 else f"{len(srcs)}", len(srcs)); trash = s["_trash"]
+    def rm():
+        moves = []
+        for p in srcs:
+            try:
+                t = _trash_slot(p, j, os.path.basename(p), base=trash); _move(p, t); _manifest(t, p, j); moves.append((p, t)); j["done"] += 1
+            except Exception as e: j["errors"].append(f"{os.path.basename(p)}: {str(e)[:200]}")
+        _record(j, moves)
+    _run(j, rm); return jsonify({"job": j["id"]})
+
+
+# ---- cestino (3.25): elenco, ripristino e svuotamento dalla dashboard --------------------------------------------------
+def _manifest(trash_path, orig, j):
+    """Nel cartella del lavoro nel cestino annota da dove veniva ogni elemento (serve per ripristinarlo anche dopo un riavvio)."""
+    jd = os.path.dirname(os.path.dirname(trash_path)); mf = os.path.join(jd, "manifest.json")
+    with _lock:
+        try: m = json.load(open(mf))
+        except (OSError, ValueError): m = {"when": j["started"], "user": j["user"], "label": j["label"], "items": []}
+        m["items"].append({"orig": orig, "trash": trash_path}); tmp = mf + ".tmp"
+        json.dump(m, open(tmp, "w"), ensure_ascii=False); os.replace(tmp, mf)
+
+
+def _trash_jobs():
+    out = []
+    for base in _cfg["trash_bases"]():
+        if not os.path.isdir(base): continue
+        for n in sorted(os.listdir(base), reverse=True):
+            jd = os.path.join(base, n)
+            if not os.path.isdir(jd): continue
+            try: m = json.load(open(os.path.join(jd, "manifest.json")))
+            except (OSError, ValueError): m = None
+            out.append((base, n, jd, m))
+    return out
+
+
+def _visible(m):
+    if _cfg["is_admin"](): return True
+    if not m: return False
+    roots = [os.path.realpath(r) for r in _cfg["person_roots"]()]
+    return all(any(it["orig"] == r or it["orig"].startswith(r + "/") for r in roots) for it in m["items"])
+
+
+@bp.get("/fm/api/trash")
+def api_trash():
+    rows = []
+    for base, n, jd, m in _trash_jobs():
+        if not _visible(m): continue
+        nf = sz = 0
+        for dp, _d, fns in os.walk(jd):
+            for f in fns:
+                if dp == jd and f == "manifest.json": continue
+                try: sz += os.lstat(os.path.join(dp, f)).st_size; nf += 1
+                except OSError: pass
+        try: when = os.lstat(jd).st_mtime
+        except OSError: when = 0
+        names = [os.path.basename(it["orig"]) for it in m["items"]] if m else sorted(x for d in os.listdir(jd) if d.isdigit() for x in os.listdir(os.path.join(jd, d)))
+        rows.append({"id": f"{os.path.basename(os.path.dirname(base))}/{n}", "when": (m or {}).get("when") or when, "label": (m or {}).get("label", ""),
+                     "files": nf, "size": sz, "names": names[:8], "n": len(names), "known": bool(m),
+                     "orig": sorted({_cfg["display"](os.path.dirname(it["orig"])) for it in m["items"]})[:4] if m else [],
+                     "expires": (when + CESTINO_GIORNI * 86400) if when else 0})
+    return jsonify({"jobs": rows, "days": CESTINO_GIORNI})
+
+
+def _trash_job(tid):
+    for base, n, jd, m in _trash_jobs():
+        if f"{os.path.basename(os.path.dirname(base))}/{n}" == tid: return base, jd, m
+    abort(404)
+
+
+@bp.post("/fm/api/trash/restore")
+def api_trash_restore():
+    if not request.is_json: abort(415)
+    base, jd, m = _trash_job((request.get_json(silent=True) or {}).get("id", ""))
+    if not _visible(m): abort(403)
+    done, errs = 0, []
+    if m:
+        for it in m["items"]:
+            src, dst = it["trash"], it["orig"]
+            if not os.path.lexists(src): continue
+            if os.path.lexists(dst): dst = os.path.join(os.path.dirname(dst), _free_name(os.path.dirname(dst), os.path.basename(dst), copy=True))
+            try: _move(src, dst); done += 1
+            except Exception as e: errs.append(f"{os.path.basename(dst)}: {str(e)[:200]}")
+    else:   # cestino di prima della 3.25, senza l'origine: va in «Ripristinati dal cestino» nella stessa share (solo amministratore)
+        dest = os.path.join(os.path.dirname(base), "Ripristinati dal cestino", os.path.basename(jd))
+        for d in sorted(x for x in os.listdir(jd) if x.isdigit()):
+            for x in os.listdir(os.path.join(jd, d)):
+                try: _move(os.path.join(jd, d, x), os.path.join(dest, _free_name(dest, x) if os.path.isdir(dest) else x)); done += 1
+                except Exception as e: errs.append(f"{x}: {str(e)[:200]}")
+        _chown_tree(dest) if os.path.isdir(dest) else None
+    if not errs: shutil.rmtree(jd, ignore_errors=True)
+    return jsonify({"done": done, "errors": errs, "where": "" if m else "Ripristinati dal cestino"})
+
+
+@bp.post("/fm/api/trash/empty")
+def api_trash_empty():
+    if not request.is_json: abort(415)
+    base, jd, m = _trash_job((request.get_json(silent=True) or {}).get("id", ""))
+    if not _visible(m): abort(403)
+    shutil.rmtree(jd, ignore_errors=True); return jsonify({"ok": not os.path.exists(jd)})
 
 
 @bp.get("/fm/api/job/<jid>")
 def api_job(jid):
     j = _jobs.get(jid)
     if not j or j["user"] != _cfg["user"](): abort(404)
-    return jsonify({k: v for k, v in j.items() if k not in ("created", "user")})
+    return jsonify({k: v for k, v in j.items() if k not in ("created", "user") and not k.startswith("_")})
 
 
 def _apply(moves, j):
@@ -412,7 +568,7 @@ def _purge_loop():
     while True:
         time.sleep(3600)
         try:
-            for base in {_trash_base(r) for r in _roots_all()}:
+            for base in {_trash_base(r) for r in _roots_all()} | set(_cfg["trash_bases"]()):
                 if not os.path.isdir(base): continue
                 for n in os.listdir(base):
                     p = os.path.join(base, n)

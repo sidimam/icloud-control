@@ -1522,18 +1522,53 @@ def fm_thumb(p, size):
     return out
 def fm_cloud(local_path, is_dir):
     st, other = cloud_of_host(_local_to_host(local_path), is_dir, detail=True); return st, cloud_text(st, other or "iCloud")
-def fm_scan(person):
-    """Per la pulizia di File (3.24): cartella locale della copia di iCloud Drive della persona e file presenti su iCloud (dall'elenco di iclouddr)."""
-    r = fm_roots_all().get(person)
-    if not r or not r[2]: return None
+def _icloud_present(roots_host):
+    """File presenti su iCloud (percorsi locali reali) sotto le radici indicate, e quando è stato scritto l'elenco; None se manca."""
+    present, when, found = set(), None, False
     for root, data in icloud_roots():
-        if root == r[2]:
-            if data is None: return None
-            files, _dirs, when, _alt = data
-            return {"drive": host_to_local(root), "present": {os.path.realpath(host_to_local(h)) for h in files}, "when": when,
-                    "state": lambda lp: cloud_of_host(_local_to_host(lp), False)}   # senza testi: gira fuori dalla richiesta
+        if root in roots_host:
+            if data is None: return None, None
+            files, _dirs, w, _alt = data; found = True; when = max(when or 0, w or 0)
+            present |= {os.path.realpath(host_to_local(h)) for h in files}
+    return (present, when) if found else (None, None)
+def fm_scan(person, kind="files"):
+    """Contesto per la Pulizia (3.24 File, 3.25 Foto e Posta): cartelle da confrontare, file presenti su iCloud, cestino della share."""
+    src = next((x for x in idx_sources() if x["person"] == person), None)
+    if not src: return None
+    state = lambda lp: cloud_of_host(_local_to_host(lp), False)   # senza testi: gira fuori dalla richiesta
+    docs_trash = os.path.join(cfg()["paths"].get("documents", "/documents"), ".cestino-dashboard")
+    if kind == "files":
+        r = fm_roots_all().get(person)
+        if not r or not r[2]: return None
+        present, when = _icloud_present({r[2]})
+        if present is None: return None
+        return {"base": r[0], "inside": [os.path.realpath(host_to_local(r[2]))], "present": present, "when": when, "state": state, "trash": docs_trash}
+    if kind == "photos":
+        icl = {root for root, _d in icloud_roots()}
+        libs = [(a, lp, h) for a, lp, h in src.get("photos", []) if h.rstrip("/") in icl]
+        if not libs: return None
+        present, when = _icloud_present({h.rstrip("/") for _a, _lp, h in libs})
+        if present is None: return None
+        base = os.path.commonpath([os.path.realpath(lp) for _a, lp, _h in src["photos"]]) if len(src["photos"]) > 1 else os.path.dirname(os.path.realpath(libs[0][1]))
+        if base.rstrip("/").endswith("/iCloud"): base = os.path.dirname(base)
+        return {"base": base, "inside": [os.path.realpath(lp) for _a, lp, _h in libs], "present": present, "when": when, "state": state,
+                "trash": os.path.join(cfg()["paths"]["photos"], ".cestino-dashboard")}
+    if kind == "mail":
+        pd = (src.get("person_dir") or (None, ""))[0]
+        if not pd: return None
+        md = [(a, os.path.join(pd, a, "Posta")) for a in sorted(set(src.get("accounts") or []) | {"iCloud"}) if os.path.isdir(os.path.join(pd, a, "Posta"))]
+        return {"base": pd, "maildirs": md, "trash": docs_trash} if md else None
     return None
-fm.init(app, fm_roots, fm_icloud, fm_thumb, lambda: me() or "anon", fm_cloud, fm_scan)
+def fm_person_roots():
+    out = []
+    for x in idx_sources():
+        if x["person"] not in allowed_persons(): continue
+        if x.get("person_dir"): out.append(x["person_dir"][0])
+        for _a, lp, _h in x.get("photos", []): out.append(lp)
+    return out
+fm.init(app, fm_roots, fm_icloud, fm_thumb, lambda: me() or "anon", fm_cloud, fm_scan, persons=allowed_persons, person_roots=fm_person_roots,
+        trash_bases=lambda: [os.path.join(cfg()["paths"].get("documents", "/documents"), ".cestino-dashboard"), os.path.join(cfg()["paths"]["photos"], ".cestino-dashboard")],
+        is_admin=lambda: (not accounts.any_password()) or accounts.is_admin(me()), display=_local_to_host)
 # ---- Files (3.18): ricerca nell'indice di iCloud Drive (con ?q= o i filtri); senza, la scheda è il file manager
 @app.route("/files")
 def files():
@@ -2046,6 +2081,31 @@ def home():
                            kind_names=KIND_NAMES, kind_icons=KIND_ICONS, kind_tab=KIND_TAB, disk_when=(ago(datetime.datetime.fromtimestamp(dk["when"])) if dk.get("when") else ""),
                            disk_real=bool(dd), idx_last=(ago(datetime.datetime.fromtimestamp(idx_last)) if idx_last else ""), fmt_size=_fmt_size, fmt_date=_fmt_date,
                            fmt_n=lambda v: f"{v:,}".replace(",", "."), persons=persons)
+# ---- Pulizia di Note, Promemoria, Calendario e Contatti (3.25): sono copie esatte di iCloud, quindi qui si mostrano solo i
+# doppioni che stanno su iCloud (si sistemano dall'iPhone). Chiave: titolo + lunghezza (note), + scadenza (promemoria), + ora (eventi).
+@app.route("/cleanup/dups")
+def cleanup_dups():
+    kind = request.args.get("kind", ""); person = request.args.get("person", "")
+    if kind not in ("note", "reminder", "event", "contact"): abort(400)
+    if person not in allowed_persons(): abort(403)
+    key = {"note": "lower(trim(title)), size", "reminder": "lower(trim(title)), coalesce(date, 0), account",
+           "event": "lower(trim(title)), date, account", "contact": "lower(trim(title)), account"}[kind]
+    con = SI.connect()
+    try:
+        rows = con.execute(f"""select id, title, account, date, size, path from items where id in (
+              select min(id) from items where kind=? and person=? and coalesce(trim(title), '') <> ''
+              group by case when instr(path, '#') > 0 then substr(path, 1, instr(path, '#') - 1) else path end)
+            and ({key}) in (select {key} from items where kind=? and person=? and coalesce(trim(title), '') <> ''
+              and id in (select min(id) from items where kind=? and person=? group by case when instr(path, '#') > 0 then substr(path, 1, instr(path, '#') - 1) else path end)
+              group by {key} having count(*) > 1)
+            order by lower(title), date""", (kind, person, kind, person, kind, person)).fetchall()
+    finally: con.close()
+    groups = {}
+    for r in rows:
+        k = (r["title"] or "").strip().lower(), r["size"] if kind == "note" else None, r["date"] if kind in ("reminder", "event") else None, r["account"] if kind != "note" else None
+        g = groups.setdefault(k, {"title": r["title"], "sub": " · ".join(x for x in (r["account"] or "", _fmt_date(r["date"]) if r["date"] else "") if x), "items": []})
+        g["items"].append({"id": r["id"], "label": os.path.basename(os.path.dirname(r["path"])) or r["account"] or str(r["id"])})
+    return {"groups": [g for g in groups.values() if len(g["items"]) > 1][:400]}
 @app.route("/healthz")
 def healthz(): return "ok"
 if __name__ == "__main__":

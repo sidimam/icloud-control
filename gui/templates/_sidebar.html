@@ -11,4 +11,7 @@
 </nav>
 {% if extra %}<div class="side-h">{{ _('Condivisi') }}</div>
 <nav class="side-list">{% for p in extra %}<a class="side-i{{ ' on' if cur == p }}" href="{{ qs(person=p) }}"><span class="sav all">{{ icon('cloud', 15) }}</span><span class="side-t">{{ p }}</span></a>{% endfor %}</nav>{% endif %}
+{% if request.endpoint in ("files", "photos", "mail", "notes", "reminders", "calendar", "contacts") %}<div class="side-h">{{ _('Strumenti') }}</div>
+<nav class="side-tools"><a class="side-i" href="#" data-cleanup="clean"><span class="sav all">🧹</span><span class="side-t">{{ _('Pulizia') }}</span></a>
+{% if request.endpoint in ("files", "photos", "mail") %}<a class="side-i" href="#" data-cleanup="trash"><span class="sav all">🗑</span><span class="side-t">{{ _('Cestino') }}</span></a>{% endif %}</nav>{% endif %}
 </aside>

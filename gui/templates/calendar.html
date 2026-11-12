@@ -13,7 +13,7 @@
 <div style="display:grid;gap:1rem">
 <details class="grp" data-k="cal-list" open style="margin:0"><summary>{{ icon('doc', 15) }}{{ _('Calendari') }}{{ icon('chevron', 15, 'ic chev') }}</summary><div class="list">
 {% for c in cals %}<div class="li"><label class="row" style="gap:.5rem;flex:1;min-width:0;flex-wrap:nowrap"><input type="checkbox" class="calvis" value="{{ c.id }}" checked style="width:auto;flex:none"><span class="k" style="min-width:0;flex:1;overflow-wrap:anywhere"><span{% if c.shared %} class="shr" title="{{ _('Calendario condiviso') }}"{% endif %}>{{ c.name }}</span><br><span class="mut">{{ c.person }} · {{ c.account }} · {{ c.n }}</span></span></label>
-<input type="color" class="calcol" data-id="{{ c.id }}" value="{{ c.color }}" title="{{ _('Colore') }}" style="width:34px;height:28px;padding:0;border:0;background:none"></div>{% else %}<div class="li"><span class="mut">{{ _('Nessun calendario ancora: collega un account (iCloud con password per app, oppure link ICS) dalla scheda dell\'utente.') }}</span></div>{% endfor %}
+<input type="color" class="calcol" data-id="{{ c.id }}" value="{{ c.color }}" title="{{ _('Colore') }}" style="width:34px;height:28px;padding:0;border:0;background:none"></div>{% else %}<div class="li"><span class="mut">{{ _('Nessun calendario ancora: collega un account (iCloud con password per app, oppure link ICS) da «Profilo e amministrazione».') }}</span></div>{% endfor %}
 </div></details>
 <details class="grp" data-k="cal-map" open style="margin:0"><summary>{{ icon('globe', 15) }}{{ _('Mappa degli appuntamenti') }}{{ icon('chevron', 15, 'ic chev') }}</summary>
 <div class="list" style="isolation:isolate"><div id="map" style="height:300px"></div></div>

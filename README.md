@@ -73,7 +73,7 @@ montate su `/icloud/photos/all`; controllo ogni 30 minuti (foto ogni ora), nessu
 `docker exec -it iclouddr-<nome> /bin/sh -c "su-exec abc icloud --username=<apple id> --session-directory=/config/session_data"` (password, codice, `y` al keyring).
 Utenti e alias stanno in `/app/config.json`, condiviso con il bot; ogni utente ha `type` (`icloudpd` o `iclouddrive`), `container`, `label`, `chat_id` e, per iCloud Drive, `apple_id` e `person`. La GUI non ha autenticazione: tenerla in LAN o dietro un proxy.
 
-### Colonna delle persone, Riepilogo unico, Profilo e amministrazione, Pulizia (dalla 3.24)
+### Colonna delle persone, Riepilogo unico, Profilo e amministrazione, Pulizia e Cestino (3.24–3.25)
 
 - **Colonna a sinistra in ogni scheda** (Riepilogo, Files, Posta, Calendario, Contatti, Promemoria, Note, Foto, Cerca, Profilo):
   «Vista unica» oppure una persona; sotto, dove servono, le viste condivise (Famiglia, Festività, librerie foto condivise). La scelta
@@ -86,11 +86,20 @@ Utenti e alias stanno in `/app/config.json`, condiviso con il bot; ogni utente h
 - **Profilo e amministrazione**: per ogni persona (tutte per l'amministratore, la propria per un utente) account collegati, sessione
   Apple (2FA) e impostazioni del container; poi le sezioni di amministrazione. Le etichette sono brevi e ogni spiegazione sta dietro la «i»
   (anche l'avviso «copia di iCloud Drive» in Files).
-- **Files → Pulizia** (🧹): per la persona del pannello attivo confronta la copia di iCloud Drive con l'elenco di iclouddr e con le altre
-  cartelle del NAS (stessa dimensione + stesso SHA-1, calcolato solo dove le dimensioni coincidono; esclusi cestino, file nascosti e le
-  cartelle del modulo PIM). Tre gruppi: **doppioni** (non più su iCloud ma con una copia identica altrove: preselezionati),
-  **solo sul NAS** (non più su iCloud, unica copia), **copie di file che sono su iCloud** (fuori dalla copia, identiche a un file su
-  iCloud). «Sposta nel cestino» usa il cestino della dashboard, con Annulla. Serve l'elenco di iclouddr ≥ 0.2.9.
+- **Pulizia e Cestino** (dalla 3.25 in fondo alla colonna a sinistra di Files, Foto, Posta, Note, Promemoria, Calendario e Contatti;
+  in Files anche nella barra). Confronto per contenuto (stessa dimensione + stesso SHA-1, calcolato solo dove le dimensioni coincidono).
+  - **File e Foto**: *Doppioni da eliminare* (non più su iCloud, ma con una copia identica che resta: su iCloud o in un'altra cartella /
+    in Archivio; preselezionati), *Esistono solo qui* (non più su iCloud e nessun'altra copia), *Copie in altre cartelle* / *Copie in
+    Archivio* (identiche a un file o a una foto ancora su iCloud). Servono gli elenchi di iclouddr ≥ 0.2.9.
+  - **Posta**: *Messaggi doppi* (stesso Message-ID nello stesso account: si toglie la copia in più) e *Cancellati dal server* (flag T del
+    Maildir: esistono solo qui).
+  - **Note, Promemoria, Calendario, Contatti**: sono copie esatte di iCloud (ciò che si cancella su iCloud sparisce anche qui; cancellarlo
+    solo qui lo farebbe tornare), quindi la pulizia elenca i doppioni che stanno su iCloud, da sistemare dall'iPhone o da iCloud.com.
+  - Si elimina solo ciò che l'analisi ha trovato (il server accetta solo gli indici dei risultati), sempre nel cestino della share
+    (`documents/.cestino-dashboard` o `media/photos/.cestino-dashboard`), con Annulla.
+  - **Cestino**: elenco dei lavori (data, elementi, file, spazio, da dove venivano, quando scade), *Ripristina* nel posto originale (dalla
+    3.25 ogni lavoro ha un `manifest.json` con l'origine; per quelli più vecchi si ripristina in `Ripristinati dal cestino`) ed
+    *Elimina per sempre*. Dopo 30 giorni si svuota da solo. Un utente vede solo i lavori delle proprie cartelle.
 
 ### Log e blocchi (dalla 2.1)
 
