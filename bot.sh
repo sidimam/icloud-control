@@ -1,5 +1,5 @@
 #!/bin/bash
-# iCloud Dashboard (ex icloud-dispatcher): un solo bot Telegram di casa per il rinnovo 2FA Apple dei container iCloud:
+# iCloud Control (ex icloud-dispatcher): un solo bot Telegram di casa per il rinnovo 2FA Apple dei container iCloud:
 #   • boredazfcuk/icloudpd  (foto)          → tipo "icloudpd"   : expect /opt/authenticate.exp + /tmp/icloudpd/expect_input.txt
 #   • mandarons/icloud-drive (iCloud Drive) → tipo "iclouddrive": `icloud --username … --session-directory` con il codice via FIFO
 # Comandi accettati SOLO dalle chat in ALLOWED_CHATS (chat privata di Simone e gruppo di famiglia):

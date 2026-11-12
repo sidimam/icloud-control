@@ -1,6 +1,6 @@
-# iCloud Dashboard (ex icloud-dispatcher): bot Telegram + GUI web per i container iCloud. Immagine: ghcr.io/sidimam/icloud-dashboard.
+# iCloud Control (ex icloud-dispatcher): bot Telegram + GUI web per i container iCloud. Immagine: ghcr.io/sidimam/icloud-control.
 FROM docker:cli
-LABEL org.opencontainers.image.source="https://github.com/sidimam/icloud-dashboard"
+LABEL org.opencontainers.image.source="https://github.com/sidimam/icloud-control"
 RUN apk add --no-cache bash curl jq python3 py3-flask py3-pip tzdata vips-tools vips-heif vips-poppler ffmpeg exiftool \
  && pip install --no-cache-dir --break-system-packages pyotp==2.9.0 qrcode==7.4.2 icalendar==6.1.0 recurring-ical-events==3.3.3
 # Calendario (FullCalendar, MIT) e mappa (Leaflet, BSD) dentro l'immagine: la GUI non carica script da Internet.

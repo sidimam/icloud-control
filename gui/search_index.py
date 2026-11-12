@@ -1,4 +1,4 @@
-"""Indice di ricerca di iCloud Dashboard (dalla 3.6): file, note, promemoria, posta, eventi e contatti di ogni persona.
+"""Indice di ricerca di iCloud Control (dalla 3.6): file, note, promemoria, posta, eventi e contatti di ogni persona.
 
 SQLite in /app/state/iclouddb.db con FTS5 (tokenizer unicode61 senza accenti). Una riga per elemento in `items`, il testo in
 `fts` (rowid = items.id). Ogni giro rilegge solo ciò che è cambiato (percorso + mtime + dimensione) e toglie ciò che non

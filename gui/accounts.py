@@ -20,7 +20,7 @@ OLD_PW_FILE = os.path.join(APP_DIR, "state", "gui_password")
 ADMIN = os.environ.get("GUI_USER", "admin")
 DEFAULT_PROFILES = [p.strip() for p in os.environ.get("GUI_PROFILES", "sdimambro,dmanieri,sofdimambro,mdimambro").split(",") if p.strip()]
 ROLES = {"admin": "Amministratore", "user": "Utente"}   # utente: vede e gestisce solo il proprio container
-ISSUER = "iCloud Dashboard"
+ISSUER = "iCloud Control"
 
 
 def _blank(role="admin"):

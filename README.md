@@ -1,6 +1,6 @@
-# iCloud Dashboard
+# iCloud Control
 
-<img src="assets/icloud-dashboard.png" width="72" alt="">
+<img src="assets/icloud-control.png" width="72" alt="">
 
 Rinnovo della sessione 2FA Apple dei container iCloud di Unraid **con un solo bot Telegram**, condiviso fra più container e con il
 resto della casa. Gestisce due famiglie di container:
@@ -8,10 +8,10 @@ resto della casa. Gestisce due famiglie di container:
 - **📷 foto** — [boredazfcuk/icloudpd](https://github.com/boredazfcuk/docker-icloudpd) (uno per Apple ID, libreria personale o condivisa);
 - **📁 iCloud Drive** — [mandarons/icloud-drive](https://github.com/mandarons/icloud-docker) (uno per Apple ID, solo download).
 
-> Nomi precedenti: *iCloudpd-dispatcher* (fino al 22/10/2026, solo foto) e *icloud-dispatcher* (fino al 5/11/2026). GitHub reindirizza i
-> vecchi nomi; dalla 3.0 l'immagine è `ghcr.io/sidimam/icloud-dashboard`, il container `icloud-dashboard`, l'appdata
-> `/mnt/user/appdata/icloud-dashboard`. Il progetto per posta, calendario, contatti, note e ricerca globale è in RepoCasa
-> (`docs/progetti/icloud-completo.html`).
+> Nomi precedenti: *iCloudpd-dispatcher* (fino al 22/10/2026, solo foto), *icloud-dispatcher* (fino al 5/11/2026) e
+> *iCloud Dashboard* (fino al 12/11/2026). GitHub reindirizza i vecchi nomi. Dalla 3.22 il repository è `sidimam/icloud-control`,
+> l'immagine `ghcr.io/sidimam/icloud-control`, il container `icloud-control`, l'appdata `/mnt/user/appdata/icloud-control`.
+> Il progetto per posta, calendario, contatti, note e ricerca globale è in RepoCasa (`docs/progetti/icloud-completo.html`).
 
 ## Il problema
 
@@ -21,7 +21,7 @@ Il cookie di autenticazione Apple dura circa 30 giorni. L'immagine icloudpd sa g
 
 ## La soluzione
 
-Un piccolo container, `icloud-dashboard`, è l'unico a leggere il bot. Riconosce il prefisso `#nome` e consegna il comando
+Un piccolo container, `icloud-control`, è l'unico a leggere il bot. Riconosce il prefisso `#nome` e consegna il comando
 al container giusto tramite il socket Docker:
 
 | Messaggio in chat        | Effetto                                                                                  |
@@ -393,7 +393,7 @@ Stanno in `/app/state/profiles.json` (permessi 600): hash scrypt della password,
 
 ## Sicurezza
 
-- Il socket Docker dà a iCloud Dashboard il controllo dell'host: il container esegue solo `docker exec` sui nomi mappati, ma va trattato come root.
+- Il socket Docker dà a iCloud Control il controllo dell'host: il container esegue solo `docker exec` sui nomi mappati, ma va trattato come root.
 - I comandi sono accettati solo dalle chat in `ALLOWED_CHATS`; nessuno stato persistente oltre all'offset Telegram (`state/offset`).
 - Il codice 2FA transita in chiaro nella chat Telegram: è monouso e vale pochi minuti.
 

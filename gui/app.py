@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""iCloud Dashboard (ex icloud-dispatcher) GUI: utenti = container iCloud (foto: boredazfcuk/icloudpd; iCloud Drive: mandarons/icloud-drive), chat Telegram, cosa scaricare, rinnovo 2FA."""
+"""iCloud Control (ex icloud-dispatcher) GUI: utenti = container iCloud (foto: boredazfcuk/icloudpd; iCloud Drive: mandarons/icloud-drive), chat Telegram, cosa scaricare, rinnovo 2FA."""
 import json, os, re, secrets, subprocess, shutil, shlex, datetime, html, time, threading, sqlite3, email, email.policy, urllib.parse
 from markupsafe import Markup
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -73,7 +73,7 @@ def login_2fa():
             _complete_login(name, session.get("pending_remember", False)); return redirect(nxt)
         if accounts.use_recovery_code(name, code):
             left = len(accounts.get(name).get("recovery", []))
-            _security_alert(f"🔑 iCloud Dashboard: {name} è entrato con un codice di recupero (ne restano {left}).")
+            _security_alert(f"🔑 iCloud Control: {name} è entrato con un codice di recupero (ne restano {left}).")
             _complete_login(name, session.get("pending_remember", False))
             flash(_("Sei entrato con un codice di recupero: ne restano {a0}. Se hai perso il telefono, genera codici nuovi o disattiva il 2FA da «Il mio profilo».", a0=left)); return redirect(nxt)
         _fail(); flash(_("Codice non valido"))
@@ -124,7 +124,7 @@ def account():
             elif not TOKEN: flash(_("Manca il token del bot"))
             else:
                 code = f"{secrets.randbelow(10**6):06d}"; session["tg_new"] = {"chat": chat, "code": code, "exp": time.time() + 600}
-                telegram(chat, f"🔐 iCloud Dashboard: codice per collegare questa chat al profilo {name}: {code}"); flash(_("Ti ho mandato un codice su Telegram: scrivilo qui sotto"))
+                telegram(chat, f"🔐 iCloud Control: codice per collegare questa chat al profilo {name}: {code}"); flash(_("Ti ho mandato un codice su Telegram: scrivilo qui sotto"))
         elif act == "tg_confirm":
             t = session.get("tg_new") or {}
             if t and time.time() < t["exp"] and f.get("code", "").strip() == t["code"]: accounts.update(name, telegram=t["chat"]); session.pop("tg_new", None); flash(_("Chat Telegram collegata: potrai usarla per recuperare l'accesso"))
@@ -149,7 +149,7 @@ def recover():
         name = f.get("user", "").strip().lower(); p = accounts.get(name)
         if p and p.get("telegram") and TOKEN:
             code = f"{secrets.randbelow(10**6):06d}"; RECOVER[name] = {"code": generate_password_hash(code), "exp": time.time() + 600, "tries": 0}
-            telegram(p["telegram"], f"🔐 iCloud Dashboard: codice di recupero per {name}: {code} (valido 10 minuti). Se non l'hai chiesto tu, ignoralo e avvisa Simone.")
+            telegram(p["telegram"], f"🔐 iCloud Control: codice di recupero per {name}: {code} (valido 10 minuti). Se non l'hai chiesto tu, ignoralo e avvisa Simone.")
         else: _fail()
         flash(_("Se il profilo ha una chat Telegram collegata, il bot ti ha appena mandato un codice.")); return render_template("recover.html", step="finish", user=name)
     if request.method == "POST" and step == "finish":
@@ -164,7 +164,7 @@ def recover():
         shown = [_(x) for x in done]
         RECOVER.pop(name, None)
         if not done: flash(_("Codice giusto, ma non hai chiesto niente: scegli una password nuova o spegni il 2FA")); return render_template("recover.html", step="start")
-        _security_alert(f"🔐 iCloud Dashboard: recupero dell'accesso per {name} ({', '.join(done)}).")
+        _security_alert(f"🔐 iCloud Control: recupero dell'accesso per {name} ({', '.join(done)}).")
         flash(_("Fatto: {a0}. Ora puoi entrare.", a0=", ".join(shown))); return redirect(url_for("login"))
     return render_template("recover.html", step="start")
 def _icloud_of(profile):
@@ -256,7 +256,7 @@ def notify_flush(c):
     q = _nq()
     if not q or in_quiet() or not notify_chat(c): return
     body = "\n\n".join(f"{datetime.datetime.fromtimestamp(x['ts']).strftime('%H:%M')} {x['text']}" for x in q)
-    telegram(notify_chat(c), ("🌙 Avvisi della notte (iCloud Dashboard):\n\n" + body)[:4000]); os.remove(NQ_FILE)
+    telegram(notify_chat(c), ("🌙 Avvisi della notte (iCloud Control):\n\n" + body)[:4000]); os.remove(NQ_FILE)
 def cookie_name(c): return dexec(c, 'ls /config | grep -E "^[a-z0-9]+(com|it)$" | head -1')[1]
 def auth_running(c): return dexec(c, "pgrep -f authenticate.exp >/dev/null")[0] == 0
 def start_auth(c):
@@ -660,9 +660,9 @@ def new_drive(c, f, name, short):
     # struttura (5/11/2026): documents/<Persona>/iCloud/{iCloud Drive, Note, Promemoria, Posta, Calendario, Contatti}
     person_host = f"/mnt/user/documents/{label}"; pim_host = person_host + "/iCloud"
     appdata = host_to_local(host_appdata); dest = host_to_local(dest_host)
-    if dest == dest_host: flash(_("La destinazione deve stare sotto /mnt/user/documents (montato in iCloud Dashboard come /documents)")); return redirect(url_for("new"))
+    if dest == dest_host: flash(_("La destinazione deve stare sotto /mnt/user/documents (montato in iCloud Control come /documents)")); return redirect(url_for("new"))
     photos_local = host_to_local(photos_host) if photos else None
-    if photos and photos_local == photos_host: flash(_("La cartella foto deve stare sotto /mnt/user/media/photos (montato in iCloud Dashboard come /photos)")); return redirect(url_for("new"))
+    if photos and photos_local == photos_host: flash(_("La cartella foto deve stare sotto /mnt/user/media/photos (montato in iCloud Control come /photos)")); return redirect(url_for("new"))
     for path in [appdata, dest, host_to_local(pim_host)] + ([photos_local] if photos else []):
         os.makedirs(path, exist_ok=True); shutil.chown(path, int(d["user_id"]), int(d["group_id"]))
     # configurazione UNICA di casa (iclouddr_config.py = sidimam/iclouddr unraid/make_config.py): uguale per tutti
@@ -670,7 +670,7 @@ def new_drive(c, f, name, short):
     cfg_text = iclouddr_config.make(cont, label, apple, home=("Home" not in ignore))
     if not photos: cfg_text = cfg_text.split("photos:\n")[0]
     open(os.path.join(appdata, "config.yaml"), "w").write(cfg_text); shutil.chown(os.path.join(appdata, "config.yaml"), int(d["user_id"]), int(d["group_id"]))
-    icon = "https://raw.githubusercontent.com/sidimam/icloud-dashboard/main/assets/icloud-drive.png"   # quadrata 256x256 (l'icona dashboard-icons è 797x512 e Unraid la deforma)
+    icon = "https://raw.githubusercontent.com/sidimam/icloud-control/main/assets/icloud-drive.png"   # quadrata 256x256 (l'icona dashboard-icons è 797x512 e Unraid la deforma)
     open(tpl_path(cont), "w").write(f"""<?xml version="1.0"?>
 <Container version="2">
   <Name>{cont}</Name>
@@ -765,7 +765,7 @@ def ah_check(name, u, c):
     if len(recent) >= AH_MAXR:
         if not any(e.get("container") == ct and e.get("action") == "gave_up" and now - e.get("ts", 0) < 6 * 3600 for e in ah_events()):
             ah_log({"ts": now, "container": ct, "action": "gave_up", "reason": reason})
-            if nset()["gave_up"]: notify(c, f"⚠️ {name}: {ct} si blocca di continuo ({len(recent)} riavvii automatici in 6 ore, ultimo motivo: {reason}). Per 6 ore non lo riavvio più in automatico: guarda iCloud Dashboard (📜 Log).")
+            if nset()["gave_up"]: notify(c, f"⚠️ {name}: {ct} si blocca di continuo ({len(recent)} riavvii automatici in 6 ore, ultimo motivo: {reason}). Per 6 ore non lo riavvio più in automatico: guarda iCloud Control (📜 Log).")
         return
     rc, _, err = sh(f"docker restart {ct}", 120); _ah_samples.pop(ct, None); _log_cache.pop(ct, None)
     ah_log({"ts": now, "container": ct, "action": "restart", "reason": reason, "ok": rc == 0})
@@ -801,7 +801,7 @@ def admin():
     imm = immich_cfg(); hosts = {h: (p, a) for p, a, h in photo_libraries()}
     immich = {"url": imm.get("url"), "libs": [(hosts[h][0], hosts[h][1], bool((imm.get("libs") or {}).get(h, {}).get("key"))) for h in hosts]}
     immich["on"] = any(k for _p, _a, k in immich["libs"]); immich["n"] = sum(1 for _p, _a, k in immich["libs"] if k)
-    log_srcs = [("dashboard", "iCloud Dashboard")] + [(n, f"{u.get('label', n)} · {u['container']}") for n, u in cfg()["users"].items()]
+    log_srcs = [("dashboard", "iCloud Control")] + [(n, f"{u.get('label', n)} · {u['container']}") for n, u in cfg()["users"].items()]
     return render_template("admin.html", immich=immich, log_srcs=log_srcs, rows=rows, n=nset(), default_chat=cfg().get("default_chat_id", ""), roles=accounts.ROLES, geocode=_settings().get("geocode", False),
                            idx=idx, idx_last=ago(datetime.datetime.fromtimestamp(last)) if last else "", idx_errs=errs, idx_db=os.path.getsize(SI.DB) if os.path.exists(SI.DB) else 0, fmt_size=_fmt_size)
 # Log (3.12): ricerca e filtri sui log della dashboard e dei container iCloud, dalla scheda Amministrazione
@@ -812,7 +812,7 @@ LOG_SINCE = {"1h": "1h", "6h": "6h", "24h": "24h", "72h": "72h", "7d": "168h"}
 def admin_logs():
     _admin_only(); a = request.args
     src = a.get("src", "dashboard")
-    if src == "dashboard": ct = os.environ.get("HOSTNAME", "icloud-dashboard")
+    if src == "dashboard": ct = os.environ.get("HOSTNAME", "icloud-control")
     else: ct = (cfg()["users"].get(src) or abort(404))["container"]
     since = LOG_SINCE.get(a.get("since", "24h"), "24h"); n = min(max(int(a.get("n", "500") or 500), 50), 5000)
     rc, out, err = sh(f"docker logs --since {since} --tail 200000 {shlex.quote(ct)} 2>&1", 90)
@@ -873,7 +873,7 @@ def admin_notify():
 def admin_notify_test():
     _admin_only(); chat = notify_chat(cfg())
     if not TOKEN or not chat: flash(_("Manca il token del bot o la chat")); return redirect(url_for("admin"))
-    telegram(chat, f"🧪 Prova di iCloud Dashboard da {me() or 'admin'}: le notifiche arrivano qui."); flash(_("Messaggio di prova inviato"))
+    telegram(chat, f"🧪 Prova di iCloud Control da {me() or 'admin'}: le notifiche arrivano qui."); flash(_("Messaggio di prova inviato"))
     return redirect(url_for("admin"))
 
 # ---- ricerca e schede dei dati (3.6): database «iclouddb» (SQLite FTS5) in /app/state/iclouddb.db, vedi search_index.py
@@ -1736,7 +1736,7 @@ def holidays_cal():
     except OSError: age = None
     if (age is None or age > 86400) and HOL_URL:
         try:
-            req = urllib.request.Request(HOL_URL, headers={"User-Agent": "icloud-dashboard", "Accept-Encoding": "gzip"})
+            req = urllib.request.Request(HOL_URL, headers={"User-Agent": "icloud-control", "Accept-Encoding": "gzip"})
             data = urllib.request.urlopen(req, timeout=20).read()
             if data[:2] == b"\x1f\x8b": data = gzip.decompress(data)   # Apple lo manda compresso anche senza chiederlo
             if b"BEGIN:VCALENDAR" in data[:200]:
@@ -1935,7 +1935,7 @@ def weather():
     url = ("https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,is_day"
            "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset&timezone=Europe%2FRome&forecast_days=5").format(**WEATHER)
     try:
-        d = json.loads(urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "icloud-dashboard"}), timeout=10).read())
+        d = json.loads(urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "icloud-control"}), timeout=10).read())
         cu = d["current"]; dl = d["daily"]
         def desc(code, day=True):
             w = WMO.get(int(code), ("—", "🌡️", "🌡️")); return _(w[0]), w[1] if day else w[2]
