@@ -1,6 +1,6 @@
 {% extends "base.html" %}{% block body %}
 <h1 class="title">{{ _('Note') }}</h1>
-<form method="get" action="/notes">{% include "_personfilter.html" %}</form>
+<form method="get" action="/notes"><input type="hidden" name="person" value="{{ person or '' }}"></form>
 {% set sb_placeholder = _('Cerca nelle note (titolo e testo)…') %}{% include "_searchbar.html" %}
 {% set fo = {"name": _('titolo della nota'), "ext": none, "dates": _('Modificata'), "sorts": [("date", _('data di modifica')), ("name", _('titolo')), ("size", _('dimensione'))], "default": "date"} %}{% include "_filters.html" %}
 {% set vs = [("list", _('Elenco'), "list"), ("cards", _('Schede'), "cards"), ("table", _('Dettagli'), "table")] %}{% set cur_view = request.args.get('view') if request.args.get('view') in vs|map(attribute=0)|list else vs[0][0] %}<div class="toolbar"><span></span>{% include "_viewsel.html" %}</div>

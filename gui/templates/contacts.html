@@ -1,6 +1,6 @@
 {% extends "base.html" %}{% block body %}
 <h1 class="title">{{ _('Contatti') }}</h1>
-<form method="get" action="/contacts">{% include "_personfilter.html" %}
+<form method="get" action="/contacts"><input type="hidden" name="person" value="{{ person or '' }}">
 <div class="list" style="margin-bottom:1rem"><div class="li"><span class="badge b-gray">{{ icon('search', 16) }}</span><input name="q" value="{{ q }}" placeholder="{{ _('Nome, e-mail, telefono, organizzazione…') }}" style="flex:1"><button class="small">{{ _('Cerca') }}</button></div></div></form>
 {% set fo = {"name": _('nome o organizzazione'), "ext": none, "dates": none, "sorts": [("name", _('nome')), ("org", _('organizzazione')), ("who", _('presente in più rubriche'))], "default": "name"} %}{% include "_filters.html" %}
 {% set vs = [("cards", _('Schede'), "cards"), ("list", _('Elenco'), "list"), ("table", _('Dettagli'), "table")] %}{% set cur_view = request.args.get('view') if request.args.get('view') in vs|map(attribute=0)|list else vs[0][0] %}<div class="toolbar"><p class="note">{{ _('{a0} persone da {a1} schede', a0=people|length + unnamed|length, a1=total) }} {{ info(_('La stessa persona salvata da più di voi (e-mail o ultime 9 cifre del telefono uguali) compare una volta sola, con «presente in» e le schede originali.')) }}</p>{% include "_viewsel.html" %}</div>

@@ -12,7 +12,8 @@ main{max-width:1680px}
 .fm-tools button:disabled{opacity:.4;cursor:default}
 .fm-tools select{width:auto;padding:.32rem .5rem;font-size:13px;border-radius:8px}
 .fm-tools .grow{flex:1}
-.fm-warn{display:flex;gap:.5rem;align-items:flex-start;background:color-mix(in srgb,var(--warn) 14%,var(--card));border-radius:10px;padding:.5rem .8rem;margin-bottom:.6rem;font-size:13px}
+.fm-warn[hidden]{display:none}
+.fm-warn{display:flex;gap:.4rem;align-items:center;margin-bottom:.6rem;font-size:13px}
 .fm-body{display:grid;grid-template-columns:minmax(0,1fr);gap:.8rem;align-items:start}
 .fm-body.prev{grid-template-columns:minmax(0,1fr) minmax(260px,340px)}
 @media (max-width:900px){.fm-body.prev{grid-template-columns:minmax(0,1fr)}}
@@ -85,6 +86,12 @@ main{max-width:1680px}
 .fm-menu button:disabled{opacity:.4}
 .fm-menu kbd{font:12px -apple-system,system-ui;opacity:.6}
 .fm-menu hr{border:0;border-top:.5px solid var(--sep);margin:.25rem .3rem}
+.fm-modal{position:fixed;inset:0;z-index:30;background:rgba(0,0,0,.28);display:flex;align-items:flex-start;justify-content:center;padding:6vh 16px}
+.fm-modal[hidden]{display:none}
+.fm-mbox{background:var(--card);border-radius:16px;box-shadow:0 18px 60px rgba(0,0,0,.25);width:min(860px,100%);max-height:84vh;overflow:auto;padding:18px 20px}
+.cl-g{margin:.9rem 0}.cl-g>summary{cursor:pointer;list-style:none;display:flex;gap:.5rem;align-items:center;font-weight:600}
+.cl-r{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:.15rem .6rem;align-items:center;padding:.45rem 0;border-top:.5px solid var(--sep);font-size:13.5px}
+.cl-r .p{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.cl-r .c{grid-column:2/4;color:var(--mut);font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .kbd-help{font-size:12.5px;color:var(--mut)}
 </style>{% endblock %}{% block body %}
 <div class="fm-head"><h1 class="title">{{ _('Files') }}</h1>
@@ -114,12 +121,25 @@ main{max-width:1680px}
 <button data-act="preview" id="fm-prevb" title="{{ _('Anteprima') }} ({{ _('spazio') }})">👁 {{ _('Anteprima') }}</button>
 <button data-act="hidden" id="fm-hid" title="{{ _('Mostra i file nascosti') }}">.*</button>
 <button data-act="refresh" title="{{ _('Aggiorna') }}">⟳</button>
+<button data-act="cleanup" title="{{ _('Doppioni e file solo sul NAS') }}">🧹 {{ _('Pulizia') }}</button>
 </div>
-<div class="fm-warn" id="fm-warn" hidden>{{ icon('warn', 16) }}<span>{{ _("Questa è la copia di iCloud Drive scaricata sul NAS: le modifiche fatte qui non arrivano su iCloud né sugli altri dispositivi, e al giro successivo iclouddr può rimettere i file com'erano su iCloud.") }}</span></div>
+<div class="fm-warn" id="fm-warn" hidden><span class="tag warn">{{ icon('cloud', 13) }} {{ _('Copia di iCloud Drive') }}</span>{{ info(_("Questa è la copia di iCloud Drive scaricata sul NAS: le modifiche fatte qui non arrivano su iCloud né sugli altri dispositivi, e al giro successivo iclouddr può rimettere i file com'erano su iCloud.")) }}</div>
 <div class="fm-body" id="fm-body"><div class="fm-panes" id="fm-panes"></div><aside class="fm-prev" id="fm-prev" hidden aria-label="{{ _('Anteprima') }}"></aside></div>
 <div class="fm-status"><span id="fm-st"></span><span class="kbd-help">{{ _('Clic: seleziona · ⌘/Ctrl-clic: aggiungi · ⇧-clic: intervallo · doppio clic: apri · trascina per spostare (⌥/Alt per copiare) · Tab: cambia pannello · F5 copia · F6 sposta · F7 nuova cartella') }}</span></div>
 <div class="fm-jobs" id="fm-jobs" aria-live="polite"></div>
 <div class="fm-menu" id="fm-menu" role="menu" hidden></div>
+<div class="fm-modal" id="fm-clean" hidden role="dialog" aria-modal="true" aria-labelledby="fm-clean-t"><div class="fm-mbox">
+<div class="row" style="justify-content:space-between;align-items:center"><h2 id="fm-clean-t" style="margin:0;font-size:19px">{{ _('Pulizia') }} <span class="mut" id="fm-clean-who"></span></h2>
+<span class="row">{{ info(_("Confronta i file della persona: quelli nella copia di iCloud Drive che su iCloud non ci sono più, e quelli nelle altre cartelle del NAS. Due file sono uguali se hanno la stessa dimensione e lo stesso contenuto (SHA-1). Eliminare li sposta nel cestino della dashboard (30 giorni) e si può annullare.")) }}<button class="tint small" id="fm-clean-x" aria-label="{{ _('Chiudi') }}">✕</button></span></div>
+<div id="fm-clean-body" style="margin-top:.8rem"></div></div></div>
+{% set SC = {
+ "scan": _('Analisi in corso…'), "start": _('Analizza'), "intro": _('Cerca doppioni e file che vivono solo sul NAS nella cartella di {a0}.'),
+ "A": _('Doppioni: non più su iCloud, con una copia altrove sul NAS'), "Ai": _('Erano nella copia di iCloud Drive, su iCloud non ci sono più e la stessa copia esiste in un\'altra cartella: si possono eliminare.'),
+ "B": _('Solo sul NAS: non più su iCloud, senza altre copie'), "Bi": _('Sono l\'unica copia rimasta: su iCloud sono stati cancellati o spostati. Eliminali solo se non ti servono.'),
+ "C": _('Copie di file che sono su iCloud'), "Ci": _('Fuori dalla copia di iCloud Drive, identici a un file che è ancora su iCloud.'),
+ "copy": _('copia in'), "none": _('Nessun file'), "del": _('Sposta nel cestino ({a0}, {a1})'), "show": _('Mostra'),
+ "noel": _('Manca ancora l\'elenco di cosa c\'è su iCloud per questa persona: arriva a fine giro di iclouddr.'), "files": _('{a0} file controllati'),
+ "extra": _('copia in più con un altro nome'), "again": _('Analizza di nuovo')} %}
 {% set S = {
  "folder": _('Cartella'), "items": _('{a0} elementi'), "item1": _('1 elemento'), "sel": _('{a0} selezionati'), "file": _('File {a0}'),
  "name": _('Nome'), "size": _('Dimensione'), "mtime": _('Modificato'), "added": _('Aggiunto'), "atime": _('Ultimo accesso'), "kind": _('Tipo'),
@@ -376,11 +396,42 @@ var A = {
   preview: function(){ ui.preview = !ui.preview; pvKey = ""; saveUi(); syncTools(); preview(); },
   hidden: function(){ ui.hidden = !ui.hidden; saveUi(); syncTools(); refreshAll(); },
   refresh: function(){ refreshAll(); },
+  cleanup: function(){ cleanOpen(); },
   open: function(){ var p = cur(), e = p.focus ? p.shown[idx(p, p.focus)] : selEntries(p)[0]; if (e) open(p, e); },
   dl: function(){ var p = cur(), e = selEntries(p)[0]; if (e && !e.dir) location.href = "/fm/raw?" + q({root:p.root, path:join(p.path, e.name), dl:1}); }
 };
 document.querySelectorAll(".fm-tools [data-act]").forEach(function(b){ b.addEventListener("click", function(){ A[b.dataset.act](); }); });
 $("fm-sort").addEventListener("change", function(){ ui.sort = this.value; ui.dir = (ui.sort === "name" || ui.sort === "ext") ? "asc" : "desc"; saveUi(); syncTools(); panes.forEach(render); });
+
+// ---- pulizia (3.24): doppioni e file solo sul NAS ----
+var SC = {{ SC|tojson }}, CL = null;
+function cleanOpen(){ var p = cur(); CL = {root: p.root}; $("fm-clean-who").textContent = "· " + p.root; $("fm-clean").hidden = false;
+  $("fm-clean-body").innerHTML = '<p>' + esc(fmt(SC.intro, p.root)) + '</p><button id="cl-go">' + esc(SC.start) + '</button>'; $("cl-go").onclick = cleanRun; }
+function cleanRun(){ $("fm-clean-body").innerHTML = '<p class="mut" id="cl-pr">' + esc(SC.scan) + '</p><div class="bar2"><i id="cl-bar"></i></div>';
+  api("/fm/api/cleanup", {root: CL.root}).then(function(r){ (function poll(){ api("/fm/api/job/" + r.job).then(function(j){
+      if (j.state === "run") { $("cl-bar").style.width = (j.total ? Math.round(100 * j.done / j.total) : 3) + "%"; $("cl-pr").textContent = SC.scan + (j.total ? " " + j.done + "/" + j.total : ""); return setTimeout(poll, 600); }
+      if (!j.result) { $("fm-clean-body").innerHTML = '<div class="err">' + esc((j.errors || []).join("\n") || "?") + '</div>'; return; }
+      cleanShow(j.result); }).catch(function(){ setTimeout(poll, 1500); }); })(); })
+  .catch(function(e){ $("fm-clean-body").innerHTML = '<p class="mut">' + esc(e && e.error === "elenco" ? SC.noel : errText(e)) + '</p>'; }); }
+function cleanShow(res){ CL.res = res; var h = '<p class="mut">' + esc(fmt(SC.files, res.files)) + '</p>';
+  ["A", "B", "C"].forEach(function(g){ var rows = res[g] || [], tot = 0; rows.forEach(function(r){ tot += r.size; });
+    h += '<details class="cl-g" ' + (rows.length && g === "A" ? "open" : "") + '><summary><input type="checkbox" data-all="' + g + '" ' + (g === "A" ? "checked" : "") + ' aria-label="' + esc(SC[g]) + '">' + esc(SC[g]) + ' <span class="mut">(' + rows.length + ' · ' + fsize(tot) + ')</span></summary><p class="mut" style="font-size:12.5px">' + esc(SC[g + "i"]) + '</p>';
+    if (!rows.length) h += '<p class="mut">' + esc(SC.none) + '</p>';
+    rows.forEach(function(r, i){ var dir = parent(r.path);
+      h += '<div class="cl-r"><input type="checkbox" data-g="' + g + '" data-i="' + i + '" ' + (g === "A" ? "checked" : "") + '><span class="p" title="' + esc(r.path) + '">' + esc(r.path.split("/").pop()) + ' <span class="mut">' + esc(dir) + (r.state === "extra" ? " · " + esc(SC.extra) : "") + '</span></span><span class="row" style="gap:.4rem"><span class="mut">' + fsize(r.size) + '</span><button class="tint small" data-show="' + esc(dir) + '">' + esc(SC.show) + '</button></span>' +
+        (r.copies ? '<span class="c">' + esc(SC.copy) + ' ' + r.copies.map(esc).join(" · ") + '</span>' : '') + '</div>'; });
+    h += '</details>'; });
+  h += '<div class="row" style="margin-top:1rem;justify-content:space-between"><button class="tint" id="cl-again">' + esc(SC.again) + '</button><button class="red" id="cl-del"></button></div>';
+  $("fm-clean-body").innerHTML = h; cleanCount();
+  $("fm-clean-body").querySelectorAll("[data-all]").forEach(function(c){ c.addEventListener("click", function(ev){ ev.stopPropagation(); }); c.addEventListener("change", function(){ $("fm-clean-body").querySelectorAll('[data-g="' + c.dataset.all + '"]').forEach(function(x){ x.checked = c.checked; }); cleanCount(); }); });
+  $("fm-clean-body").querySelectorAll("[data-g]").forEach(function(c){ c.addEventListener("change", cleanCount); });
+  $("fm-clean-body").querySelectorAll("[data-show]").forEach(function(b){ b.addEventListener("click", function(){ $("fm-clean").hidden = true; go(cur(), CL.root, b.dataset.show); }); });
+  $("cl-again").onclick = cleanRun; $("cl-del").onclick = cleanDelete; }
+function cleanSel(){ var out = []; $("fm-clean-body").querySelectorAll("[data-g]:checked").forEach(function(c){ out.push(CL.res[c.dataset.g][+c.dataset.i]); }); return out; }
+function cleanCount(){ var s = cleanSel(), t = 0; s.forEach(function(r){ t += r.size; }); var b = $("cl-del"); b.textContent = fmt(SC.del, s.length, fsize(t)); b.disabled = !s.length; }
+function cleanDelete(){ var s = cleanSel(); if (!s.length) return; op("delete", {items: s.map(function(r){ return {root: CL.root, path: r.path}; })}, s.length); $("fm-clean").hidden = true; }
+$("fm-clean-x").addEventListener("click", function(){ $("fm-clean").hidden = true; });
+$("fm-clean").addEventListener("click", function(e){ if (e.target === this) this.hidden = true; });
 
 // ---- menu contestuale ----
 function menu(x, y, e){
@@ -398,6 +449,7 @@ panes.forEach(function(p){ p.list.addEventListener("contextmenu", function(ev){ 
 
 // ---- tastiera ----
 document.addEventListener("keydown", function(ev){
+  if (!$("fm-clean").hidden) { if (ev.key === "Escape") $("fm-clean").hidden = true; return; }   // pannello Pulizia aperto: niente scorciatoie
   var t = ev.target; if (t.closest && (t.closest("input,select,textarea") && t.type !== "checkbox")) return;
   if (!$("fm-menu").hidden && ev.key === "Escape") { $("fm-menu").hidden = true; return; }
   var p = cur(), mod = ev.metaKey || ev.ctrlKey, k = ev.key;

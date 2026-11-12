@@ -1,8 +1,5 @@
-{% extends "base.html" %}{% block body %}
-<h1 class="title">{{ _('Utenti') }}</h1>
-<div class="row" style="justify-content:flex-end;margin:-.4rem 0 .8rem"><span class="mut">{{ _('Disposizione') }}</span><span class="seg" role="radiogroup" aria-label="{{ _('Disposizione') }}">
-<label><input type="radio" name="ulay" value="h" checked><span>{{ _('Orizzontale') }}</span></label><label><input type="radio" name="ulay" value="v"><span>{{ _('Verticale') }}</span></label></span>{{ info(_("Un utente = un container iCloud. I comandi Telegram usano il prefisso #nome; il codice Apple arriva sui dispositivi dell'account e si inserisce qui o in chat.")) }}</div>
-{% for title, group in sections %}{% if sections|length > 1 %}<details class="grp" data-k="sec-{{ loop.index }}" open><summary>{{ icon('cloud', 15) }}{{ _(title) }}{{ icon('chevron', 15, 'ic chev') }}</summary>{% endif %}<div class="ugrid">{% for u in group %}
+{# Scheda di una persona (3.24, ex scheda Utenti): stato, comandi, spazio, servizi, Immich, log, riavvio automatico, ultimo evento.
+   Sessione Apple, impostazioni e account collegati stanno in «Profilo e amministrazione». #}
 <div class="list" id="u-{{ u.name }}" style="scroll-margin-top:90px">
 <div class="uhead" style="padding:18px 16px 10px"><span class="avatar">{{ u.label[:1] }}</span><div style="min-width:0"><h2 style="font-size:19px">{{u.label}}</h2><span class="mut">{{ u.apple_id or '' }}</span></div></div>
 {% if not u.exists %}<div class="li"><span class="bad">{{ _('Container non trovato.') }}</span></div>{% else %}
@@ -34,29 +31,4 @@
 <div class="li"><span class="k">{{ _('Cartella') }}</span><span class="v">{{u.photos_host}}</span></div>
 <div class="li"><span class="k">{{ _('Ultima riga di log') }}</span><span class="v">{{u.activity or '—'}}</span></div>{% endif %}
 <div class="li"><span class="k">{{ _('Ultimo evento') }}</span><span class="v">{{u.last or '—'}}</span></div>
-{% if u.type == "iclouddrive" and u.can_accounts %}<div class="li"><span class="badge b-green">{{ icon('send', 17) }}</span><span class="k">{{ _('Account collegati') }}{% if u.accounts %} <span class="mut">({{ u.accounts|length }})</span>{% endif %}</span><span class="v">{% for a in u.accounts %}<span class="tag {% if a.running %}warn{% elif a.error %}bad{% elif a.st %}ok{% endif %}" title="{{ a.dir or a.folder }}">{{ a.label }}</span> {% endfor %}{% if me_admin or not me or u.name == own_icloud %}<a class="btn tint small" href="/account#acc-{{ u.name }}">{{ _('Gestisci') }}</a>{% endif %}{{ info(_("Gli account si aggiungono e si modificano da «Il mio profilo».")) }}</span></div>{% endif %}
-<details class="li col" style="display:block"><summary style="list-style:none;display:flex;align-items:center;gap:.6rem;cursor:pointer"><span class="badge b-indigo">{{ icon('key', 17) }}</span><span class="k">{{ _('Sessione Apple (2FA)') }}</span><span class="v">{{ icon('chevron', 15, 'ic chev') }}</span></summary>
-<div style="padding:.6rem 0;display:grid;gap:.6rem"><form class="inline" method="post" action="/u/{{u.name}}/auth" onsubmit="return confirm('{{ _('Invalida la sessione attuale e chiede un nuovo codice Apple. Continuare?') }}')"><button class="small">{{ _('Riautentica') }}</button></form>
-<form method="post" action="/u/{{u.name}}/code" class="row"><input name="code" placeholder="{{ _('codice a 6 cifre') }}" style="width:11em" inputmode="numeric" pattern="[0-9]{6}"><button class="tint small">{{ _('Invia codice') }}</button></form></div></details>
-<details class="li col" style="display:block"><summary style="list-style:none;display:flex;align-items:center;gap:.6rem;cursor:pointer"><span class="badge b-gray">{{ icon('gear', 17) }}</span><span class="k">{{ _('Impostazioni') }}</span><span class="v">{{ icon('chevron', 15, 'ic chev') }}</span></summary>
-<form method="post" action="/u/{{u.name}}/settings" style="padding:.6rem 0;display:grid;gap:.45rem">
-<p class="mut" style="margin:0">{{ _('Container') }}: <code>{{ u.container }}</code> · {{ _('comandi Telegram') }} <code>#{{ u.name }}</code>{% if u.image %} · <code>{{ u.image }}</code>{% endif %}</p>
-<label class="f">{{ _('Etichetta') }}</label><input name="label" value="{{u.label}}">
-{% if u.type == "iclouddrive" %}<label class="f">Apple ID</label><input name="apple_id" value="{{u.apple_id}}">
-<label class="f">{{ _('Controlla iCloud Drive ogni (secondi)') }}</label><input name="sync_interval" value="{{u.sync_interval}}">
-<label class="row" style="justify-content:space-between">{{ _('Rimuovi in locale i file cancellati su iCloud') }}<input class="sw" type="checkbox" name="remove_obsolete" {% if u.remove_obsolete == 'true' %}checked{% endif %}></label>
-<label class="f">{{ _('Chat Telegram (id) per avvisi') }}</label><input name="telegram_chat_id" value="{{u.chat_id}}">
-{% else %}<label class="f">{{ _("Libreria (PrimarySync = personale, oppure l'id SharedSync-…)") }}</label><input name="photo_library" value="{{u.photo_library}}">
-<label class="f">{{ _('Solo album (vuoto = tutto)') }}</label><input name="photo_album" value="{{u.photo_album}}">
-<label class="f">{{ _('Struttura cartelle') }}</label><input name="folder_structure" value="{{u.folder_structure}}">
-<label class="f">{{ _('Chat Telegram (id) per avvisi e comandi') }}</label><input name="telegram_chat_id" value="{{u.tg_chat}}">
-<label class="f">{{ _('Promemoria da N giorni prima') }}</label><input name="notification_days" value="{{u.notification_days}}">{% endif %}
-<div class="row"><button class="small">{{ _('Salva e riavvia') }}</button></div></form>
-<form method="post" action="/u/{{u.name}}/delete" onsubmit="return confirm('{{ _("Toglie l'utente dalla GUI e dal bot; il container resta. Continuare?") }}')" style="padding-bottom:.4rem"><button class="red small">{{ icon('trash', 15) }}{{ _('Rimuovi dalla GUI') }}</button></form></details>
-{% endif %}</div>{% endfor %}</div>{% if sections|length > 1 %}</details>{% endif %}{% endfor %}
-<script>
-// disposizione delle schede: orizzontale (affiancate) o verticale (una per riga, più larga); ricordata nel browser
-(function(){ var g = document.querySelectorAll(".ugrid"), v = "h"; try { v = localStorage.getItem("users:layout") || "h"; } catch(e) {}
-  function set(x){ g.forEach(function(e){ e.classList.toggle("vert", x === "v"); }); document.querySelectorAll('input[name=ulay]').forEach(function(r){ r.checked = r.value === x; }); }
-  set(v); document.querySelectorAll('input[name=ulay]').forEach(function(r){ r.addEventListener("change", function(){ set(r.value); try { localStorage.setItem("users:layout", r.value); } catch(e) {} }); }); })();
-</script>{% endblock %}
+{% endif %}</div>

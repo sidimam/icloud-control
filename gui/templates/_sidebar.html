@@ -1,0 +1,14 @@
+{# Colonna a sinistra (3.24), in ogni scheda: «Vista unica» (tutte le persone visibili) o una persona; le schede che hanno
+   anche viste condivise (Famiglia, Festività, librerie foto condivise) le aggiungono sotto. La scelta resta passando da una
+   scheda all'altra. L'amministratore vede tutte le persone, un utente solo sé stesso. #}
+{% set cur = (person if person is defined and person is not none else request.args.get('person', '')) or '' %}
+{% set extra = (scopes or []) + ((shared or []) if request.endpoint == 'photos' else []) + (scopes_after or []) %}
+<aside class="side" aria-label="{{ _('Persone') }}">
+<div class="side-h">{{ _('Vista') }}</div>
+<nav class="side-list">
+<a class="side-i{{ ' on' if not cur }}" href="{{ qs(person='') }}"><span class="sav all">{{ icon('users', 15) }}</span><span class="side-t">{{ _('Vista unica') }}</span></a>
+{% for p in side_persons %}<a class="side-i{{ ' on' if cur == p }}" href="{{ qs(person=p) }}"><span class="sav" style="background:var(--c{{ loop.index }})">{{ p[:1] }}</span><span class="side-t">{{ p }}</span></a>{% endfor %}
+</nav>
+{% if extra %}<div class="side-h">{{ _('Condivisi') }}</div>
+<nav class="side-list">{% for p in extra %}<a class="side-i{{ ' on' if cur == p }}" href="{{ qs(person=p) }}"><span class="sav all">{{ icon('cloud', 15) }}</span><span class="side-t">{{ p }}</span></a>{% endfor %}</nav>{% endif %}
+</aside>

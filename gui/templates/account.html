@@ -5,20 +5,20 @@
 <div class="li"><span class="badge b-teal">{{ icon('cloud', 17) }}</span><span class="k">{{ _('Utente iCloud') }}</span><span class="v">{{ icloud or "—" }}</span></div>
 <div class="li"><span class="badge b-gray">{{ icon('doc', 17) }}</span><span class="k">{{ _('Ultimo accesso') }}</span><span class="v">{{ fmt_ts(p.last_login) }}</span></div></div></details>
 
-{% for u in links %}{% include "_accounts_section.html" %}
+{% for u in links %}{% include "_person_manage.html" %}
 {% endfor %}
 <details class="grp" data-k="acc-look" open><summary>{{ icon('theme', 15) }}{{ _('Aspetto e lingua') }}{{ icon('chevron', 15, 'ic chev') }}</summary><div class="list">{% include "prefs.html" %}</div></details>
 
 <details class="grp" data-k="acc-pw"><summary>{{ icon('key', 15) }}{{ _('Password') }}{{ icon('chevron', 15, 'ic chev') }}</summary>
 <form method="post"><input type="hidden" name="action" value="password"><div class="list">
 {% if p.pw %}<div class="li col"><label class="f" for="cur">{{ _('Password attuale') }}</label><input id="cur" name="current" type="password" autocomplete="current-password" required></div>{% endif %}
-<div class="li col"><label class="f" for="new">{{ _('Nuova password (almeno 8 caratteri)') }}</label><input id="new" name="new" type="password" autocomplete="new-password" minlength="8" required></div>
+<div class="li col"><div class="row" style="justify-content:space-between;align-items:center"><label class="f" for="new">{{ _('Nuova password') }}</label>{{ info(_('Almeno 8 caratteri.')) }}</div><input id="new" name="new" type="password" autocomplete="new-password" minlength="8" required></div>
 <div class="li col"><label class="f" for="conf">{{ _('Ripeti la nuova password') }}</label><input id="conf" name="confirm" type="password" autocomplete="new-password" minlength="8" required></div>
 <div class="li"><button>{{ _('Cambia password') }}</button></div></div></form></details>
 
 <details class="grp" data-k="acc-2fa" {% if totp_new %}open{% endif %}><summary>{{ icon('lock', 15) }}{{ _('Verifica in due passaggi (TOTP)') }}{% if p.totp_on %} <span class="tag ok">{{ _('attiva') }}</span>{% else %} <span class="tag">{{ _('spenta') }}</span>{% endif %}{{ icon('chevron', 15, 'ic chev') }}</summary><div class="list">
 {% if p.totp_on %}
-<div class="li"><span class="k">{{ _("All'accesso, dopo la password, serve il codice a 6 cifre dell'app di autenticazione.") }}</span></div>
+<div class="li"><span class="k">{{ _('Attiva') }}</span><span class="v">{{ info(_("All'accesso, dopo la password, serve il codice a 6 cifre dell'app di autenticazione.")) }}</span></div>
 <div class="li"><span class="k">{{ _('Codici di recupero rimasti') }}</span><span class="v">{{ (p.recovery or [])|length }} / 8</span></div>
 <form method="post"><input type="hidden" name="action" value="recovery_new"><div class="li col"><label class="f" for="cur3">{{ _('Password, per generare codici di recupero nuovi') }}</label><input id="cur3" name="current" type="password" autocomplete="current-password" required><div><button class="tint small">{{ _('Genera codici nuovi') }}</button></div></div></form>
 <form method="post"><input type="hidden" name="action" value="totp_off"><div class="li col"><label class="f" for="cur2">{{ _('Password, per disattivarla') }}</label><input id="cur2" name="current" type="password" autocomplete="current-password" required><div><button class="red small">{{ _('Disattiva') }}</button></div></div></form>
@@ -29,13 +29,13 @@
 <form method="post"><input type="hidden" name="action" value="totp_confirm"><div class="li col"><label class="f" for="code">{{ _("Codice dall'app") }}</label><input id="code" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" required><div class="row"><button>{{ _('Attiva') }}</button></div></div></form>
 <form method="post"><input type="hidden" name="action" value="totp_cancel"><div class="li"><button class="tint small">{{ _('Annulla') }}</button></div></form>
 {% else %}
-<div class="li"><span class="k">{{ _("Aggiunge un codice a 6 cifre dall'app di autenticazione a ogni accesso.") }}</span></div>
+<div class="li"><span class="k">{{ _('Spenta') }}</span><span class="v">{{ info(_("Aggiunge un codice a 6 cifre dall'app di autenticazione a ogni accesso.")) }}</span></div>
 <form method="post"><input type="hidden" name="action" value="totp_start"><div class="li"><button>{{ icon('lock') }}{{ _('Attiva la verifica in due passaggi') }}</button></div></form>
 {% endif %}</div></details>
 
 <details class="grp" data-k="acc-tg"><summary>{{ icon('send', 15) }}{{ _('Recupero via Telegram') }}{% if p.telegram %} <span class="tag ok">{{ _('collegata') }}</span>{% endif %}{{ icon('chevron', 15, 'ic chev') }}</summary><div class="list">
 {% if p.telegram %}<div class="li"><span class="k">{{ _('Chat') }} <code>{{ p.telegram }}</code></span><span class="v"><form class="inline" method="post"><input type="hidden" name="action" value="tg_remove"><button class="tint small">{{ _('Scollega') }}</button></form></span></div>
-<div class="li"><span class="mut">{{ _('Se dimentichi la password o perdi il telefono, il bot ti manda qui un codice di recupero.') }}</span></div>
+<div class="li"><span class="k">{{ _('Recupero') }}</span><span class="v">{{ info(_('Se dimentichi la password o perdi il telefono, il bot ti manda qui un codice di recupero.')) }}</span></div>
 {% elif tg_pending %}<form method="post"><input type="hidden" name="action" value="tg_confirm"><div class="li col"><label class="f" for="tgc">{{ _('Codice arrivato su Telegram') }}</label><input id="tgc" name="code" inputmode="numeric" maxlength="6" required><div><button>{{ _('Collega') }}</button></div></div></form>
 {% else %}<form method="post"><input type="hidden" name="action" value="tg_send"><div class="li col"><label class="f" for="tg">{{ _('ID della chat privata con il bot di casa (un numero, non il gruppo)') }}</label><input id="tg" name="chat" inputmode="numeric" required><div><button>{{ icon('send') }}{{ _('Mandami un codice di verifica') }}</button></div></div></form>{% endif %}
 </div></details>

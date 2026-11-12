@@ -1,6 +1,6 @@
 {% extends "base.html" %}{% block head %}<link rel="stylesheet" href="/static/vendor/leaflet.css">{% endblock %}{% block body %}
 <h1 class="title">{{ _('Calendario') }}</h1>
-<div class="row" style="justify-content:space-between;align-items:flex-start;gap:.8rem"><form method="get" action="/calendar">{% include "_personfilter.html" %}</form>
+<div class="row" style="justify-content:space-between;align-items:flex-start;gap:.8rem"><form method="get" action="/calendar"><input type="hidden" name="person" value="{{ person or '' }}"></form>
 <div class="today" style="text-align:right;margin-left:auto"><div id="today" style="font-size:17px;font-weight:600"></div>
 <div class="row" style="justify-content:flex-end;gap:.4rem;margin-top:.2rem"><span class="mut" id="nowclock"></span><label class="mut" for="tzsel">{{ _('Fuso orario') }}</label>
 <select id="tzsel" style="width:auto;max-width:230px;padding:.3rem .5rem;font-size:13px"></select></div></div></div>

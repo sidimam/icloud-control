@@ -1,8 +1,6 @@
 {% extends "base.html" %}{% block head %}<link rel="stylesheet" href="/static/vendor/leaflet.css"><link rel="stylesheet" href="/static/vendor/markercluster.css">{% endblock %}{% block body %}
 <h1 class="title">{{ _('Foto') }}</h1>
-<form method="get" action="/photos"><div class="seg" role="radiogroup" aria-label="{{ _('Persona') }}" style="margin-bottom:.8rem">
-<label><input type="radio" name="person" value="" {% if not person %}checked{% endif %} onchange="this.form.submit()"><span>{{ _('Tutti') }}</span></label>
-{% for p in shared + persons %}<label><input type="radio" name="person" value="{{ p }}" {% if person == p %}checked{% endif %} onchange="this.form.submit()"><span>{{ p }}</span></label>{% endfor %}</div>
+<form method="get" action="/photos"><input type="hidden" name="person" value="{{ person or '' }}">
 <div class="row" style="margin-bottom:.8rem">
 <select name="album" onchange="this.form.submit()" style="width:auto"><option value="">{{ _('Tutti gli album') }}</option>{% for a in albums %}<option value="{{ a.account }}" {% if album == a.account %}selected{% endif %}>{{ a.account }}{% if not person and persons|length > 1 %} · {{ a.person }}{% endif %} ({{ a.n }})</option>{% endfor %}</select>
 <select name="year" onchange="this.form.submit()" style="width:auto"><option value="">{{ _('Tutti gli anni') }}</option>{% for y in years %}<option {% if year == y %}selected{% endif %}>{{ y }}</option>{% endfor %}</select>

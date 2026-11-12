@@ -73,6 +73,25 @@ montate su `/icloud/photos/all`; controllo ogni 30 minuti (foto ogni ora), nessu
 `docker exec -it iclouddr-<nome> /bin/sh -c "su-exec abc icloud --username=<apple id> --session-directory=/config/session_data"` (password, codice, `y` al keyring).
 Utenti e alias stanno in `/app/config.json`, condiviso con il bot; ogni utente ha `type` (`icloudpd` o `iclouddrive`), `container`, `label`, `chat_id` e, per iCloud Drive, `apple_id` e `person`. La GUI non ha autenticazione: tenerla in LAN o dietro un proxy.
 
+### Colonna delle persone, Riepilogo unico, Profilo e amministrazione, Pulizia (dalla 3.24)
+
+- **Colonna a sinistra in ogni scheda** (Riepilogo, Files, Posta, Calendario, Contatti, Promemoria, Note, Foto, Cerca, Profilo):
+  «Vista unica» oppure una persona; sotto, dove servono, le viste condivise (Famiglia, Festività, librerie foto condivise). La scelta
+  resta passando da una scheda all'altra (sessione). L'amministratore vede tutte le persone, un utente solo sé stesso. Su schermi
+  stretti la colonna diventa una fila di pulsanti in alto. Ha preso il posto dei selettori «Tutti / persona» dentro le pagine.
+- **La scheda Utenti è dentro il Riepilogo**: in vista unica, sotto riquadri e grafici, le schede di tutte le persone (stato,
+  Riavvia/Ferma/Log, spazio sul NAS, servizi dell'account con percorsi e frequenze, Immich, ultima riga di log, riavvio automatico,
+  ultimo evento); scegliendo una persona, i suoi numeri e la sua scheda con più dettagli: giri di sincronizzazione, riavvii automatici,
+  ultime righe di log. `/users` porta al Riepilogo.
+- **Profilo e amministrazione**: per ogni persona (tutte per l'amministratore, la propria per un utente) account collegati, sessione
+  Apple (2FA) e impostazioni del container; poi le sezioni di amministrazione. Le etichette sono brevi e ogni spiegazione sta dietro la «i»
+  (anche l'avviso «copia di iCloud Drive» in Files).
+- **Files → Pulizia** (🧹): per la persona del pannello attivo confronta la copia di iCloud Drive con l'elenco di iclouddr e con le altre
+  cartelle del NAS (stessa dimensione + stesso SHA-1, calcolato solo dove le dimensioni coincidono; esclusi cestino, file nascosti e le
+  cartelle del modulo PIM). Tre gruppi: **doppioni** (non più su iCloud ma con una copia identica altrove: preselezionati),
+  **solo sul NAS** (non più su iCloud, unica copia), **copie di file che sono su iCloud** (fuori dalla copia, identiche a un file su
+  iCloud). «Sposta nel cestino» usa il cestino della dashboard, con Annulla. Serve l'elenco di iclouddr ≥ 0.2.9.
+
 ### Log e blocchi (dalla 2.1)
 
 Per i container iCloud Drive il riquadro mostra lo stato di ogni **giro** (Drive e Foto), ricavato dalle righe `Syncing drive...` /

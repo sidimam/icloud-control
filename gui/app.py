@@ -40,6 +40,16 @@ def require_login():
     name = (request.view_args or {}).get("name")
     if request.endpoint and request.endpoint.startswith("u_") and name != _own_icloud(): abort(403)
     return None
+# ---- colonna a sinistra (3.24): «Vista unica» o una persona, in ogni scheda; la scelta resta passando da una scheda all'altra
+SIDE_ENDPOINTS = {"home", "files", "mail", "calendar", "contacts", "reminders", "notes", "photos", "search", "account"}
+def _tab_url(path):
+    p = session.get("psel", "")
+    return path + ("?person=" + urllib.parse.quote(p) if p else "")
+@app.before_request
+def remember_person():
+    if request.endpoint in SIDE_ENDPOINTS and "person" in request.args:
+        v = request.args.get("person", "")
+        if v == "" or v in allowed_persons(): session["psel"] = v
 def _icloud_label_of_me():
     own = _own_icloud(); u = cfg()["users"].get(own) if own else None
     return u.get("label", own) if u else ""
@@ -134,10 +144,12 @@ def account():
     sec = session.get("totp_new"); qr = accounts.totp_qr_svg(accounts.totp_uri(name, sec)) if sec else ""
     admin = accounts.is_admin(name) if me() else not accounts.any_password()
     users = cfg()["users"]
-    targets = [n for n, u in users.items() if utype(u) == "iclouddrive"] if admin else [x for x in [_icloud_of(name)] if x]
-    links = [drive_view(n, users[n]) for n in targets]
+    targets = list(users) if admin else [x for x in [_icloud_of(name)] if x]
+    person = request.args.get("person", "")
+    if person: targets = [n for n in targets if users[n].get("label", n) == person] or targets
+    links = [user_view(n, users[n]) for n in targets]
     return render_template("account.html", name=name, p=accounts.get(name) or {}, totp_new=sec, qr=qr, icloud=_icloud_of(name), tg_pending=bool(session.get("tg_new")),
-                           links=links, is_admin_page=admin, **(_admin_ctx() if admin else {}))
+                           links=links, is_admin_page=admin, person=person, **(_admin_ctx() if admin else {}))
 # ---- recupero accesso (3.0): codice a 6 cifre alla chat Telegram privata del profilo, valido 10 minuti, 5 tentativi.
 # La risposta al primo passo è sempre la stessa, così dalla pagina non si capisce quali profili esistono.
 RECOVER = {}   # profilo -> {"code": hash, "exp": ts, "tries": n}
@@ -178,7 +190,7 @@ def _icloud_of(profile):
 @app.context_processor
 def page_ctx():
     from urllib.parse import urlencode
-    n = me(); return {"qs": lambda **kw: request.path + "?" + urlencode({**request.args.to_dict(), **{k: v for k, v in kw.items()}}), "reset_set": bool(GUI_RESET), "me": n, "me_admin": bool(n and accounts.is_admin(n)), "own_icloud": _own_icloud(), "local_tz": os.environ.get("TZ", "Europe/Rome"), "fmt_ts": lambda t: datetime.datetime.fromtimestamp(t).strftime("%d/%m/%Y %H:%M") if t else "mai"}
+    n = me(); return {"qs": lambda **kw: request.path + "?" + urlencode({**request.args.to_dict(), **{k: v for k, v in kw.items()}}), "reset_set": bool(GUI_RESET), "me": n, "me_admin": bool(n and accounts.is_admin(n)), "own_icloud": _own_icloud(), "side_persons": allowed_persons() if me() or not accounts.any_password() else [], "tab": _tab_url, "SIDE_ENDPOINTS": SIDE_ENDPOINTS, "local_tz": os.environ.get("TZ", "Europe/Rome"), "fmt_ts": lambda t: datetime.datetime.fromtimestamp(t).strftime("%d/%m/%Y %H:%M") if t else "mai"}
 
 def cfg(): return json.load(open(CFG))
 def save(c): json.dump(c, open(CFG, "w"), indent=2, ensure_ascii=False)
@@ -506,37 +518,31 @@ def photos_view(name, u):
 
 @app.route("/users")
 def index():
-    c = cfg()
-    mine = c["users"].items() if (not accounts.any_password() or accounts.is_admin(me())) else [(n, u) for n, u in c["users"].items() if n == _own_icloud()]
-    # i thread ricevono una copia della richiesta, così lingua e profilo valgono anche per i testi calcolati lì
-    jobs = [copy_current_request_context(lambda nu=nu: user_view(*nu)) for nu in mine]   # una copia per utente
-    with ThreadPoolExecutor(max_workers=8) as ex: users = list(ex.map(lambda f: f(), jobs))
-    # Due sezioni per tipo: prima le foto (icloudpd), poi iCloud Drive; dentro ogni sezione l'ordine di config.json.
-    sections = [("Foto iCloud (icloudpd)", [v for v in users if v["type"] == "icloudpd"]), ("iCloud Drive (mandarons/icloud-drive)", [v for v in users if v["type"] == "iclouddrive"])]
-    sections = [sct for sct in sections if sct[1]]
-    return render_template("index.html", sections=sections, cfg=c, fmt_size=_fmt_size)
+    """Dalla 3.24 la scheda Utenti è dentro il Riepilogo: vista unica con tutte le schede, o una persona con i dettagli."""
+    p = request.args.get("person", "") or session.get("psel", "")
+    return redirect(url_for("home", person=p) if p else url_for("home"))
 @app.post("/u/<name>/auth")
 def u_auth(name):
     c = cfg(); u = c["users"].get(name) or abort(404)
     if utype(u) == "iclouddrive":
-        if not u.get("apple_id"): flash(_("{a0}: manca l'Apple ID in config.json", a0=name)); return redirect(url_for("index"))
+        if not u.get("apple_id"): flash(_("{a0}: manca l'Apple ID in config.json", a0=name)); return redirect(url_for("account") + f"#acc-{name}")
         d_start_auth(u["container"], u["apple_id"])
     else: start_auth(u["container"])
     telegram(u.get("chat_id") or c.get("default_chat_id"), f"🔐 {name}: riautenticazione avviata dalla GUI. Apple invia il codice a 6 cifre; rispondi con: #{name} 123456")
-    flash(_("Riautenticazione avviata su {a0}: inserisci il codice Apple qui sotto o in Telegram con #{a1} 123456", a0=u['container'], a1=name)); return redirect(url_for("index"))
+    flash(_("Riautenticazione avviata su {a0}: inserisci il codice Apple qui sotto o in Telegram con #{a1} 123456", a0=u['container'], a1=name)); return redirect(url_for("account") + f"#acc-{name}")
 @app.post("/u/<name>/code")
 def u_code(name):
     c = cfg(); u = c["users"].get(name) or abort(404); code = re.sub(r"\D", "", request.form.get("code", ""))
-    if len(code) != 6: flash(_("Codice non valido: servono 6 cifre")); return redirect(url_for("index"))
+    if len(code) != 6: flash(_("Codice non valido: servono 6 cifre")); return redirect(url_for("account") + f"#acc-{name}")
     drive = utype(u) == "iclouddrive"
-    if not (d_auth_running(u["container"]) if drive else auth_running(u["container"])): flash(_("{a0}: nessuna autenticazione in corso, prima «Riautentica»", a0=name)); return redirect(url_for("index"))
+    if not (d_auth_running(u["container"]) if drive else auth_running(u["container"])): flash(_("{a0}: nessuna autenticazione in corso, prima «Riautentica»", a0=name)); return redirect(url_for("account") + f"#acc-{name}")
     (d_send_code if drive else send_code)(u["container"], code)
     if drive:
         time.sleep(20); rc, out, _ = dexec(u["container"], "cat /tmp/2fa.log 2>/dev/null | tail -3")
         if "EXIT=0" in out and not re.search(r"failed|invalid|error", out, re.I): sh(f"docker restart {u['container']}", 120); flash(_("{a0}: sessione Apple rinnovata, container riavviato", a0=name))
         else: flash(_("{a0}: esito non ancora confermato ({a1}) — ricontrolla tra poco o riprova «Riautentica»", a0=name, a1=out[-120:]))
-        return redirect(url_for("index"))
-    flash(_("Codice consegnato a {a0}: verifica tra ~30 s nei giorni rimanenti", a0=u['container'])); return redirect(url_for("index"))
+        return redirect(url_for("account") + f"#acc-{name}")
+    flash(_("Codice consegnato a {a0}: verifica tra ~30 s nei giorni rimanenti", a0=u['container'])); return redirect(url_for("account") + f"#acc-{name}")
 @app.post("/u/<name>/<action>")
 def u_power(name, action):
     """Azioni rapide sul container: avvia, ferma, riavvia (il riavvio fa partire subito un giro di sincronizzazione)."""
@@ -631,17 +637,18 @@ def u_settings(name):
         if f.get("sync_interval", "").strip().isdigit(): yaml_set(y, "sync_interval", f["sync_interval"].strip())
         yaml_set(y, "remove_obsolete", "true" if f.get("remove_obsolete") == "on" else "false")
         u["label"] = f.get("label", u.get("label", name)).strip() or name; u["chat_id"] = f.get("telegram_chat_id", "").strip(); u["apple_id"] = f.get("apple_id", u.get("apple_id", "")).strip() or u.get("apple_id", ""); save(c)
-        sh(f"docker restart {u['container']}", 120); flash(_("{a0}: config.yaml aggiornato, container riavviato", a0=name)); return redirect(url_for("index"))
+        sh(f"docker restart {u['container']}", 120); flash(_("{a0}: config.yaml aggiornato, container riavviato", a0=name)); return redirect(url_for("account") + f"#acc-{name}")
     upd = {k: f.get(k, "").strip() for k in ("photo_library", "photo_album", "folder_structure", "telegram_chat_id", "notification_days")}
     upd = {k: v for k, v in upd.items() if v != "" or k in ("photo_album",)}
     write_conf(conf_path(info), upd)
     for k, v in upd.items(): tpl_set(u["container"], k, v)
     u["label"] = f.get("label", u.get("label", name)).strip() or name; u["chat_id"] = f.get("telegram_chat_id", "").strip(); save(c)
-    sh(f"docker restart {u['container']}", 120); flash(_("{a0}: impostazioni salvate (conf + template Unraid), container riavviato", a0=name)); return redirect(url_for("index"))
+    sh(f"docker restart {u['container']}", 120); flash(_("{a0}: impostazioni salvate (conf + template Unraid), container riavviato", a0=name)); return redirect(url_for("account") + f"#acc-{name}")
 @app.post("/u/<name>/delete")
 def u_delete(name):
+    _admin_only()
     c = cfg(); u = c["users"].pop(name, None) or abort(404); c["aliases"] = {a: n for a, n in c["aliases"].items() if n != name}; save(c)
-    flash(_("{a0}: tolto dalla GUI e dal bot (il container {a1} e le sue cartelle restano: gestiscili da Unraid)", a0=name, a1=u['container'])); return redirect(url_for("index"))
+    flash(_("{a0}: tolto dalla GUI e dal bot (il container {a1} e le sue cartelle restano: gestiscili da Unraid)", a0=name, a1=u['container'])); return redirect(url_for("account"))
 @app.route("/new", methods=["GET", "POST"])
 def new():
     """Nuovo utente = sempre un container iclouddr (mandarons/icloud-drive: iCloud Drive + foto). I container icloudpd esistenti restano gestibili, ma non se ne creano più."""
@@ -1515,7 +1522,18 @@ def fm_thumb(p, size):
     return out
 def fm_cloud(local_path, is_dir):
     st, other = cloud_of_host(_local_to_host(local_path), is_dir, detail=True); return st, cloud_text(st, other or "iCloud")
-fm.init(app, fm_roots, fm_icloud, fm_thumb, lambda: me() or "anon", fm_cloud)
+def fm_scan(person):
+    """Per la pulizia di File (3.24): cartella locale della copia di iCloud Drive della persona e file presenti su iCloud (dall'elenco di iclouddr)."""
+    r = fm_roots_all().get(person)
+    if not r or not r[2]: return None
+    for root, data in icloud_roots():
+        if root == r[2]:
+            if data is None: return None
+            files, _dirs, when, _alt = data
+            return {"drive": host_to_local(root), "present": {os.path.realpath(host_to_local(h)) for h in files}, "when": when,
+                    "state": lambda lp: cloud_of_host(_local_to_host(lp), False)}   # senza testi: gira fuori dalla richiesta
+    return None
+fm.init(app, fm_roots, fm_icloud, fm_thumb, lambda: me() or "anon", fm_cloud, fm_scan)
 # ---- Files (3.18): ricerca nell'indice di iCloud Drive (con ?q= o i filtri); senza, la scheda è il file manager
 @app.route("/files")
 def files():
@@ -1960,6 +1978,9 @@ def weather():
 @app.route("/")
 def home():
     persons = allowed_persons(); shared = shared_albums()
+    sel = request.args.get("person", "")
+    if sel not in persons: sel = ""
+    if sel: persons = [sel]; shared = []   # vista di una persona (3.24): solo i suoi dati, le librerie condivise stanno nella vista unica
     con = SI.connect()
     try:
         ph = ",".join("?" * len(persons)) or "null"; sh_ = ",".join("?" * len(shared)) or "null"
@@ -1976,6 +1997,7 @@ def home():
     ev_by = {}
     for c, g in cal_scope("").items():
         w = FAMILY if g["family"] else next((p for p in g["members"] if p in persons), None)
+        if sel and w == FAMILY: continue
         if w and c in ev: n, s_ = ev[c]; a_ = ev_by.setdefault(w, [0, 0]); a_[0] += n; a_[1] += s_
     rows = [r for r in rows if r["kind"] != "event"] + [{"who": w, "kind": "event", "n": v[0], "s": v[1]} for w, v in ev_by.items()]
     if FAMILY in ev_by and FAMILY not in shared: shared = shared + [FAMILY]
@@ -2000,8 +2022,10 @@ def home():
                                             _fmt_size(all_bytes), _("su disco"), "p")),
         (_("Elementi per persona"), viz.donut([(w, sum(cnt[w].values()), slot[w], ("/photos" + q(w)) if w in shared else ("/search" + q(w))) for w in who_order],
                                               lambda v: f"{v:,}".replace(",", "."), f"{sum(tot_n.values()):,}".replace(",", "."), _("elementi"), "e"))]
+    if sel: charts = charts[:2]   # per una persona bastano tipo ed elementi
     table = [{"who": w, "shared": w in shared, "slot": slot[w], "n": cnt[w], "s": size[w], "tot": sum(size[w].values())} for w in who_order]
-    views = [v for v in _home_users() if v.get("type") == "iclouddrive"]
+    cards = [v for v in _home_users() if not sel or v.get("label") == sel]
+    views = [v for v in cards if v.get("type") == "iclouddrive"]
     sh_map = shared_map()
     for v in views:
         s = sh_map.get(v["label"]) or {}; v["shared_n"] = len(s.get("note") or ()) + len(s.get("liste") or ()) + len(s.get("drive") or ())
@@ -2010,7 +2034,15 @@ def home():
         for sv in v.get("services") or []:
             t = tabs.get(sv["name"]); sv["href"] = (t + ("&" if "?" in t else "?") + "person=" + urllib.parse.quote(v["label"])) if t else ""
     idx_last = max((r["finished"] for r in runs), default=None)
-    return render_template("home.html", wx=weather(), charts=charts, table=table, kinds=list(KIND_SLOT), tot_n=tot_n, tot_s=tot_s, all_bytes=all_bytes, views=views, runs=runs,
+    detail = {}
+    if sel and cards:
+        v = cards[0]; ct = v.get("container", "")
+        runs = [r for r in runs if r["source"].split(":")[0] == sel]
+        evs = [e for e in ah_events() if e.get("container") == ct][-10:]
+        for e in evs: e["when"] = datetime.datetime.fromtimestamp(e["ts"]).strftime("%d/%m %H:%M")
+        lines = [ANSI.sub("", l) for l in container_logs(ct, 400)] if v.get("exists") else []
+        detail = {"cycles": v.get("cycles") or [], "autoheal": list(reversed(evs)), "log": [l for l in lines if not NOISE.search(l)][-15:], "name": v.get("name")}
+    return render_template("home.html", sel=sel, person=sel, cards=cards, detail=detail, wx=weather(), charts=charts, table=table, kinds=list(KIND_SLOT), tot_n=tot_n, tot_s=tot_s, all_bytes=all_bytes, views=views, runs=runs,
                            kind_names=KIND_NAMES, kind_icons=KIND_ICONS, kind_tab=KIND_TAB, disk_when=(ago(datetime.datetime.fromtimestamp(dk["when"])) if dk.get("when") else ""),
                            disk_real=bool(dd), idx_last=(ago(datetime.datetime.fromtimestamp(idx_last)) if idx_last else ""), fmt_size=_fmt_size, fmt_date=_fmt_date,
                            fmt_n=lambda v: f"{v:,}".replace(",", "."), persons=persons)

@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% block body %}
 <h1 class="title">{{ _('Cerca') }}</h1>
 <form method="get" action="/search">
-{% include "_personfilter.html" %}
+<input type="hidden" name="person" value="{{ person or '' }}">
 <div class="list"><div class="li"><span class="badge b-gray">{{ icon('search', 17) }}</span><input name="q" value="{{ q }}" placeholder="{{ _('Cerca in file, posta, note, promemoria, calendari e contatti…') }}" autofocus style="flex:1"><button>{{ _('Cerca') }}</button></div>
 <div class="li"><span class="row">{% for k in all_kinds %}<label class="tag {{ 'ok' if k in kinds and kinds|length < all_kinds|length }}" style="cursor:pointer"><input type="checkbox" name="kind" value="{{ k }}" {% if k in kinds and kinds|length < all_kinds|length %}checked{% endif %} style="display:none" onchange="this.form.submit()">{{ icon(kind_icons[k][0], 13) }}{{ _(kind_names[k]) }} <span class="mut">{{ counts.get(k, 0) }}</span></label>{% endfor %}</span></div>
 <details class="li col" style="display:block" {% if a.get('d1') or a.get('d2') or a.get('frm') or a.get('to') or a.get('ext') or a.get('att') or a.get('min_kb') or a.get('max_kb') or a.get('account') or a.get('att_name') %}open{% endif %}><summary style="list-style:none;display:flex;align-items:center;gap:.5rem;cursor:pointer"><span class="k">{{ _('Filtri') }}</span><span class="v">{{ icon('chevron', 14, 'ic chev') }}</span></summary>

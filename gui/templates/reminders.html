@@ -1,6 +1,6 @@
 {% extends "base.html" %}{% block body %}
 <h1 class="title">{{ _('Promemoria') }}</h1>
-<form method="get" action="/reminders">{% include "_personfilter.html" %}<input type="hidden" name="list" value="{{ lst }}"><input type="hidden" name="of" value="{{ of }}">
+<form method="get" action="/reminders"><input type="hidden" name="person" value="{{ person or '' }}"><input type="hidden" name="list" value="{{ lst }}"><input type="hidden" name="of" value="{{ of }}">
 <div class="seg" style="margin-bottom:.8rem">{% for k, l in (('open', _('Da fare')), ('done', _('Fatti')), ('all', _('Tutti'))) %}<label><input type="radio" name="show" value="{{ k }}" {% if show == k %}checked{% endif %} onchange="this.form.submit()"><span>{{ l }}</span></label>{% endfor %}</div></form>
 {% set sb_placeholder = _('Cerca nei promemoria (titolo e note)…') %}{% include "_searchbar.html" %}
 {% set fo = {"name": _('titolo del promemoria'), "ext": none, "dates": _('Scadenza'), "sorts": [("date", _('scadenza')), ("name", _('titolo'))], "default": "date"} %}{% include "_filters.html" %}

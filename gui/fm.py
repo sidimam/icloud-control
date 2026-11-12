@@ -16,7 +16,7 @@ Annulla applica gli spostamenti al contrario e in ordine inverso, ripeti li riap
 Nella cartella iCloud la copia è a senso unico (iCloud → NAS): le modifiche lì non arrivano a iCloud e iclouddr può
 rimettere gli originali al giro dopo. La pagina lo dice con un avviso; scelta dell'utente del 9/11/2026.
 """
-import os, re, json, time, shutil, stat, threading, uuid, mimetypes, hashlib
+import hashlib, os, re, json, time, shutil, stat, threading, uuid, mimetypes
 from flask import Blueprint, request, jsonify, abort, send_file, session
 
 bp = Blueprint("fm", __name__)
@@ -31,8 +31,8 @@ _hist = {}           # utente → {"undo": [voci], "redo": [voci]}
 _lock = threading.Lock()
 
 
-def init(app, roots, icloud_sub, thumb, user, cloud=None):
-    _cfg.update(roots=roots, icloud=icloud_sub, thumb=thumb, user=user, cloud=cloud)
+def init(app, roots, icloud_sub, thumb, user, cloud=None, scan=None):
+    _cfg.update(roots=roots, icloud=icloud_sub, thumb=thumb, user=user, cloud=cloud, scan=scan)
     app.register_blueprint(bp)
     threading.Thread(target=_purge_loop, daemon=True).start()
 
@@ -289,6 +289,80 @@ def api_op():
             _record(j, moves)
         _run(j, rm); return jsonify({"job": j["id"]})
     abort(400)
+
+
+# ---- pulizia (3.24): doppioni e file solo sul NAS --------------------------------------------------------------------
+# A = nella copia di iCloud ma non più su iCloud, con una copia identica altrove sul NAS (spostati): eliminabili.
+# B = non più su iCloud e senza altre copie: vivono solo sul NAS. C = fuori dalla copia di iCloud, identici a un file che è su iCloud.
+# Stesso contenuto = stessa dimensione e stesso SHA-1; si calcola solo per i file con la stessa dimensione di un altro.
+SKIP = {".cestino-dashboard", "@eaDir", "#recycle", "#snapshot", ".Trash", ".Trashes", ".Spotlight-V100", ".fseventsd"}
+PIM = {"Posta", "Note", "Promemoria", "Calendario", "Contatti"}   # cartelle del modulo PIM dentro <persona>/<account>/
+_hash = {}
+
+
+def _sha1(p):
+    try: st = os.stat(p)
+    except OSError: return None
+    k = (p, st.st_size, int(st.st_mtime))
+    if k in _hash: return _hash[k]
+    h = hashlib.sha1()
+    try:
+        with open(p, "rb") as f:
+            for b in iter(lambda: f.read(1 << 20), b""): h.update(b)
+    except OSError: return None
+    if len(_hash) > 200000: _hash.clear()
+    _hash[k] = h.hexdigest(); return _hash[k]
+
+
+def _walk(base, skip_dir=None):
+    for dp, dns, fns in os.walk(base):
+        rel = dp[len(base):].strip("/"); parts = rel.split("/") if rel else []
+        dns[:] = [d for d in dns if d not in SKIP and not d.startswith(".") and os.path.join(dp, d) != skip_dir
+                  and not (len(parts) == 1 and d in PIM)]
+        for n in fns:
+            if n.startswith("."): continue
+            f = os.path.join(dp, n)
+            try: st = os.lstat(f)
+            except OSError: continue
+            if stat.S_ISREG(st.st_mode) and st.st_size > 0: yield f, st.st_size
+
+
+@bp.post("/fm/api/cleanup")
+def api_cleanup():
+    if not request.is_json: abort(415)
+    person = (request.get_json(silent=True) or {}).get("root", ""); base = resolve(person, "")
+    ctx = _cfg["scan"](person) if _cfg.get("scan") else None
+    if not ctx or not ctx.get("drive"): return jsonify({"error": "elenco"}), 409
+    drive = os.path.realpath(ctx["drive"]); present = ctx["present"]
+    j = _job("scan", person, 0)
+    base = os.path.realpath(base); rel = lambda f: "" if f == base else f[len(base) + 1:]   # il thread non può leggere la sessione
+    def scan():
+        inside = list(_walk(drive)) if os.path.isdir(drive) else []
+        outside = list(_walk(base, skip_dir=drive))
+        j["total"] = len(inside) + len(outside)
+        by_size = {}
+        for f, sz in inside + outside: by_size.setdefault(sz, []).append(f)
+        gone = [(f, sz) for f, sz in inside if f not in present]
+        A, B, C = [], [], []
+        for f, sz in gone:
+            j["done"] += 1
+            same = [o for o in by_size.get(sz, []) if o != f]
+            h = _sha1(f) if same else None
+            copies = [o for o in same if h and _sha1(o) == h]
+            st_ = ctx["state"](f) if ctx.get("state") else "gone"   # «gone» o «extra» (copia in più con un altro nome)
+            row = {"path": rel(f), "size": sz, "state": st_}
+            if copies: row["copies"] = [rel(o) for o in copies[:3]]; A.append(row)
+            else: B.append(row)
+        for f, sz in outside:
+            j["done"] += 1
+            on_cloud = [o for o in by_size.get(sz, []) if o in present]
+            if not on_cloud: continue
+            h = _sha1(f); copies = [o for o in on_cloud if h and _sha1(o) == h]
+            if copies: C.append({"path": rel(f), "size": sz, "copies": [rel(o) for o in copies[:3]]})
+        j["done"] += len(inside) - len(gone)
+        j["result"] = {k: sorted(v, key=lambda r: -r["size"])[:5000] for k, v in (("A", A), ("B", B), ("C", C))}
+        j["result"].update(when=ctx.get("when"), files=len(inside) + len(outside))
+    _run(j, scan); return jsonify({"job": j["id"]})
 
 
 @bp.get("/fm/api/job/<jid>")

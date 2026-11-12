@@ -1,6 +1,6 @@
 {% extends "base.html" %}{% block body %}
 <h1 class="title">{{ _('Files') }}</h1>
-<form method="get" action="/files">{% include "_personfilter.html" %}</form>
+<form method="get" action="/files"><input type="hidden" name="person" value="{{ person or '' }}"></form>
 {% set sb_placeholder = _('Cerca nei file (nome, cartella)…') %}{% include "_searchbar.html" %}
 {% set fo = {"name": _('nome del file'), "ext": exts, "dates": _('Modificato'), "sorts": [("name", _('nome')), ("date", _('data di modifica')), ("size", _('dimensione'))], "default": "name"} %}{% include "_filters.html" %}
 {% set vs = [("list", _('Elenco'), "list"), ("grid", _('Miniature'), "grid"), ("table", _('Dettagli'), "table")] %}{% set cur_view = request.args.get('view') if request.args.get('view') in vs|map(attribute=0)|list else vs[0][0] %}

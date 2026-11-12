@@ -11,7 +11,7 @@ a{color:var(--acc);text-decoration:none}
 .shr,a .shr{color:var(--acc)!important}
 .ic{flex:none;vertical-align:-3px}
 header.bar{position:sticky;top:0;z-index:5;background:var(--bar);backdrop-filter:saturate(180%) blur(20px);-webkit-backdrop-filter:saturate(180%) blur(20px);border-bottom:.5px solid var(--sep)}
-.bar-in{max-width:1180px;margin:auto;display:flex;flex-wrap:wrap;gap:.5rem 1rem;align-items:center;justify-content:space-between;padding:.6rem max(16px,env(safe-area-inset-left))}
+.bar-in{max-width:1400px;margin:auto;display:flex;flex-wrap:wrap;gap:.5rem 1rem;align-items:center;justify-content:space-between;padding:.6rem max(16px,env(safe-area-inset-left))}
 .brand{display:flex;align-items:center;gap:.55rem;font-weight:600;font-size:17px;color:var(--fg)}
 .brand img{width:28px;height:28px;border-radius:7px}
 nav.tabs{display:flex;flex-wrap:wrap;gap:.25rem;align-items:center}
@@ -133,29 +133,48 @@ ul.lg li>*,ul.lg li{display:flex;align-items:center;gap:.45rem;color:var(--fg);b
 ul.lg li.hot{background:var(--fill)}ul.lg .lbl{flex:1;min-width:0}ul.lg .val{font-variant-numeric:tabular-nums;white-space:nowrap}
 .sw{display:inline-block;width:10px;height:10px;border-radius:3px;flex:none}
 table.t td a{color:var(--acc)}
+/* Riepilogo di una persona (3.24): scheda a sinistra, dettagli a destra */
+.pgrid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:1.2rem;align-items:start;margin-bottom:1.4rem}
+.pcol details.grp{margin-bottom:1rem}
+@media (max-width:1100px){.pgrid{grid-template-columns:1fr}}
+.logtail{margin:0;font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;word-break:break-all;color:var(--mut);max-height:22rem;overflow:auto}
+/* colonna a sinistra (3.24), stile barra laterale di iPadOS */
+.shell.with-side{max-width:1400px;margin:auto;display:grid;grid-template-columns:232px minmax(0,1fr);gap:0 1.25rem;padding:0 max(16px,env(safe-area-inset-left))}
+.shell.with-side>main{max-width:none;margin:0;padding-left:0;padding-right:0;min-width:0}
+.side{position:sticky;top:64px;align-self:start;padding:1.4rem 0 1rem;max-height:calc(100vh - 70px);overflow:auto}
+.side-h{color:var(--mut);font-size:13px;text-transform:uppercase;letter-spacing:.02em;padding:.2rem 12px .45rem}
+.side-list{background:var(--card);border-radius:12px;padding:4px;display:grid;gap:2px;margin-bottom:1.2rem}
+.side-i{display:flex;align-items:center;gap:.6rem;padding:7px 10px;border-radius:9px;color:var(--fg);text-decoration:none;min-height:36px}
+.side-i:hover{background:var(--fill)}
+.side-i.on{background:var(--acc);color:#fff}
+.side-i.on .sav.all{background:rgba(255,255,255,.22);color:#fff}
+.sav{width:28px;height:28px;border-radius:50%;flex:none;display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;color:#fff}
+.sav.all{background:var(--fill);color:var(--acc)}
+.side-t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (max-width:899px){.shell.with-side{display:block;padding:0}.shell.with-side>main{padding:0 max(16px,env(safe-area-inset-left)) 3rem}.side{position:static;max-height:none;padding:.8rem max(16px,env(safe-area-inset-left)) 0;display:flex;gap:.5rem;overflow-x:auto}.side-h{display:none}.side-list{display:flex;background:none;padding:0;margin:0;gap:.4rem}.side-i{background:var(--card);border-radius:999px;padding:4px 12px 4px 4px;white-space:nowrap}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style></head><body>
 <header class="bar"><div class="bar-in">
 <a class="brand" href="/"><img src="/static/icon.png" alt="">iCloud Control</a>
 <nav class="tabs" aria-label="{{ _('Menu') }}">{% if me or request.endpoint not in ("login", "login_2fa", "recover") %}
-<a href="/" class="{{ 'on' if request.endpoint == 'home' }}">{{ icon('chart') }}{{ _('Riepilogo') }}</a>
-<a href="/files" class="{{ 'on' if request.endpoint == 'files' }}">{{ icon('folder') }}{{ _('Files') }}</a>
-<a href="/mail" class="{{ 'on' if request.endpoint == 'mail' }}">{{ icon('send') }}{{ _('Posta') }}</a>
-<a href="/calendar" class="{{ 'on' if request.endpoint == 'calendar' }}">{{ icon('doc') }}{{ _('Calendario') }}</a>
-<a href="/contacts" class="{{ 'on' if request.endpoint == 'contacts' }}">{{ icon('person') }}{{ _('Contatti') }}</a>
-<a href="/reminders" class="{{ 'on' if request.endpoint == 'reminders' }}">{{ icon('check') }}{{ _('Promemoria') }}</a>
-<a href="/notes" class="{{ 'on' if request.endpoint == 'notes' }}">{{ icon('doc') }}{{ _('Note') }}</a>
-<a href="/photos" class="{{ 'on' if request.endpoint == 'photos' }}">{{ icon('photo') }}{{ _('Foto') }}</a>
-<a href="/users" class="{{ 'on' if request.endpoint in ('index','u_logs') }}">{{ icon('users') }}{{ _('Utenti') }}</a>
-<a href="/search" class="{{ 'on' if request.endpoint in ('search','item') }}" title="{{ _('Cerca') }}" aria-label="{{ _('Cerca') }}">{{ icon('search') }}</a>
+<a href="{{ tab('/') }}" class="{{ 'on' if request.endpoint in ('home', 'index', 'u_logs') }}">{{ icon('chart') }}{{ _('Riepilogo') }}</a>
+<a href="{{ tab('/files') }}" class="{{ 'on' if request.endpoint == 'files' }}">{{ icon('folder') }}{{ _('Files') }}</a>
+<a href="{{ tab('/mail') }}" class="{{ 'on' if request.endpoint == 'mail' }}">{{ icon('send') }}{{ _('Posta') }}</a>
+<a href="{{ tab('/calendar') }}" class="{{ 'on' if request.endpoint == 'calendar' }}">{{ icon('doc') }}{{ _('Calendario') }}</a>
+<a href="{{ tab('/contacts') }}" class="{{ 'on' if request.endpoint == 'contacts' }}">{{ icon('person') }}{{ _('Contatti') }}</a>
+<a href="{{ tab('/reminders') }}" class="{{ 'on' if request.endpoint == 'reminders' }}">{{ icon('check') }}{{ _('Promemoria') }}</a>
+<a href="{{ tab('/notes') }}" class="{{ 'on' if request.endpoint == 'notes' }}">{{ icon('doc') }}{{ _('Note') }}</a>
+<a href="{{ tab('/photos') }}" class="{{ 'on' if request.endpoint == 'photos' }}">{{ icon('photo') }}{{ _('Foto') }}</a>
+<a href="{{ tab('/search') }}" class="{{ 'on' if request.endpoint in ('search','item') }}" title="{{ _('Cerca') }}" aria-label="{{ _('Cerca') }}">{{ icon('search') }}</a>
 {% if me_admin or not me %}<a href="/new" class="{{ 'on' if request.endpoint == 'new' }}">{{ icon('plus') }}{{ _('Nuovo utente') }}</a>{% endif %}
 <a href="/account" class="{{ 'on' if request.endpoint in ('account', 'admin') }}">{{ icon('gear' if (me_admin or not me) else 'person') }}{{ _('Profilo e amministrazione') if (me_admin or not me) else _('Il mio profilo') }}</a>
 {% if me %}<span class="who">{{ me }}</span><form class="inline" method="post" action="/logout"><button type="submit" title="{{ _('Esci') }}">{{ icon('logout') }}{{ _('Esci') }}</button></form>{% endif %}
 {% endif %}</nav></div></header>
+{% set side_on = request.endpoint in SIDE_ENDPOINTS %}<div class="shell{{ ' with-side' if side_on }}">{% if side_on %}{% include "_sidebar.html" %}{% endif %}
 <main>
 {% if reset_set and request.endpoint not in ("login", "login_2fa", "recover") %}<div class="flash warn">{{ icon('warn') }}<div>{{ _("La variabile GUI_RESET_PASSWORD del container è compilata: a ogni riavvio reimposta la password dell'admin e gli spegne il 2FA. Svuotala nel template di Unraid e riavvia.") }}</div></div>{% endif %}
 {% with m=get_flashed_messages() %}{% for x in m %}<div class="flash">{{ icon('check') }}<div>{{x}}</div></div>{% endfor %}{% endwith %}
-{% block body %}{% endblock %}</main>
+{% block body %}{% endblock %}</main></div>
 <div id="ipop" role="dialog" hidden></div>
 <script>
 // «i»: un solo popup per la pagina, vicino al pulsante; si chiude con un altro clic, fuori o con Esc (3.17)
