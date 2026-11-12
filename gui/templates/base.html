@@ -179,6 +179,7 @@ table.t td a{color:var(--acc)}
 <a href="{{ tab('/notes') }}" class="{{ 'on' if request.endpoint == 'notes' }}">{{ icon('doc') }}{{ _('Note') }}</a>
 <a href="{{ tab('/photos') }}" class="{{ 'on' if request.endpoint == 'photos' }}">{{ icon('photo') }}{{ _('Foto') }}</a>
 <a href="{{ tab('/search') }}" class="{{ 'on' if request.endpoint in ('search','item') }}" title="{{ _('Cerca') }}" aria-label="{{ _('Cerca') }}">{{ icon('search') }}</a>
+<a href="#" data-cleanup="trash" title="{{ _('Cestino') }}" aria-label="{{ _('Cestino') }}">{{ icon('trash') }}</a>
 {% if me_admin or not me %}<a href="/new" class="{{ 'on' if request.endpoint == 'new' }}">{{ icon('plus') }}{{ _('Nuovo utente') }}</a>{% endif %}
 <a href="/account" class="{{ 'on' if request.endpoint in ('account', 'admin') }}">{{ icon('gear' if (me_admin or not me) else 'person') }}{{ _('Profilo e amministrazione') if (me_admin or not me) else _('Il mio profilo') }}</a>
 {% if me %}<span class="who">{{ me }}</span><form class="inline" method="post" action="/logout"><button type="submit" title="{{ _('Esci') }}">{{ icon('logout') }}{{ _('Esci') }}</button></form>{% endif %}
@@ -188,7 +189,7 @@ table.t td a{color:var(--acc)}
 {% if reset_set and request.endpoint not in ("login", "login_2fa", "recover") %}<div class="flash warn">{{ icon('warn') }}<div>{{ _("La variabile GUI_RESET_PASSWORD del container è compilata: a ogni riavvio reimposta la password dell'admin e gli spegne il 2FA. Svuotala nel template di Unraid e riavvia.") }}</div></div>{% endif %}
 {% with m=get_flashed_messages() %}{% for x in m %}<div class="flash">{{ icon('check') }}<div>{{x}}</div></div>{% endfor %}{% endwith %}
 {% block body %}{% endblock %}</main></div>
-{% if request.endpoint in ("files", "photos", "mail", "notes", "reminders", "calendar", "contacts") %}{% include "_cleanup.html" %}{% endif %}
+{% if request.endpoint not in ("login", "login_2fa", "recover", "healthz") %}{% include "_cleanup.html" %}{% endif %}
 <div id="ipop" role="dialog" hidden></div>
 <script>
 // «i»: un solo popup per la pagina, vicino al pulsante; si chiude con un altro clic, fuori o con Esc (3.17)
