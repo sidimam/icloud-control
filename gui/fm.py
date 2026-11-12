@@ -343,10 +343,13 @@ def api_cleanup():
         by_size = {}
         for f, sz in inside + outside: by_size.setdefault(sz, []).append(f)
         gone = [(f, sz) for f, sz in inside if f not in present]
+        gone_set = {f for f, _sz in gone}
         A, B, C = [], [], []
         for f, sz in gone:
             j["done"] += 1
-            same = [o for o in by_size.get(sz, []) if o != f]
+            # una copia vale solo se resta: su iCloud o fuori dalla copia di iCloud Drive (mai un altro file «non più su iCloud»,
+            # altrimenti eliminando il gruppo sparirebbero tutte le copie)
+            same = [o for o in by_size.get(sz, []) if o != f and o not in gone_set]
             h = _sha1(f) if same else None
             copies = [o for o in same if h and _sha1(o) == h]
             st_ = ctx["state"](f) if ctx.get("state") else "gone"   # «gone» o «extra» (copia in più con un altro nome)
