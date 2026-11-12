@@ -296,7 +296,7 @@ def api_op():
 # File e Foto. A = doppioni: non più su iCloud, con una copia identica che RESTA (su iCloud o fuori dalla copia di iCloud) → eliminabili.
 # B = esistono solo qui: non più su iCloud e nessun'altra copia. C = copie in altre cartelle di file che sono ancora su iCloud.
 # Stesso contenuto = stessa dimensione e stesso SHA-1, calcolato solo per i file con la stessa dimensione di un altro.
-# Posta. B = messaggi cancellati dal server (flag T del Maildir): esistono solo qui. A = doppioni (stesso Message-ID nello stesso account).
+# Posta. B = messaggi cancellati dal server (flag T del Maildir): esistono solo qui. A = doppioni (stesso Message-ID nella stessa cartella).
 SKIP = {".cestino-dashboard", "@eaDir", "#recycle", "#snapshot", ".Trash", ".Trashes", ".Spotlight-V100", ".fseventsd"}
 PIM = {"Posta", "Note", "Promemoria", "Calendario", "Contatti"}   # cartelle del modulo PIM dentro <persona>/<account>/
 _hash = {}
@@ -384,7 +384,7 @@ def _scan_mail(ctx, j, rel):
         row = {"path": rel(f), "size": st.st_size, "subject": subj, "account": acc, "_abs": f}
         if "T" in flags: out["B"].append(row); continue
         if m:
-            k = (acc, m.group(1).strip().lower())
+            k = (acc, os.path.dirname(os.path.dirname(f)), m.group(1).strip().lower())   # stessa cartella: lo stesso messaggio in due cartelle non è un doppione
             if k in seen: row["copies"] = [seen[k]]; out["A"].append(row)
             else: seen[k] = rel(f)
     return out, len(files)

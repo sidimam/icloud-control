@@ -833,4 +833,7 @@ EN = {
     '{a0} elementi': '{a0} items',
     '{a0} file': '{a0} files',
     'Strumenti': 'Tools',
+    "Lo stesso messaggio (stesso Message-ID) salvato due volte nella stessa cartella: si elimina la copia in più, l'altra resta. Lo stesso messaggio in due cartelle diverse non è un doppione.": 'The same message (same Message-ID) saved twice in the same folder: the extra copy is deleted, the other stays. The same message in two different folders is not a duplicate.',
+    "Su iCloud sono stati cancellati o spostati e non ne esiste un'altra copia: questa sul NAS è l'unica. Eliminali solo se non ti servono più. Se per sbaglio un file fosse ancora su iCloud, iclouddr lo riscarica al giro dopo.": 'They were deleted or moved on iCloud and no other copy exists: this one on the NAS is the only one. Delete them only if you no longer need them. If a file were still on iCloud by mistake, iclouddr downloads it again on the next run.',
+    'Foto e video che non risultano più su iCloud e sono rimasti solo sul NAS (comprese le copie in più con un altro nome). Eliminali solo se non ti servono più: Immich li toglie al giro dopo. Se per sbaglio una foto fosse ancora su iCloud, iclouddr la riscarica al giro dopo.': 'Photos and videos no longer listed on iCloud that remain only on the NAS (including extra copies with another name). Delete them only if you no longer need them: Immich removes them on its next scan. If a photo were still on iCloud by mistake, iclouddr downloads it again on the next run.',
 }
