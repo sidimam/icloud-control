@@ -43,6 +43,12 @@ dispatcher) vanno invece nel **gruppo** di famiglia, dove tutti rispondono con `
 Lo script `unraid/icloud_2fa_autostart.sh` (User Scripts, ogni giorno; riconosce i container dall'immagine e i nomi da `config.json`) completa il flusso: a **1 giorno** dalla scadenza avvisa
 nella chat e avvia da solo la riautenticazione, così all'utente resta solo da rispondere `#nome 123456`.
 
+## Icona di iCloud Control
+
+`assets/icloud-control.png` (anche `gui/static/icon.png`): [Dashboard](https://www.flaticon.com/free-icon/dashboard_6821002) di
+[Andrean Prabowo](https://www.flaticon.com/authors/andrean-prabowo) su [Flaticon](https://www.flaticon.com/) (licenza Flaticon, con
+attribuzione), messa su sfondo bianco 512×512.
+
 ## Icona dei container iCloud Drive
 
 I container creati dalla GUI usano `assets/icloud-drive.png` (logo iCloud, 256×256 quadrato, ricavato da Wikimedia Commons), ospitata in questo repository: un'icona non quadrata viene deformata dal tab Docker di Unraid.
