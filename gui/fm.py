@@ -425,11 +425,13 @@ def api_cleanup():
     if not request.is_json: abort(415)
     d = request.get_json(silent=True) or {}; kind = d.get("kind", "files"); person = d.get("root", "")
     if person not in _cfg["persons"](): abort(403)
-    ctx = _cfg["scan"](person, kind) if _cfg.get("scan") else None
-    if not ctx: return jsonify({"error": "elenco" if kind != "mail" else "posta"}), 409
-    base = os.path.realpath(ctx["base"]); rel = lambda f: "" if f == base else f[len(base) + 1:]   # il thread non può leggere la sessione
-    j = _job("scan", person, 0); j.update(_kind=kind, _trash=ctx["trash"], _person=person)
-    def scan():
+    if not _cfg.get("scan"): return jsonify({"error": "elenco"}), 409
+    j = _job("scan", person, 0); j.update(_kind=kind, _person=person)
+    def scan():   # 3.25.6: anche la preparazione (elenco di iCloud, cartelle) gira qui, non nella richiesta
+        ctx = _cfg["scan"](person, kind)
+        if not ctx: j["code"] = "elenco" if kind != "mail" else "posta"; return
+        j["_trash"] = ctx["trash"]
+        base = os.path.realpath(ctx["base"]); rel = lambda f: "" if f == base else f[len(base) + 1:]   # il thread non può leggere la sessione
         out, n = (_scan_mail if kind == "mail" else _scan_files)(ctx, j, rel)
         j["_abs"] = {g: [r.pop("_abs") for r in rows] for g, rows in out.items()}
         j["result"] = {g: rows for g, rows in out.items()}

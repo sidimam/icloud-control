@@ -101,6 +101,7 @@ Utenti e alias stanno in `/app/config.json`, condiviso con il bot; ogni utente h
     solo qui lo farebbe tornare), quindi la pulizia elenca i doppioni che stanno su iCloud, da sistemare dall'iPhone o da iCloud.com.
     Niente pulsante di eliminazione: il sync è a senso unico. Gli eventi contano come doppi solo nello stesso calendario (dalla 3.25.3,
     mostrato per nome).
+  - Dalla 3.25.6 anche la preparazione (lettura dell'elenco di iCloud) gira in background: il pannello risponde subito e la barra parte; il percorso reale si calcola una volta per radice invece che per ogni file (Sofia: da 145 a 18 s con il NAS carico).
   - Si elimina solo ciò che l'analisi ha trovato (il server accetta solo gli indici dei risultati), sempre nel cestino della share
     (`documents/.cestino-dashboard` o `media/photos/.cestino-dashboard`), con Annulla.
   - **Cestino**: elenco dei lavori (data, elementi, file, spazio, da dove venivano, quando scade), *Ripristina* nel posto originale (dalla

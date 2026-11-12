@@ -62,6 +62,7 @@ function run(){ var p = who();
   $("cl-body").innerHTML = '<p class="mut" id="cl-pr">' + esc(T.scan) + '</p><div class="bar2"><i id="cl-bar"></i></div>';
   api("/fm/api/cleanup", {root: p, kind: KIND}).then(function(r){ (function poll(){ api("/fm/api/job/" + r.job).then(function(j){
       if (j.state === "run") { $("cl-bar").style.width = (j.total ? Math.round(100 * j.done / j.total) : 3) + "%"; $("cl-pr").textContent = T.scan + (j.total ? " " + j.done + "/" + j.total : ""); return setTimeout(poll, 700); }
+      if (!j.result && j.code) { $("cl-body").innerHTML = '<div class="row">' + picker() + '</div><p class="mut">' + esc(j.code === "posta" ? T.nomail : T.noel) + '</p>'; bindPicker(); return; }
       if (!j.result) { $("cl-body").innerHTML = '<div class="err">' + esc((j.errors || []).join("\n") || "?") + '</div>'; return; }
       ST.job = r.job; show(j.result); }).catch(function(){ setTimeout(poll, 1500); }); })(); })
   .catch(function(e){ $("cl-body").innerHTML = '<div class="row">' + picker() + '</div><p class="mut">' + esc(e && e.error === "elenco" ? T.noel : e && e.error === "posta" ? T.nomail : (e.error || e.status)) + '</p>'; bindPicker(); }); }

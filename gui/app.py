@@ -1530,7 +1530,12 @@ def _icloud_present(roots_host):
         if root in roots_host:
             if data is None: return None, None
             files, _dirs, w, _alt = data; found = True; when = max(when or 0, w or 0)
-            present |= {os.path.realpath(host_to_local(h)) for h in files}
+            # 3.25.6: realpath una volta sola per la radice, non per ogni file (su /mnt/user ogni realpath è una serie di
+            # lstat via FUSE: con il NAS carico 32.720 file di Sofia chiedevano 145 s)
+            lr = host_to_local(root).rstrip("/"); rr = os.path.realpath(lr)
+            for h in files:
+                lp = host_to_local(h)
+                present.add(rr + lp[len(lr):] if lp.startswith(lr + "/") else os.path.realpath(lp))
     return (present, when) if found else (None, None)
 def fm_scan(person, kind="files"):
     """Contesto per la Pulizia (3.24 File, 3.25 Foto e Posta): cartelle da confrontare, file presenti su iCloud, cestino della share."""
