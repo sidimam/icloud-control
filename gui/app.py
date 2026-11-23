@@ -249,7 +249,8 @@ SETTINGS_FILE = os.path.join(APP_DIR, "state", "settings.json")
 def nset():
     try: s = json.load(open(SETTINGS_FILE)).get("notify", {})
     except (FileNotFoundError, ValueError): s = {}
-    return {"chat": s.get("chat", NOTIFY_CHAT), "restart": s.get("restart", NOTIFY_RESTART), "gave_up": s.get("gave_up", NOTIFY_GAVE_UP), "quiet": s.get("quiet", QUIET)}
+    return {"chat": s.get("chat", NOTIFY_CHAT), "restart": s.get("restart", NOTIFY_RESTART), "gave_up": s.get("gave_up", NOTIFY_GAVE_UP), "quiet": s.get("quiet", QUIET),
+            "services": s.get("services", True)}
 def save_nset(v):
     try: d = json.load(open(SETTINGS_FILE))
     except (FileNotFoundError, ValueError): d = {}
@@ -882,7 +883,8 @@ def admin_profile_new():
 def admin_notify():
     _admin_only(); f = request.form; q = f.get("quiet", "").strip()
     if q and not re.fullmatch(r"\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}", q): flash(_("Ore silenziose: usa il formato 23:00-07:30, oppure lascia vuoto")); return redirect(url_for("account") + "#amministrazione")
-    save_nset({"chat": f.get("chat", "").strip(), "restart": f.get("restart") == "on", "gave_up": f.get("gave_up") == "on", "quiet": q}); flash(_("Notifiche salvate"))
+    save_nset({"chat": f.get("chat", "").strip(), "restart": f.get("restart") == "on", "gave_up": f.get("gave_up") == "on", "quiet": q,
+               "services": f.get("services") == "on"}); flash(_("Notifiche salvate"))
     return redirect(url_for("account") + "#amministrazione")
 @app.post("/admin/notify/test")
 def admin_notify_test():
@@ -1933,6 +1935,49 @@ def admin_services():
     worst = max(used or ["ok"], key=lambda s: SS.RANK[s])
     return render_template("_svc_status.html", st=st, users=users, order=order, names=SS.NAMES, links=SS.LINKS, lang=lang if lang in ("it", "en") else "it",
                            worst=worst, when=ago(datetime.datetime.fromtimestamp(st["when"])))
+# Avvisi Telegram sui servizi esterni (3.29.0): a ogni cambio di stato di un servizio usato (problema/interruzione → regolare e viceversa).
+# SOLO nella chat privata del bot (id positivo): mai nel gruppo di famiglia, nemmeno come ripiego. Stato ricordato in /app/state.
+SVC_ALERT_FILE = os.path.join(APP_DIR, "state", "svc_alerts.json"); SVC_EVERY = int(os.environ.get("SVC_INTERVAL", "300"))
+SVC_ALERT_STATES = ("issue", "outage")
+def svc_private_chat():
+    ch = str(nset()["chat"] or "").strip()
+    return ch if ch and not ch.startswith("-") else ""
+def svc_check(c=None, st=None, users=None, send=None):
+    """Confronta lo stato attuale con quello salvato e manda gli avvisi; ritorna i testi mandati (per le prove)."""
+    c = c or cfg(); users = users or svc_users(); st = st or SS.status("it", force=True)
+    try: old = json.load(open(SVC_ALERT_FILE))
+    except (FileNotFoundError, ValueError): old = {}
+    new, msgs = {}, []
+    for k, p in st["providers"].items():
+        if not users.get(k) or p.get("error"): 
+            new.update({kk: v for kk, v in old.items() if kk.startswith(k + "/")}); continue   # fonte muta: si tiene lo stato di prima
+        who = ", ".join(dict.fromkeys(u for u, _w in users[k]))
+        for s in p["services"]:
+            key = f'{k}/{s["name"]}'; bad = s["state"] if s["state"] in SVC_ALERT_STATES else ""; was = old.get(key, "")
+            if bad: new[key] = bad
+            if bad and bad != was:
+                m = next((x for x in s["msgs"] if x.get("live")), {}); icon_ = "🔴" if bad == "outage" else "🟠"
+                lab = "interruzione" if bad == "outage" else "problema"
+                msgs.append(f"{icon_} {SS.NAMES[k]} · {s['name']}: {lab}" + (f"\n{m['text']}" if m.get("text") else "") + (f"\nDa: {m['since']}" if m.get("since") else "")
+                            + f"\nUsato da: {who}\n{SS.LINKS[k]['it']}")
+            elif was and not bad:
+                msgs.append(f"✅ {SS.NAMES[k]} · {s['name']}: di nuovo regolare")
+    os.makedirs(os.path.dirname(SVC_ALERT_FILE), exist_ok=True); json.dump(new, open(SVC_ALERT_FILE, "w"), ensure_ascii=False)
+    if msgs and nset().get("services", True):
+        chat = svc_private_chat()
+        for m in msgs:
+            if send: send(chat, m)
+            elif chat:
+                if in_quiet():   # ore silenziose: in coda come gli altri avvisi, poi alla chat privata
+                    q = (_nq() + [{"ts": time.time(), "text": m}])[-50:]; json.dump(q, open(NQ_FILE, "w"), ensure_ascii=False)
+                else: telegram(chat, m)
+    return msgs
+def svc_loop():
+    time.sleep(60)
+    while True:
+        try: svc_check()
+        except Exception as e: print(f"stato dei servizi: {e}", flush=True)
+        time.sleep(SVC_EVERY)
 @app.post("/admin/geocode")
 def admin_geocode():
     _admin_only(); st = _settings(); st["geocode"] = request.form.get("geocode") == "on"; _save_settings(st)
@@ -2181,4 +2226,5 @@ if __name__ == "__main__":
     threading.Thread(target=geo_loop, daemon=True).start()  # coordinate e data di scatto delle foto
     if THUMB_WARM: threading.Thread(target=thumb_warm_loop, daemon=True).start()   # miniature preparate in anticipo
     threading.Thread(target=disk_loop, daemon=True).start()  # spazio su disco per persona e tipo (ogni 6 ore)
+    threading.Thread(target=svc_loop, daemon=True).start()   # 3.29.0: avvisi sui servizi esterni (Apple, Google, Microsoft)
     app.run(host="0.0.0.0", port=PORT, debug=False)

@@ -37,6 +37,7 @@
 <div class="li col"><label class="f" for="chat">{{ _('Chat per gli avvisi automatici') }}</label><input id="chat" name="chat" value="{{ n.chat }}" placeholder="{{ _('vuota = {a0} (config.json)', a0=default_chat) }}"></div>
 <div class="li"><label class="k" for="nr">{{ _('Avviso a ogni riavvio automatico di un iclouddr bloccato') }}</label><span class="v"><input id="nr" class="sw" type="checkbox" name="restart" {% if n.restart %}checked{% endif %}></span></div>
 <div class="li"><label class="k" for="ng">{{ _('Avviso quando un container si blocca 3 volte in 6 ore') }}</label><span class="v"><input id="ng" class="sw" type="checkbox" name="gave_up" {% if n.gave_up %}checked{% endif %}></span></div>
+<div class="li"><label class="k" for="nsv">{{ _('Avviso quando un servizio usato (Apple, Google, Microsoft) ha un problema o un\'interruzione, e quando torna regolare') }}<br><span class="mut">{{ _('solo nella chat privata del bot, mai in un gruppo') }}</span></label><span class="v"><input id="nsv" class="sw" type="checkbox" name="services" {% if n.services %}checked{% endif %}></span></div>
 <div class="li col"><label class="f" for="quiet">{{ _('Ore silenziose (gli avvisi arrivano insieme alla fine; vuoto = sempre subito)') }}</label><input id="quiet" name="quiet" value="{{ n.quiet }}" placeholder="23:00-07:30"></div>
 <div class="li"><button>{{ _('Salva') }}</button></div></div></form>
 <form method="post" action="/admin/notify/test" style="margin-top:.6rem"><button class="tint">{{ icon('send') }}{{ _('Invia un messaggio di prova') }}</button></form>

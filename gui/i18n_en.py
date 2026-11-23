@@ -276,6 +276,8 @@ EN = {
     "posta": "mail",
     "calendario": "calendar",
     "contatti": "contacts",
+    "Avviso quando un servizio usato (Apple, Google, Microsoft) ha un problema o un'interruzione, e quando torna regolare": "Alert when a service in use (Apple, Google, Microsoft) has a problem or an outage, and when it is back to normal",
+    "solo nella chat privata del bot, mai in un gruppo": "only in the bot's private chat, never in a group",
     "Tutti gli account": "All accounts",
     "{a0}: tutti gli account": "{a0}: all accounts",
     "Mostra solo un account (per esempio iCloud o Gmail) di una persona, tutti gli account di una persona o tutto. Si somma alla persona scelta a sinistra e ai filtri.": "Shows one account of a person (for example iCloud or Gmail), all of a person's accounts or everything. It combines with the person chosen on the left and with the filters.",
