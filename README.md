@@ -229,7 +229,7 @@ sempre (campo Cerca → risultati dall'indice, con filtri). Ogni utente vede sol
 - **Riepilogo**: ora (che scorre) e data, **meteo** attuale e dei prossimi giorni da Open-Meteo (gratuito, senza chiave;
   `WEATHER_LAT`, `WEATHER_LON`, `WEATHER_PLACE`, default la zona di casa a Roma, in cache 15 minuti).
 - Contatti uniti fra più rubriche: un nome vero vince sempre su un numero di telefono.
-- **Selettore dell'account nei Contatti** (3.26.0): accanto ai filtri, «Tutti gli account», «<persona>: tutti gli account» (se ne ha più di uno) o un solo account (es. «Simone · iCloud», «Simone · Gmail»), con il numero di schede; parametro `acct` (`Persona/Account` o `Persona/`). «Presente in» indica persona e account di ogni scheda.
+- **Selettore dell'account in ogni scheda** (3.26.0 Contatti, dalla 3.27.0 anche Posta, Calendario, Promemoria, Note e Foto): accanto ai filtri un menu con «Tutti gli account», per ogni persona «tutti gli account» (se ne ha più di uno) e ogni account con il numero di elementi (es. «Simone · iCloud», «Simone · Gmail»); nelle Foto si chiama «Libreria» (Personale, Famiglia, Archivio) e sostituisce il vecchio menu degli album. Parametro `acct` (`Persona/Account` o `Persona/`), che si somma alla persona scelta a sinistra, ai filtri e alla ricerca e resta aprendo una cartella o una lista. Nel Calendario un calendario condiviso conta per ogni persona che lo vede; le festività solo con «Tutti». Files resta per cartelle (gli account di una persona sono le sue cartelle: iCloud, Gmail…). Nei Contatti «Presente in» indica persona e account di ogni scheda.
 
 ### Descrizioni dietro la «i» e ricerca foto su tutta la famiglia (dalla 3.17)
 

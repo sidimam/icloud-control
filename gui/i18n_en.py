@@ -252,7 +252,7 @@ EN = {
     "{a0} persone da {a1} schede: la stessa persona salvata da più di voi compare una volta sola.": "{a0} people from {a1} cards: the same person saved by more than one of you appears once.",
     "Tutti gli account": "All accounts",
     "{a0}: tutti gli account": "{a0}: all accounts",
-    "Mostra i contatti di un solo account (per esempio iCloud o Gmail) o di tutti. «Presente in» dice da quale account viene ogni scheda.": "Shows the contacts of one account (for example iCloud or Gmail) or of all of them. \"Found in\" tells which account each card comes from.",
+    "Mostra solo un account (per esempio iCloud o Gmail) di una persona, tutti gli account di una persona o tutto. Si somma alla persona scelta a sinistra e ai filtri.": "Shows one account of a person (for example iCloud or Gmail), all of a person's accounts or everything. It combines with the person chosen on the left and with the filters.",
     "presente in: {a0}": "found in: {a0}",
     "scheda": "card",
     "Nessun contatto ancora: collega un account iCloud con password per app da «Profilo e amministrazione».": "No contacts yet: link an iCloud account with an app-specific password from the user's card.",

@@ -8,6 +8,7 @@
 {% if q %}<details class="grp" data-k="cal-found" open><summary>{{ icon('search', 15) }}{{ _('{a0} appuntamenti trovati', a0=found|length) }}{{ icon('chevron', 15, 'ic chev') }}</summary>
 <div class="list" style="max-height:340px;overflow:auto">{% for r in found %}<div class="li" style="align-items:flex-start"><span class="k" style="flex:1;min-width:0">{% if r.id %}<a href="/item/{{ r.id }}">{{ r.title or '—' }}</a>{% else %}{{ r.title }}{% endif %}<br><span class="mut">{{ r.x.calendar }}{% if r.person %} · {{ r.person }}{% endif %}{% if r.x.location %} · {{ r.x.location }}{% endif %}{% if r.x.rrule %} · {{ _('si ripete') }}{% endif %}</span></span>
 <span class="v" style="flex:none"><button type="button" class="tint small gotod" data-d="{{ (r.date or 0)|int }}">{{ fmt_date(r.date, not r.x.allday) }}</button></span></div>{% else %}<div class="li"><span class="mut">{{ _('Nessun appuntamento con questo testo.') }}</span></div>{% endfor %}</div></details>{% endif %}
+{% include "_acctsel.html" %}
 {% set fo = {"name": _('titolo, luogo o calendario'), "ext": none, "dates": none, "sorts": [], "default": ""} %}{% include "_filters.html" %}
 <div class="split">
 <div style="display:grid;gap:1rem">
@@ -61,7 +62,7 @@
       if (p.cloud) { var tt = i.el.querySelector(".fc-event-title, .fc-list-event-title a, .fc-list-event-title"); if (tt) tt.insertAdjacentHTML("afterbegin", p.cloud + " "); } },   // 3.21: su iCloud o no
     headerToolbar: {left: "prev,next today", center: "title", right: "multiMonthYear,dayGridMonth,timeGridWeek,timeGridDay,listMonth"},
     views: {multiMonthYear: {multiMonthMaxColumns: 3}},
-    events: function(info, ok, ko){ fetch("/api/events?start=" + encodeURIComponent(info.startStr) + "&end=" + encodeURIComponent(info.endStr) + "&person=" + encodeURIComponent(person) + "&fq=" + encodeURIComponent(new URLSearchParams(location.search).get("fq") || "")).then(function(r){return r.json();}).then(function(d){ ok(d.events.filter(function(e){ return !hidden.has(e.extendedProps.cal_id); })); }).catch(ko); },
+    events: function(info, ok, ko){ fetch("/api/events?start=" + encodeURIComponent(info.startStr) + "&end=" + encodeURIComponent(info.endStr) + "&person=" + encodeURIComponent(person) + "&fq=" + encodeURIComponent(new URLSearchParams(location.search).get("fq") || "") + "&acct=" + encodeURIComponent(new URLSearchParams(location.search).get("acct") || "")).then(function(r){return r.json();}).then(function(d){ ok(d.events.filter(function(e){ return !hidden.has(e.extendedProps.cal_id); })); }).catch(ko); },
     eventsSet: placeMarkers,
     datesSet: function(i){ try { localStorage.setItem("cal:view", i.view.type); } catch(e) {} },
     eventClick: function(i){ i.jsEvent.preventDefault(); if (i.event.url) location.href = i.event.url; }

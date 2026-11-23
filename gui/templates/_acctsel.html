@@ -1,0 +1,10 @@
+{# Selettore dell'account (3.27.0), uguale in Posta, Calendario, Contatti, Promemoria, Note e Foto, accanto ai filtri.
+   A = {"accts": [{person, account, n}], "acct": "Persona/Account" | "Persona/" | "", "n_all": totale}; acct_label = etichetta (Account, Libreria).
+   Il parametro «acct» si somma agli altri della pagina, che restano come campi nascosti. #}
+{% if A and A.accts %}<form method="get" action="{{ request.path }}" class="row acctsel" style="gap:.5rem;align-items:center;margin-bottom:.8rem;flex-wrap:wrap">{% for k, v in request.args.items(multi=True) if k not in ('acct', 'page') %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+<label class="row" style="gap:.5rem;align-items:center"><span class="mut">{{ icon('users', 15) }} {{ acct_label or _('Account') }}</span><select name="acct" onchange="this.form.submit()" style="width:auto;max-width:100%">
+<option value="">{{ _('Tutti gli account') }} ({{ A.n_all }})</option>
+{% for p, grp in A.accts|groupby('person') %}{% set grp = grp|list %}<optgroup label="{{ p }}">{% if grp|length > 1 %}<option value="{{ p }}/" {% if A.acct == p ~ '/' %}selected{% endif %}>{{ _('{a0}: tutti gli account', a0=p) }} ({{ grp|sum(attribute='n') }})</option>{% endif %}
+{% for a in grp %}<option value="{{ a.person }}/{{ a.account }}" {% if A.acct == a.person ~ '/' ~ a.account %}selected{% endif %}>{{ a.person }} · {{ a.account }} ({{ a.n }})</option>{% endfor %}</optgroup>{% endfor %}
+</select></label><noscript><button class="small">{{ _('Mostra') }}</button></noscript>
+{{ info(_('Mostra solo un account (per esempio iCloud o Gmail) di una persona, tutti gli account di una persona o tutto. Si somma alla persona scelta a sinistra e ai filtri.')) }}</form>{% endif %}

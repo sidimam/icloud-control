@@ -1457,13 +1457,28 @@ def admin_immich():
     try: n = len(immich_smart("persone", 20) or []); flash(_("Ricerca nelle foto pronta: la prova ha trovato {a0} foto", a0=n))
     except Exception as e: flash(_("Immich non risponde: {a0}", a0=str(e)[:200]))
     return redirect(url_for("account") + "#amministrazione")
+# ---- selettore dell'account (3.27.0): stesso menu in Posta, Calendario, Contatti, Promemoria, Note e Foto (_acctsel.html)
+def acct_scope(base_where, base_args):
+    """Account (persona, account, schede) dentro l'ambito della pagina e filtro SQL per quello scelto.
+    acct = «Persona/Account» oppure «Persona/» (tutti gli account di quella persona); un valore fuori ambito si ignora."""
+    acct = request.args.get("acct", ""); p, _sep, a = acct.partition("/")
+    con = SI.connect()
+    try: accts = [dict(r) for r in con.execute(f"select person, account, count(*) n from items where {' and '.join(base_where)} group by person, account order by person, account", base_args)]
+    finally: con.close()
+    w, wa = [], []
+    if acct and any(x["person"] == p and (not a or x["account"] == a) for x in accts):
+        w.append("person=?"); wa.append(p)
+        if a: w.append("account=?"); wa.append(a)
+    else: acct = ""
+    return {"accts": accts, "acct": acct, "n_all": sum(x["n"] for x in accts)}, w, wa
 @app.route("/photos")
 def photos():
     a = request.args; persons, shared, person, where, args = _photo_scope(a)
     album = a.get("album", ""); what = a.get("what", "")
     try: page = max(0, int(a.get("page", "0")))
     except ValueError: page = 0
-    if album: where.append("account=?"); args.append(album)
+    A, aw, aa = acct_scope(list(where), list(args)); where += aw; args += aa
+    if album: where.append("account=?"); args.append(album)   # vecchi collegamenti ?album=
     if what == "photo": where.append(f"ext in ({','.join('?' * len(IMG_EXT))})"); args += sorted(IMG_EXT)
     elif what == "video": where.append(f"ext in ({','.join('?' * len(VID_EXT))})"); args += sorted(VID_EXT)
     if a.get("year", "").isdigit():
@@ -1490,7 +1505,7 @@ def photos():
     finally: con.close()
     more = len(rows) > per; rows = rows[:per]
     for r in rows: r["media"] = "video" if r["ext"] in VID_EXT else ("audio" if r["ext"] in AUD_EXT else "image")
-    return render_template("photos.html", rows=rows, albums=albums, years=years, persons=persons, shared=shared, person=person, album=album, what=what, year=a.get("year", ""), page=page, more=more, exts=exts, q=q, ai=ai is not None, ai_err=ai_err, immich_on=True, fmt_date=_fmt_date, fmt_size=_fmt_size)
+    return render_template("photos.html", rows=rows, albums=albums, years=years, persons=persons, shared=shared, person=person, album=album, what=what, year=a.get("year", ""), page=page, more=more, exts=exts, q=q, ai=ai is not None, ai_err=ai_err, immich_on=True, fmt_date=_fmt_date, fmt_size=_fmt_size, A=A)
 # ---- File manager (3.20): le cartelle di ogni persona sul NAS (/documents/<persona>), con copia, sposta, annulla… (fm.py)
 import fm
 _FMR = {"t": 0, "v": {}}
@@ -1631,8 +1646,9 @@ def notes():
     persons = allowed_persons(); person = request.args.get("person", ""); sel = [person] if person in persons else persons
     folder = request.args.get("folder", ""); of = request.args.get("of", "")   # of = di chi è la cartella (3.11.1)
     con = SI.connect()
+    A, aw, aa = acct_scope([f"kind='note' and person in ({','.join('?' * len(sel))})"], list(sel))
     try:
-        rows = [{**dict(r), "x": json.loads(r["extra"] or "{}")} for r in con.execute(f"select * from items where kind='note' and person in ({','.join('?' * len(sel))}) order by date desc", sel)]
+        rows = [{**dict(r), "x": json.loads(r["extra"] or "{}")} for r in con.execute("select * from items where " + " and ".join([f"kind='note' and person in ({','.join('?' * len(sel))})"] + aw) + " order by date desc", list(sel) + aa)]
     finally: con.close()
     folders = {}
     for r in rows: folders.setdefault((r["person"], r["x"].get("folder", "")), 0); folders[(r["person"], r["x"].get("folder", ""))] += 1
@@ -1640,7 +1656,7 @@ def notes():
     if request.args.get("q", "").strip():
         hit = fts_ids("note", request.args["q"]); rows = [r for r in rows if hit is None or r["id"] in hit]
     rows = filt_py(rows, request.args, name=lambda r: r["title"], date=lambda r: r["date"], size=lambda r: r["size"])
-    return render_template("notes.html", rows=rows, folders=sorted(folders.items()), persons=persons, person=person, folder=folder, of=of, fmt_date=_fmt_date, fmt_size=_fmt_size)
+    return render_template("notes.html", rows=rows, folders=sorted(folders.items()), persons=persons, person=person, folder=folder, of=of, fmt_date=_fmt_date, fmt_size=_fmt_size, A=A)
 @app.route("/reminders")
 def reminders():
     persons = allowed_persons(); person = request.args.get("person", ""); fam = family_lists()
@@ -1648,8 +1664,9 @@ def reminders():
     sel = [person] if person in persons else ([p for p, _l in fam] if person == FAMILY else persons)
     lst = request.args.get("list", ""); show = request.args.get("show", "open"); of = request.args.get("of", "")
     con = SI.connect()
+    A, aw, aa = acct_scope([f"kind='reminder' and person in ({','.join('?' * len(sel))})"], list(sel))
     try:
-        rows = [{**dict(r), "x": json.loads(r["extra"] or "{}")} for r in con.execute(f"select * from items where kind='reminder' and person in ({','.join('?' * len(sel))})", sel)]
+        rows = [{**dict(r), "x": json.loads(r["extra"] or "{}")} for r in con.execute(f"select * from items where " + " and ".join([f"kind='reminder' and person in ({','.join('?' * len(sel))})"] + aw), list(sel) + aa)]
     finally: con.close()
     famset = set(fam)   # «Famiglia» = solo le liste di famiglia; una persona = le sue senza quelle; Tutti = tutto
     if person == FAMILY: rows = [r for r in rows if (r["person"], r["x"].get("list", "")) in famset]
@@ -1667,7 +1684,7 @@ def reminders():
     if any(request.args.get(k) for k in ("fq", "fd1", "fd2", "fsort", "fdir")):   # senza un ordinamento scelto resta: da fare, poi per scadenza
         sort_chosen = request.args.get("fsort") or request.args.get("fdir")
         rows = filt_py(rows, request.args, name=lambda r: r["title"], date=lambda r: r["date"], default="date" if sort_chosen else "keep")
-    return render_template("reminders.html", rows=rows, lists=sorted(lists.items()), persons=persons, person=person, scopes=family_scopes("reminder"), lst=lst, of=of, show=show, now=now, fmt_date=_fmt_date)
+    return render_template("reminders.html", rows=rows, lists=sorted(lists.items()), persons=persons, person=person, scopes=family_scopes("reminder"), lst=lst, of=of, show=show, now=now, fmt_date=_fmt_date, A=A)
 # ---- Calendario, Posta, Contatti (3.7)
 PALETTE = ["#007aff", "#34c759", "#ff9500", "#ff3b30", "#af52de", "#5ac8fa", "#ff2d55", "#a2845e", "#5856d6", "#30b0c7"]
 def _settings():
@@ -1746,11 +1763,24 @@ def family_scopes(kind):
 def family_lists():
     """Liste di promemoria di famiglia: condivise (iclouddr «condivisi») e con il nome di famiglia → [(persona, lista)]."""
     return [(p, l) for p, s in shared_map().items() if p in allowed_persons() for l in s.get("liste", ()) if l.lower() in FAMILY_NAMES]
+def cal_acct(cals):
+    """3.27.0: calendari dell'account scelto (acct). Un calendario condiviso conta per ogni persona che lo vede (c["person"] =
+    «Simone, Daniela»); le festività restano solo con «Tutti gli account». Ritorna (calendari, dati per _acctsel.html)."""
+    def owners(c): return [] if c.get("holiday") else [(m.strip(), c["account"]) for m in c["person"].split(",") if m.strip()]
+    cnt = {}
+    for c in cals:
+        for k in owners(c): cnt[k] = cnt.get(k, 0) + c["n"]
+    accts = [{"person": p, "account": a, "n": n} for (p, a), n in sorted(cnt.items())]
+    acct = request.args.get("acct", ""); p, _sep, a = acct.partition("/")
+    if acct and any(x["person"] == p and (not a or x["account"] == a) for x in accts):
+        cals = [c for c in cals if any(op == p and (not a or oa == a) for op, oa in owners(c))]
+    else: acct = ""
+    return cals, {"accts": accts, "acct": acct, "n_all": sum(x["n"] for x in accts)}
 @app.route("/calendar")
 def calendar():
     persons = allowed_persons(); person = request.args.get("person", "")
     if person not in persons and person not in (FAMILY, HOLIDAYS): person = ""
-    cals = cal_list(person); found = []; q = request.args.get("q", "").strip()
+    cals, A = cal_acct(cal_list(person)); found = []; q = request.args.get("q", "").strip()
     if q:   # ricerca nel testo (titolo, luogo, note) fra i calendari mostrati, in tutte le date; più vicine a oggi per prime
         hit = fts_ids("event", q) or set(); ids = [c["id"] for c in cals if c["id"] != HOL_ID]
         if hit and ids:
@@ -1766,7 +1796,7 @@ def calendar():
                     ds = ev.get("DTSTART").dt; found.append({"id": None, "title": str(ev.get("SUMMARY")), "date": datetime.datetime.combine(ds, datetime.time()).timestamp() if not isinstance(ds, datetime.datetime) else ds.timestamp(),
                                                               "person": "", "x": {"calendar": name, "allday": True, "rrule": "RRULE" in ev}})
     return render_template("calendar.html", cals=cals, found=found, q=q, fmt_date=_fmt_date, persons=persons, person=person, scopes=family_scopes("event"),
-                           scopes_after=[HOLIDAYS] if holidays_cal()[0] else [], geocode=_settings().get("geocode", False))
+                           scopes_after=[HOLIDAYS] if holidays_cal()[0] else [], geocode=_settings().get("geocode", False), A=A)
 @app.post("/calendar/color")
 def calendar_color():
     cid = request.form.get("id", ""); col = request.form.get("color", "")
@@ -1836,7 +1866,7 @@ def api_events():
         try: return datetime.datetime.fromisoformat(v.replace("Z", "+00:00")).timestamp()
         except Exception: return time.time()
     start, end = ts(request.args.get("start", "")), ts(request.args.get("end", ""))
-    cals = {c["id"]: c for c in cal_list(person)}; ids = [c for c in cals if c != HOL_ID]   # un calendario condiviso si legge una volta sola
+    cals = {c["id"]: c for c in cal_acct(cal_list(person))[0]}; ids = [c for c in cals if c != HOL_ID]   # un calendario condiviso si legge una volta sola
     con = SI.connect()
     try:
         rows = con.execute(f"""select * from items where kind='event' and json_extract(extra,'$.cal_id') in ({','.join('?' * len(ids)) or 'null'}) and
@@ -1891,8 +1921,9 @@ def mail():
     acct = request.args.get("account", ""); folder = request.args.get("folder", ""); of = request.args.get("of", "")
     con = SI.connect()
     try:
-        tree = con.execute(f"select person, account, json_extract(extra,'$.folder') folder, count(*) n from items where kind='mail' and person in ({','.join('?' * len(sel))}) group by person, account, folder order by person, account, folder", sel).fetchall()
-        where, args = [f"kind='mail' and person in ({','.join('?' * len(sel))})"], list(sel)
+        A, aw, aa = acct_scope([f"kind='mail' and person in ({','.join('?' * len(sel))})"], list(sel))
+        tree = con.execute(f"select person, account, json_extract(extra,'$.folder') folder, count(*) n from items where " + " and ".join([f"kind='mail' and person in ({','.join('?' * len(sel))})"] + aw) + " group by person, account, folder order by person, account, folder", list(sel) + aa).fetchall()
+        where, args = [f"kind='mail' and person in ({','.join('?' * len(sel))})"] + aw, list(sel) + aa
         if acct: where.append("account=?"); args.append(acct)
         if folder: where.append("json_extract(extra,'$.folder')=?"); args.append(folder)
         if of and (acct or folder): where.append("person=?"); args.append(of)
@@ -1901,21 +1932,14 @@ def mail():
             fw.append("id in (select rowid from fts where fts match ?)"); fa.append(SI.fts_query(request.args["q"]))
         rows = [{**dict(r), "x": json.loads(r["extra"] or "{}")} for r in con.execute(f"select * from items where {' and '.join(where + fw)} order by {forder} limit 300", args + fa)]
     finally: con.close()
-    return render_template("mail.html", tree=tree, rows=rows, persons=persons, person=person, acct=acct, folder=folder, of=of, fmt_date=_fmt_date, fmt_size=_fmt_size)
+    return render_template("mail.html", tree=tree, rows=rows, persons=persons, person=person, acct=acct, folder=folder, of=of, fmt_date=_fmt_date, fmt_size=_fmt_size, A=A)
 @app.route("/contacts")
 def contacts():
     persons = allowed_persons(); person = request.args.get("person", ""); sel = [person] if person in persons else persons; q = request.args.get("q", "").strip().lower()
-    # 3.26.0: selettore dell'account (acct = «Persona/Account», oppure «Persona/» per tutti gli account di quella persona)
-    acct = request.args.get("acct", ""); a_person, _sep, a_name = acct.partition("/")
-    where, args = [f"kind='contact' and person in ({','.join('?' * len(sel))})"], list(sel)
-    if a_person in sel:
-        where.append("person=?"); args.append(a_person)
-        if a_name: where.append("account=?"); args.append(a_name)
-    else: acct = ""
+    # 3.26.0/3.27.0: selettore dell'account (acct = «Persona/Account», oppure «Persona/» per tutti gli account di quella persona)
+    A, aw, aa = acct_scope([f"kind='contact' and person in ({','.join('?' * len(sel))})"], list(sel))
     con = SI.connect()
-    try:
-        accts = [dict(r) for r in con.execute(f"select person, account, count(*) n from items where kind='contact' and person in ({','.join('?' * len(sel))}) group by person, account order by person, account", sel)]
-        rows = [{**dict(r), "x": json.loads(r["extra"] or "{}")} for r in con.execute(f"select * from items where {' and '.join(where)}", args)]
+    try: rows = [{**dict(r), "x": json.loads(r["extra"] or "{}")} for r in con.execute(f"select * from items where " + " and ".join([f"kind='contact' and person in ({','.join('?' * len(sel))})"] + aw), list(sel) + aa)]
     finally: con.close()
     # stessa persona salvata da più di voi: unite per e-mail o telefono uguali (ultime 9 cifre)
     parent = list(range(len(rows))); key_of = {}
@@ -1942,7 +1966,7 @@ def contacts():
                      keys={"name": lambda p: p["name"].lower(), "org": lambda p: (p["org"] or "~").lower(), "who": lambda p: len(p["who"])})
     unnamed = [p for p in people if p["noname"]]; people = [p for p in people if not p["noname"]]   # senza nome né organizzazione: a parte
     return render_template("contacts.html", people=people, unnamed=unnamed, persons=persons, person=person, q=q, total=len(rows),
-                           accts=accts, acct=acct, n_all=sum(a["n"] for a in accts))
+                           A=A)
 
 @app.post("/admin/reindex")
 def admin_reindex():
