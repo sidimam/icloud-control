@@ -1911,6 +1911,28 @@ def api_geocode():
         con.execute("insert or replace into geocache values(?,?,?,?)", (q, lat, lon, time.time())); con.commit()
         return {"geo": [lat, lon] if lat is not None else None}
     finally: con.close()
+# ---- stato dei servizi esterni (3.28.0): Apple, Google, Microsoft per le persone configurate (svcstatus.py)
+import svcstatus as SS
+def svc_users():
+    """{fornitore: [(persona, cosa usa)]}: Apple per ogni persona con un container iCloud, Google e Microsoft dagli account collegati."""
+    out = {"apple": [], "google": [], "microsoft": [], "other": []}
+    for name, u in cfg().get("users", {}).items():
+        person = u.get("label", name); out["apple"].append((person, "iCloud"))
+        for a in acc_load(u):
+            what = ", ".join(l for l, f in ((_("posta"), "mail"), (_("calendario"), "calendar"), (_("contatti"), "contacts")) if a.get(f) or (f == "calendar" and a.get("ics")))
+            prov = {"gmail": "google", "outlook": "microsoft"}.get(a.get("type"))
+            if prov: out[prov].append((person, f'{a.get("label") or ACC_TYPES.get(a.get("type"))}: {what or "—"}'))
+            elif a.get("type") == "other": out["other"].append((person, a.get("label") or a.get("email") or "IMAP"))
+    return out
+@app.route("/admin/services")
+def admin_services():
+    _admin_only(); lang = ui.current_lang()
+    st = SS.status(lang, force=request.args.get("refresh") == "1"); users = svc_users()
+    order = sorted(("apple", "google", "microsoft"), key=lambda k: not users[k])
+    used = [st["providers"][k]["state"] for k in order if users[k]]
+    worst = max(used or ["ok"], key=lambda s: SS.RANK[s])
+    return render_template("_svc_status.html", st=st, users=users, order=order, names=SS.NAMES, links=SS.LINKS, lang=lang if lang in ("it", "en") else "it",
+                           worst=worst, when=ago(datetime.datetime.fromtimestamp(st["when"])))
 @app.post("/admin/geocode")
 def admin_geocode():
     _admin_only(); st = _settings(); st["geocode"] = request.form.get("geocode") == "on"; _save_settings(st)

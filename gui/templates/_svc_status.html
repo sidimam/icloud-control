@@ -1,0 +1,20 @@
+{# Stato dei servizi esterni (3.28.0), caricato da /admin/services dentro «Amministrazione». st = svcstatus.status(),
+   users = {fornitore: [(persona, cosa usa)]}, order = fornitori, prima quelli usati. #}
+{% set L = {'ok': (_('nessun problema'), 'ok'), 'info': (_('avviso'), 'warn'), 'maint': (_('manutenzione'), 'warn'), 'issue': (_('problema'), 'warn'), 'outage': (_('interruzione'), 'bad'), 'unknown': (_('non raggiungibile'), '')} %}
+{% set BADGE = {'ok': 'b-green', 'info': 'b-orange', 'maint': 'b-blue', 'issue': 'b-orange', 'outage': 'b-red', 'unknown': 'b-gray'} %}
+<div class="list" id="svc-list" data-worst="{{ worst }}">
+{% for k in order %}{% set p = st.providers[k] %}{% set us = users[k] %}
+<details class="li col" style="display:block{% if not us %};opacity:.75{% endif %}" {% if us and p.state not in ('ok', 'unknown') %}open{% endif %}><summary style="list-style:none;display:flex;align-items:center;gap:.7rem;cursor:pointer">
+<span class="badge {{ BADGE[p.state] }}">{{ icon('cloud', 17) }}</span>
+<span class="k"><b>{{ names[k] }}</b><br><span class="mut">{% if us %}{{ _('usato da {a0}', a0=us|map('first')|unique|join(', ')) }}{% else %}{{ _('nessun account configurato') }}{% endif %}</span></span>
+<span class="v row" style="justify-content:flex-end"><span class="tag {{ L[p.state][1] }}">{{ L[p.state][0] }}</span>{{ icon('chevron', 15, 'ic chev') }}</span></summary>
+<div style="padding:.5rem 0 .2rem">
+{% if p.error %}<p class="note bad">{{ _('Pagina di stato non raggiungibile: {a0}', a0=p.error) }}</p>{% endif %}
+{% for s in p.services %}<div class="row" style="justify-content:space-between;padding:.2rem 0;gap:.6rem"><span>{{ s.name }}</span><span class="tag {{ L[s.state][1] }}">{{ L[s.state][0] }}</span></div>
+{% for m in s.msgs %}<p class="note" style="margin:.1rem 0 .45rem 1rem">{% if not m.live %}<span class="tag ok">{{ _('risolto') }}</span> {% endif %}{{ m.text }}{% if m.since %} <span class="mut">· {{ m.since }}{% if m.until %} → {{ m.until }}{% endif %}</span>{% endif %}{% if m.url %} <a href="{{ m.url }}" target="_blank" rel="noopener">{{ _('dettagli') }} ↗</a>{% endif %}</p>{% endfor %}{% endfor %}
+{% if p.others %}<p class="note">{{ _('Altri servizi di {a0} con problemi:', a0=names[k]) }} {% for s in p.others %}{{ s.name }} ({{ L[s.state][0] }}){% if not loop.last %}, {% endif %}{% endfor %}</p>{% endif %}
+{% if us and k != 'apple' %}<p class="note">{% for who, what in us %}{{ who }} · {{ what }}{% if not loop.last %} — {% endif %}{% endfor %}</p>{% endif %}
+<p class="note"><a href="{{ links[k][lang] }}" target="_blank" rel="noopener">{{ _('Pagina ufficiale dello stato') }} ↗</a></p></div></details>{% endfor %}
+{% if users.other %}<div class="li"><span class="k">{{ _('Altri server di posta (IMAP)') }}<br><span class="mut">{% for who, what in users.other %}{{ who }} · {{ what }}{% if not loop.last %} — {% endif %}{% endfor %}</span></span><span class="v mut">{{ _('nessuna pagina di stato pubblica') }}</span></div>{% endif %}
+</div>
+<p class="note">{{ _('Fonti: pagine di stato pubbliche di Apple, Google e Microsoft, rilette al massimo ogni 5 minuti. Aggiornato {a0}.', a0=when) }} <a href="#" id="svc-refresh">{{ _('Aggiorna ora') }}</a></p>

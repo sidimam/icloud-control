@@ -1,5 +1,20 @@
 {# Sezioni di amministrazione (3.23): dentro «Il mio profilo» per i profili admin. #}
 <h2 class="title" id="amministrazione" style="font-size:22px;margin-top:1.6rem">{{ _('Amministrazione') }}</h2>
+<details class="grp" data-k="adm-svc" open><summary>{{ icon('globe', 15) }}{{ _('Stato dei servizi') }} <span id="svc-sum" style="text-transform:none"></span>{{ icon('chevron', 15, 'ic chev') }}</summary>
+<div id="svc-box"><div class="list"><div class="li"><span class="mut">{{ _('Leggo lo stato di Apple, Google e Microsoft…') }}</span></div></div></div></details>
+<script>(function(){   // 3.28.0: lo stato arriva dopo la pagina, così le fonti esterne non la rallentano
+  var box = document.getElementById("svc-box"), sum = document.getElementById("svc-sum");
+  var TAG = {ok: ["ok", {{ _('tutto regolare')|tojson }}], info: ["warn", {{ _('avvisi')|tojson }}], maint: ["warn", {{ _('manutenzione')|tojson }}], issue: ["warn", {{ _('problemi')|tojson }}], outage: ["bad", {{ _('interruzione')|tojson }}], unknown: ["", {{ _('non raggiungibile')|tojson }}]};
+  function load(refresh){
+    fetch("/admin/services" + (refresh ? "?refresh=1" : ""), {credentials: "same-origin"}).then(function(r){ if (!r.ok) throw r.status; return r.text(); }).then(function(h){
+      box.innerHTML = h; var l = document.getElementById("svc-list"), w = l ? l.getAttribute("data-worst") : "unknown", t = TAG[w] || TAG.unknown;
+      sum.innerHTML = '<span class="tag ' + t[0] + '">' + t[1] + '</span>';
+      var a = document.getElementById("svc-refresh"); if (a) a.onclick = function(e){ e.preventDefault(); box.style.opacity = .5; load(true); };
+      box.style.opacity = 1;
+    }).catch(function(){ box.innerHTML = '<div class="list"><div class="li"><span class="mut">' + {{ _('Stato dei servizi non disponibile.')|tojson }} + '</span></div></div>'; box.style.opacity = 1; });
+  }
+  load(false);
+})();</script>
 <details class="grp" data-k="adm-profiles" open><summary>{{ icon('users', 15) }}{{ _('Profili') }}{{ icon('chevron', 15, 'ic chev') }}</summary><div class="list">
 {% for r in rows %}<details class="li col" style="display:block"><summary style="list-style:none;display:flex;align-items:center;gap:.7rem;cursor:pointer">
 <span class="badge {{ 'b-blue' if r.name == 'admin' else 'b-gray' }}">{{ icon('person', 17) }}</span>
