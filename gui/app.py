@@ -1905,8 +1905,17 @@ def mail():
 @app.route("/contacts")
 def contacts():
     persons = allowed_persons(); person = request.args.get("person", ""); sel = [person] if person in persons else persons; q = request.args.get("q", "").strip().lower()
+    # 3.26.0: selettore dell'account (acct = «Persona/Account», oppure «Persona/» per tutti gli account di quella persona)
+    acct = request.args.get("acct", ""); a_person, _sep, a_name = acct.partition("/")
+    where, args = [f"kind='contact' and person in ({','.join('?' * len(sel))})"], list(sel)
+    if a_person in sel:
+        where.append("person=?"); args.append(a_person)
+        if a_name: where.append("account=?"); args.append(a_name)
+    else: acct = ""
     con = SI.connect()
-    try: rows = [{**dict(r), "x": json.loads(r["extra"] or "{}")} for r in con.execute(f"select * from items where kind='contact' and person in ({','.join('?' * len(sel))})", sel)]
+    try:
+        accts = [dict(r) for r in con.execute(f"select person, account, count(*) n from items where kind='contact' and person in ({','.join('?' * len(sel))}) group by person, account order by person, account", sel)]
+        rows = [{**dict(r), "x": json.loads(r["extra"] or "{}")} for r in con.execute(f"select * from items where {' and '.join(where)}", args)]
     finally: con.close()
     # stessa persona salvata da più di voi: unite per e-mail o telefono uguali (ultime 9 cifre)
     parent = list(range(len(rows))); key_of = {}
@@ -1923,6 +1932,7 @@ def contacts():
     for g in groups.values():
         names = sorted({r["title"] for r in g if r["title"]}, key=lambda n: (bool(re.fullmatch(r"[+\d][\d\s+()./-]*", n)), -len(n)))   # un nome vero prima di un numero
         item = {"name": names[0] if names else "—", "ids": [r["id"] for r in g], "who": sorted({r["person"] for r in g}), "noname": all(r["x"].get("noname") for r in g),
+                "src": sorted({f'{r["person"]} · {r["account"]}' for r in g}), "cards": [(r["id"], f'{r["person"]} · {r["account"]}') for r in g],
                 "emails": sorted({e for r in g for e in r["x"].get("emails", [])}), "tels": sorted({t for r in g for t in r["x"].get("tels", [])}),
                 "org": next((r["x"].get("org") for r in g if r["x"].get("org")), "")}
         if q and q not in (item["name"] + " " + " ".join(item["emails"] + item["tels"]) + " " + item["org"]).lower(): continue
@@ -1931,7 +1941,8 @@ def contacts():
     people = filt_py(people, request.args, name=lambda p: p["name"] + " " + p["org"], default="name",
                      keys={"name": lambda p: p["name"].lower(), "org": lambda p: (p["org"] or "~").lower(), "who": lambda p: len(p["who"])})
     unnamed = [p for p in people if p["noname"]]; people = [p for p in people if not p["noname"]]   # senza nome né organizzazione: a parte
-    return render_template("contacts.html", people=people, unnamed=unnamed, persons=persons, person=person, q=q, total=len(rows))
+    return render_template("contacts.html", people=people, unnamed=unnamed, persons=persons, person=person, q=q, total=len(rows),
+                           accts=accts, acct=acct, n_all=sum(a["n"] for a in accts))
 
 @app.post("/admin/reindex")
 def admin_reindex():

@@ -229,6 +229,7 @@ sempre (campo Cerca → risultati dall'indice, con filtri). Ogni utente vede sol
 - **Riepilogo**: ora (che scorre) e data, **meteo** attuale e dei prossimi giorni da Open-Meteo (gratuito, senza chiave;
   `WEATHER_LAT`, `WEATHER_LON`, `WEATHER_PLACE`, default la zona di casa a Roma, in cache 15 minuti).
 - Contatti uniti fra più rubriche: un nome vero vince sempre su un numero di telefono.
+- **Selettore dell'account nei Contatti** (3.26.0): accanto ai filtri, «Tutti gli account», «<persona>: tutti gli account» (se ne ha più di uno) o un solo account (es. «Simone · iCloud», «Simone · Gmail»), con il numero di schede; parametro `acct` (`Persona/Account` o `Persona/`). «Presente in» indica persona e account di ogni scheda.
 
 ### Descrizioni dietro la «i» e ricerca foto su tutta la famiglia (dalla 3.17)
 
