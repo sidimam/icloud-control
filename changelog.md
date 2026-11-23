@@ -4,6 +4,9 @@ Una voce per ogni modifica, la più recente in alto, raggruppate per giorno. Ser
 senza rileggere le conversazioni: ogni commit aggiunge qui la sua voce (cosa, perché, dove, come è stato provato).
 Le voci fino al 16/11/2026 sono ricostruite dalla storia git (messaggio del commit e hash).
 
+## 2026-11-23
+- 3.25.7: le persone nuove nascono con iclouddr 0.2.12, che copia i contatti degli account Gmail (CardDAV di Google con la password per app). Con la 0.2.11 un account Gmail con solo «Contatti» restava «in attesa» per sempre: è successo a «Gmail - Simone», aggiunto da «Account collegati» il 23/11. I quattro container esistenti sono già passati alla 0.2.12 (template Unraid aggiornati, backup `.bak-20261123`). File: `gui/app.py` (`ICLOUDDR_IMAGE` predefinito), `README.md`.
+
 ## 2026-11-16
 - Nuovo `changelog.md`: storia ricostruita dai commit (strumento `tools/changelog_da_git.sh` della cartella Claude); da qui in poi ogni commit aggiunge la sua voce in cima.
 
