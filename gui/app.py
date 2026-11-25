@@ -32,7 +32,7 @@ def _fail(): FAILS.setdefault(_ip(), []).append(time.time()); time.sleep(1)
 def _safe_next(n): return n if n and n.startswith("/") and not n.startswith("//") else "/"
 @app.before_request
 def require_login():
-    if request.endpoint in ("login", "login_2fa", "recover", "prefs", "healthz", "static") or not accounts.any_password(): return None
+    if request.endpoint in ("login", "login_2fa", "recover", "prefs", "healthz", "svc_summary", "static") or not accounts.any_password(): return None
     if not me(): return redirect(url_for("login", next=request.full_path if request.method == "GET" else "/"))
     # Ruoli (3.4): l'amministratore vede tutto; l'utente solo il proprio container iCloud e il proprio profilo.
     if accounts.is_admin(me()): return None
@@ -1935,6 +1935,17 @@ def admin_services():
     worst = max(used or ["ok"], key=lambda s: SS.RANK[s])
     return render_template("_svc_status.html", st=st, users=users, order=order, names=SS.NAMES, links=SS.LINKS, lang=lang if lang in ("it", "en") else "it",
                            worst=worst, when=ago(datetime.datetime.fromtimestamp(st["when"])))
+# Riassunto pubblico dello stato dei servizi (3.30.0), per la carta iCloud Control di Homepage (widget customapi).
+# Senza login come /healthz: contiene solo dati delle pagine di stato pubbliche, nessuna persona né account.
+SVC_WORDS = {"ok": "regolare", "info": "avviso", "maint": "manutenzione", "issue": "problema", "outage": "interruzione", "unknown": "non raggiungibile"}
+@app.route("/api/svc_summary")
+def svc_summary():
+    st = SS.status("it"); out = {"when": int(st["when"])}
+    for k in ("apple", "google", "microsoft"):
+        p = st["providers"].get(k) or {}; state = p.get("state", "unknown")
+        bad = [r["name"] for r in p.get("services", []) if r.get("state") not in ("ok", None)]
+        out[k] = {"state": state, "text": SVC_WORDS.get(state, state) + (" · " + ", ".join(bad) if bad else ""), "problems": bad}
+    return Response(json.dumps(out, ensure_ascii=False), mimetype="application/json", headers={"Cache-Control": "no-store"})
 # Avvisi Telegram sui servizi esterni (3.29.0): a ogni cambio di stato di un servizio usato (problema/interruzione → regolare e viceversa).
 # SOLO nella chat privata del bot (id positivo): mai nel gruppo di famiglia, nemmeno come ripiego. Stato ricordato in /app/state.
 SVC_ALERT_FILE = os.path.join(APP_DIR, "state", "svc_alerts.json"); SVC_EVERY = int(os.environ.get("SVC_INTERVAL", "300"))
