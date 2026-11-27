@@ -419,18 +419,24 @@ def drive_view(name, u):
         return _("ultimo giro {a0}", a0=g["last_end"])
     photo_paths = [src for dst, src in sorted(m.items()) if dst.startswith("/icloud/photos")]
     pim = v["pim"]; pim_on = "/icloud/pim" in m
-    svc = [{"name": "iCloud Drive", "icon": "folder", "badge": "b-blue", "on": True, "paths": [m.get("/icloud/drive", "")],
+    # 3.31.0: icona e nome di ogni servizio portano alla sua sezione, già filtrata sulla persona (e sull'account)
+    L = v["label"]
+    def go(path, acc_folder=None):
+        q = {"person": L}
+        if acc_folder: q["acct"] = f"{L}/{acc_folder}"
+        return path + "?" + urllib.parse.urlencode(q)
+    svc = [{"name": "iCloud Drive", "icon": "folder", "badge": "b-blue", "on": True, "paths": [m.get("/icloud/drive", "")], "href": go("/files"),
             "freq": every(v.get("sync_interval")), "last": cyc_txt("Drive"),
             "info": _("tutto il Drive: Scrivania, Documenti, Download e cartelle delle app")},
-           {"name": _("Foto"), "icon": "photo", "badge": "b-orange", "on": bool(photo_paths), "paths": photo_paths,
+           {"name": _("Foto"), "icon": "photo", "badge": "b-orange", "on": bool(photo_paths), "paths": photo_paths, "href": go("/photos"),
             "freq": every(yaml_section_get(y, "photos", "sync_interval")) if photo_paths else "", "last": cyc_txt("Foto"),
             "info": "" if photo_paths else _("non attivo")}]
     note_dir = (m.get("/icloud/pim", "") + "/Note") if pim_on else ""
-    svc += [{"name": _("Note"), "icon": "doc", "badge": "b-orange", "on": bool(pim_on and pim), "paths": [note_dir] if pim_on else [],
+    svc += [{"name": _("Note"), "icon": "doc", "badge": "b-orange", "on": bool(pim_on and pim), "paths": [note_dir] if pim_on else [], "href": go("/notes"),
              "freq": every(env_of(info).get("PIM_INTERVAL", "86400")) if pim_on else "", "last": _("ultimo giro {a0}", a0=pim["when"]) if pim else "",
              "info": (_("{a0} note", a0=pim["note"]) if pim and pim.get("ok") else (pim or {}).get("error") or "") if pim_on else _("non attivo: serve l'immagine sidimam/iclouddr"),
              "err": bool(pim and not pim.get("ok"))},
-            {"name": _("Promemoria"), "icon": "check", "badge": "b-red", "on": bool(pim_on and pim), "paths": [m.get("/icloud/pim", "") + "/Promemoria"] if pim_on else [],
+            {"name": _("Promemoria"), "icon": "check", "badge": "b-red", "on": bool(pim_on and pim), "paths": [m.get("/icloud/pim", "") + "/Promemoria"] if pim_on else [], "href": go("/reminders"),
              "freq": every(env_of(info).get("PIM_INTERVAL", "86400")) if pim_on else "", "last": _("ultimo giro {a0}", a0=pim["when"]) if pim else "",
              "info": (_("{a0} promemoria in {a1} liste", a0=pim["promemoria"], a1=pim["liste"]) if pim and pim.get("ok") else "") if pim_on else _("non attivo: serve l'immagine sidimam/iclouddr"),
              "err": bool(pim and not pim.get("ok"))}]
@@ -449,6 +455,13 @@ def drive_view(name, u):
                               "has_pw": bool(a.get("password")), "type_name": ACC_TYPES.get(a.get("type"), a.get("type")),
                               "folder": acc_folder(a), "dir": (person + "/" + acc_folder(a)) if person else stt.get("dir", ""), "st": stt, "error": stt.get("error"),
                               "running": (ago(datetime.datetime.fromtimestamp(stt["running"]["since"])) if stt.get("running") else "")})
+    def svc_err(a, key):
+        """Errore del solo servizio key (mail/calendar/contacts) con iclouddr ≥ 0.2.13, altrimenti quello dell'account."""
+        if a.get("running"): return ""
+        errs = a["st"].get("errors")
+        e = (errs.get(key) or errs.get("account") or "") if isinstance(errs, dict) else (a.get("error") or "")
+        e = re.sub(r"^\w+Error: ", "", e).replace("channel c: ", ""); e = re.sub(r"(IMAP warning: [^.]*?(?= IMAP warning| Error:|$)\s*)+", "", e).replace("Error: ", "")
+        return e.strip()[:200]
     def _count_now(a, key):
         if key != "mail" or not a.get("dir"): return ""
         n = 0
@@ -463,7 +476,7 @@ def drive_view(name, u):
             r = a["st"].get(key) or {}
             if a.get("running") and not r: parts.append(f'{a["label"]}: ' + _("prima copia in corso da {a0}", a0=a["running"].replace(_("fa"), "").strip()) + _count_now(a, key))
             elif a["error"] and not r: parts.append(f'{a["label"]}: ' + _("errore"))
-            elif r: parts.append(f'{a["label"]}: ' + unit_fmt(r)); last = max(last, r.get("when") or 0)
+            elif r: parts.append(f'{a["label"]}: ' + unit_fmt(r) + ((" · " + _("ultimo giro non riuscito: {a0}", a0=svc_err(a, key))) if svc_err(a, key) else "")); last = max(last, r.get("when") or 0)
             else: parts.append(f'{a["label"]}: ' + _("in attesa del primo giro"))
         return True, [a["dir"] + "/" + unit_key for a in rows if a["dir"]], (_("ultimo giro {a0}", a0=ago(datetime.datetime.fromtimestamp(last))) if last else ""), " · ".join(parts)
     for key, flag, folder, name, icon_, badge, freq, fmt in (
@@ -472,7 +485,8 @@ def drive_view(name, u):
             ("contacts", "contacts", "Contatti", _("Contatti"), "users", "b-gray", env_of(info).get("PIM_CONTACTS_INTERVAL", "86400"), lambda r: _("{a0} contatti", a0=r.get("contatti", 0)))):
         on, paths, last, txt = agg(key, flag, folder, fmt)
         svc.append({"name": name, "icon": icon_, "badge": badge, "on": on, "paths": paths, "freq": every(freq) if on else "", "last": last, "info": txt,
-                    "err": any(a["error"] and not a.get("running") for a in v["accounts"] if a.get(flag))})
+                    "href": go({"mail": "/mail", "calendar": "/calendar", "contacts": "/contacts"}[key]),
+                    "err": any(svc_err(a, key) for a in v["accounts"] if a.get(flag) or (key == "calendar" and a.get("ics")))})
     v["services"] = svc
     # 3.16: vista «pannello iCloud» → Account › servizio › percorso. Apple = iCloud Drive, Foto, Note, Promemoria del container
     # più posta/calendari/contatti dell'account iCloud; ogni altro account (Gmail, Outlook, IMAP) ha i suoi servizi e percorsi.
@@ -482,12 +496,14 @@ def drive_view(name, u):
                                                          ("calendar", "calendar", "Calendario", _("Calendario"), "doc", "b-red", lambda r: _("{a0} eventi", a0=r.get("eventi", 0))),
                                                          ("contacts", "contacts", "Contatti", _("Contatti"), "users", "b-gray", lambda r: _("{a0} contatti", a0=r.get("contatti", 0)))):
             on = bool(a.get(flag) or (key == "calendar" and a.get("ics"))); r = a["st"].get(key) or {}
+            se = svc_err(a, key) if on else ""
             info = (_("prima copia in corso da {a0}", a0=a["running"].replace(_("fa"), "").strip()) if a.get("running") and not r else
-                    a["error"] if a.get("error") and not r else unit(r) if r else _("in attesa del primo giro") if on else _("non attivo"))
+                    se if se and not r else (unit(r) + (" · " + _("ultimo giro non riuscito: {a0}", a0=se) if se else "")) if r else _("in attesa del primo giro") if on else _("non attivo"))
             rows.append({"name": name_, "icon": icon_, "badge": badge, "on": on, "paths": [a["dir"] + "/" + sub] if a.get("dir") and on else [],
                          "last": _("ultimo giro {a0}", a0=ago(datetime.datetime.fromtimestamp(r["when"]))) if r.get("when") else "", "info": info,
                          "freq": every(env_of(info_ct).get(*{"mail": ("PIM_MAIL_INTERVAL", "900"), "contacts": ("PIM_CONTACTS_INTERVAL", "86400")}.get(key, ("PIM_DAV_INTERVAL", "3600")))) if on else "",
-                         "err": bool(a.get("error") and not a.get("running"))})
+                         "href": go({"mail": "/mail", "calendar": "/calendar", "contacts": "/contacts"}[key], a.get("folder")),
+                         "err": bool(se)})
         return rows
     info_ct = info; groups = []
     icl = [a for a in v["accounts"] if a.get("type") == "icloud"]
@@ -501,6 +517,10 @@ def drive_view(name, u):
     libs = immich_cfg().get("libs") or {}
     v["photo_libs"] = [{"host": src, "label": os.path.basename(src.rstrip("/")), "key": bool((libs.get(src) or {}).get("key")),
                         "added": _fmt_date((libs.get(src) or {}).get("added")) if (libs.get(src) or {}).get("added") else ""} for src in photo_paths]
+    try: shared = set(shared_albums()) if photo_paths else set()
+    except Exception: shared = set()
+    for l in v["photo_libs"]:   # 3.31.0: una libreria condivisa (es. Famiglia) apre quella, le altre le foto della persona
+        l["href"] = "/photos?" + urllib.parse.urlencode({"person": l["label"] if l["label"] in shared else L})
     dd = (disk_load().get("data") or {}).get(v["label"]) or {}
     v["storage"] = [(KIND_NAMES[k], dd[k], KIND_SLOT[k]) for k in KIND_SLOT if dd.get(k)]; v["storage_total"] = sum(dd.values())
     return v
@@ -669,7 +689,7 @@ def new_drive(c, f, name, short):
     p = c["paths"]; d = c["defaults"]; cont = f"iclouddr-{short.lower()}"; host_appdata = f"/mnt/user/appdata/{cont}"
     # Dalla 3.8 i container nuovi usano l'immagine con il modulo PIM, come quelli di famiglia: note e promemoria in
     # <persona>/iCloud, account collegati nella cartella della persona (la cartella che contiene «iCloud Drive»).
-    image = os.environ.get("ICLOUDDR_IMAGE", "ghcr.io/sidimam/iclouddr:0.2.12")
+    image = os.environ.get("ICLOUDDR_IMAGE", "ghcr.io/sidimam/iclouddr:0.2.13")
     # struttura (5/11/2026): documents/<Persona>/iCloud/{iCloud Drive, Note, Promemoria, Posta, Calendario, Contatti}
     person_host = f"/mnt/user/documents/{label}"; pim_host = person_host + "/iCloud"
     appdata = host_to_local(host_appdata); dest = host_to_local(dest_host)
@@ -798,7 +818,13 @@ def ah_loop():
 def ah_view(ct):
     evs = [e for e in ah_events() if e.get("container") == ct]
     for e in evs: e["when"] = datetime.datetime.fromtimestamp(e["ts"]).strftime("%d/%m %H:%M")
-    return {"last": evs[-1] if evs else None, "n24": sum(1 for e in evs if e["action"] == "restart" and time.time() - e["ts"] < 86400)}
+    # 3.31.0: la sospensione dura finché ci sono AH_MAXR riavvii nelle ultime 6 ore (stessa regola di ah_check); finita quella,
+    # la scheda non la mostra più in rosso (prima «sospeso il 11/11» restava per settimane come ultimo evento).
+    now = time.time(); rec = sorted(e["ts"] for e in evs if e["action"] == "restart" and now - e["ts"] < 6 * 3600)
+    last = evs[-1] if evs else None; paused_until = ""
+    if last and last["action"] == "gave_up" and len(rec) >= AH_MAXR:
+        paused_until = datetime.datetime.fromtimestamp(rec[-AH_MAXR] + 6 * 3600).strftime("%d/%m %H:%M")
+    return {"last": last, "paused_until": paused_until, "n24": sum(1 for e in evs if e["action"] == "restart" and now - e["ts"] < 86400)}
 
 # ---- scheda Amministrazione (3.0): profili, password, 2FA, notifiche. Riservata ai profili con ruolo admin.
 def _admin_only():
@@ -2185,10 +2211,7 @@ def home():
     sh_map = shared_map()
     for v in views:
         s = sh_map.get(v["label"]) or {}; v["shared_n"] = len(s.get("note") or ()) + len(s.get("liste") or ()) + len(s.get("drive") or ())
-        tabs = {"iCloud Drive": "/search?kind=file", _("Foto"): "/photos", _("Note"): "/notes", _("Promemoria"): "/reminders", _("Posta"): "/mail",
-                _("Calendario"): "/calendar", _("Contatti"): "/contacts"}
-        for sv in v.get("services") or []:
-            t = tabs.get(sv["name"]); sv["href"] = (t + ("&" if "?" in t else "?") + "person=" + urllib.parse.quote(v["label"])) if t else ""
+        # 3.31.0: i link dei servizi (sv["href"]) li prepara la scheda stessa: iCloud Drive → File, gli altri con persona e account
     idx_last = max((r["finished"] for r in runs), default=None)
     detail = {}
     if sel and cards:

@@ -139,7 +139,7 @@ lavora, quindi la regola riavviava giri sani (Sofia 3–4 volte al giorno) e ogn
 `unraid/stackdump.py` del repository iclouddr con `sys.remote_exec` (Python 3.14, `docker exec -u abc`).
 
 Al massimo 3 riavvii in 6 ore per container: dopo, un avviso Telegram alla chat predefinita e niente più riavvii automatici per 6 ore.
-Gli interventi sono in `/app/state/autoheal.json` e nella scheda dell'utente («Riavvio automatico»). Non interviene durante una
+Gli interventi sono in `/app/state/autoheal.json` e nella scheda dell'utente («Riavvio automatico»). Dalla 3.31.0 la scheda mostra «sospeso fino alle …» in rosso solo mentre la sospensione è in corso (3 riavvii nelle ultime 6 ore); dopo diventa «attivo · ultima sospensione il …, finita». Non interviene durante una
 riautenticazione né sui container fermati a mano. Variabili (facoltative): `AUTOHEAL=0` per spegnerlo, `AUTOHEAL_CHECK_S` (120),
 `AUTOHEAL_IDLE_MIN` (10), `AUTOHEAL_MAX_CYCLE_H` (4), `AUTOHEAL_MAX_RESTARTS` (3).
 
@@ -448,3 +448,15 @@ Stanno in `/app/state/profiles.json` (permessi 600): hash scrypt della password,
 - Il codice 2FA transita in chiaro nella chat Telegram: è monouso e vale pochi minuti.
 
 Licenza MIT.
+
+### Scheda della persona: collegamenti ed errori (3.31.0)
+
+Nella scheda di ogni persona (pagina principale) icona e nome di ogni servizio aprono la sua sezione già filtrata:
+iCloud Drive → **File** della persona, Foto, Note e Promemoria → la scheda con la persona scelta, Posta, Calendario e Contatti
+di un account → la scheda con la persona e l'account (`acct=Persona/Account`, per esempio Contatti di Simone · Gmail). Le
+librerie Immich aprono Foto (Famiglia, condivisa, apre quella). Un servizio spento non ha link.
+
+Se l'ultimo giro di un account collegato non è riuscito, la riga del servizio dice «ultimo giro non riuscito: …» con il motivo e
+il gruppo dell'account ha l'etichetta «errore». Con iclouddr ≥ 0.2.13 l'errore è per servizio (`errors` in `pim-status.json`):
+un errore della posta non segna più calendario e contatti.
+
